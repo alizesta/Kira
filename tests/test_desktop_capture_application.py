@@ -16,14 +16,34 @@ class DesktopCapturePolicyTests(unittest.TestCase):
         self.assertFalse(service.enabled)
         self.assertFalse(settings["desktop_vision_enabled"])
 
-    def test_unknown_or_incomplete_identity_fails_closed(self):
+    def test_unknown_or_unidentifiable_identity_fails_closed(self):
         service = DesktopCaptureApplicationService()
         service.set_enabled(True)
         self.assertEqual(service.evaluate_window(None),
                          (False, "foreground_window_unidentified"))
-        missing_path = make_window()
-        missing_path["path"] = ""
-        self.assertEqual(service.evaluate_window(missing_path),
+        unknown = make_window(exe="", title="", path="")
+        self.assertEqual(service.evaluate_window(unknown),
+                         (False, "foreground_window_identity_incomplete"))
+
+    def test_partial_window_metadata_is_allowed_and_available_privacy_signals_still_apply(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        for field in ("exe", "title", "path"):
+            window = make_window()
+            window[field] = ""
+            self.assertEqual(service.evaluate_window(window), (True, "allowed"), field)
+
+        missing_title = make_window("chrome.exe", "", r"C:\Chrome\chrome.exe")
+        self.assertEqual(service.evaluate_window(missing_title), (True, "allowed"))
+        blocked_exe_without_title = make_window("KeePassXC.exe", "", r"C:\Apps\KeePassXC.exe")
+        self.assertEqual(service.evaluate_window(blocked_exe_without_title), (False, "blocked_exe"))
+
+    def test_invalid_window_geometry_still_fails_closed(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        window = make_window()
+        window["rect"] = (0, 0, 0, 720)
+        self.assertEqual(service.evaluate_window(window),
                          (False, "foreground_window_identity_incomplete"))
 
     def test_manual_enablement_is_required(self):

@@ -108,15 +108,24 @@ class DesktopCaptureApplicationService:
             "title": self._normal(window_info.get("title")),
             "path": self._normal(window_info.get("path")),
         }
-        if (not window_info.get("hwnd") or not window_info.get("pid")
-                or not identity["exe"] or not identity["title"] or not identity["path"]
-                or not window_info.get("rect")):
+        # HWND/PID and a valid rectangle anchor the active foreground window.
+        # exe/title/path are useful privacy signals, but overlays and some games
+        # legitimately omit one or more of them. Evaluate every signal that exists.
+        try:
+            hwnd = int(window_info.get("hwnd") or 0)
+            pid = int(window_info.get("pid") or 0)
+            rect = tuple(int(value) for value in window_info.get("rect") or ())
+        except (TypeError, ValueError):
+            return False, "foreground_window_identity_incomplete"
+        if (hwnd <= 0 or pid <= 0 or len(rect) != 4
+                or rect[2] <= rect[0] or rect[3] <= rect[1]
+                or not any(identity.values())):
             return False, "foreground_window_identity_incomplete"
         blocked = [
             (kind, pattern)
             for kind in _RULE_KINDS
             for pattern in self._blocklist[kind]
-            if self._matches(identity[kind], pattern)
+            if identity[kind] and self._matches(identity[kind], pattern)
         ]
         if not blocked:
             return True, "allowed"

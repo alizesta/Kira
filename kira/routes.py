@@ -386,7 +386,12 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
     model = str(model or "").strip()
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
-    if any(r["provider"] == provider and r["model"] == model for r in routes):
+    model_key = model.casefold()
+    if any(
+        r["provider"] == provider
+        and str(r.get("model") or "").strip().casefold() == model_key
+        for r in routes
+    ):
         raise ValueError(f"این مدل از قبل برای {provider} وجود دارد.")
     route = make_route(unique_route_id(settings, provider), provider, model, enabled, timeout, cooldown,
                        provider_kind(provider, cfg), **extra)
@@ -465,6 +470,9 @@ def remove_route(settings, route_id):
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") == route_id:
         settings["default_route_id"] = settings["routes"][0]["id"] if settings["routes"] else ""
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        notes.pop(route_id, None)
     sync_legacy(settings)
 
 

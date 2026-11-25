@@ -393,8 +393,11 @@ def set_api_enabled(settings, pid, enabled):
 
 def set_model_enabled(settings, pid, model, enabled):
     """Switch one model on/off. Turning on a listed model that has no route yet creates it (at the end of the priority list)."""
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     for r in route_model.get_routes(settings):
-        if r["provider"] == pid and r["model"] == model:
+        if r["provider"] == pid and str(r.get("model") or "").strip().casefold() == model.casefold():
             route_model.update_route(settings, r["id"], enabled=bool(enabled))
             return r["id"]
     if enabled:

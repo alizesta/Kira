@@ -270,16 +270,13 @@ class AttachmentsVisionController(WindowFeatureController):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
             return False
+        # Window text metadata is optional. HWND/PID are the stable identity
+        # anchors; privacy rules independently inspect whichever text fields exist.
         foreground_identity = (
             int(current.get("hwnd") or 0), int(current.get("pid") or 0),
-            str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
-            str(current.get("path") or "").casefold(),
         )
         expected = (
             int((window_info or {}).get("hwnd") or 0), int((window_info or {}).get("pid") or 0),
-            str((window_info or {}).get("exe") or "").casefold(),
-            str((window_info or {}).get("title") or "").strip(),
-            str((window_info or {}).get("path") or "").casefold(),
         )
         # Desktop Eye Mode captures the selected monitor, not the foreground window.
         # Keep its Live stream stable while focus moves between applications.
@@ -308,9 +305,6 @@ class AttachmentsVisionController(WindowFeatureController):
         latest = capture.foreground_window_info()
         latest_identity = (
             int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
-            str((latest or {}).get("exe") or "").casefold(),
-            str((latest or {}).get("title") or "").strip(),
-            str((latest or {}).get("path") or "").casefold(),
         )
         if (source == "game" and latest_identity != foreground_identity) or not service.capture_allowed(
             self.context.state._game_mode_enabled if source == "game" else False,
@@ -368,6 +362,12 @@ class AttachmentsVisionController(WindowFeatureController):
         if not runtime.send_gemini_video_frame(jpeg):
             return False
         selector.commit(sample)
+        min_interval_seconds, max_frames_per_minute = self._live_budget_values()
+        effective_max_fps = min(
+            1.0,
+            1.0 / min_interval_seconds,
+            max_frames_per_minute / 60.0,
+        )
         vision_trace(
             "live_video_frame_queued", source=source,
             reason=decision.reason, mean_change=round(decision.mean_change, 4),
@@ -377,8 +377,12 @@ class AttachmentsVisionController(WindowFeatureController):
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
-            max_bytes=MAX_VIDEO_FRAME_BYTES, fps=1,
-            approx_kib_per_second=round(len(jpeg) / 1024.0, 2),
+            max_bytes=MAX_VIDEO_FRAME_BYTES,
+            min_interval_seconds=min_interval_seconds,
+            max_frames_per_minute=max_frames_per_minute,
+            transport_max_fps=1,
+            effective_max_fps=round(effective_max_fps, 4),
+            approx_kib_per_second=round((len(jpeg) / 1024.0) * effective_max_fps, 2),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )

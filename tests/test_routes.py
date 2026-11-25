@@ -142,6 +142,32 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             routes.remove_route(s, "groq")
 
+    def test_add_route_rejects_case_insensitive_duplicate_model_ids(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        first = routes.add_route(s, "groq", "Example-Model")
+        with self.assertRaises(ValueError):
+            routes.add_route(s, "groq", "example-model")
+        self.assertEqual(
+            [r["id"] for r in routes.get_routes(s) if r["provider"] == "groq" and r["model"].casefold() == "example-model"],
+            [first["id"]],
+        )
+
+    def test_removing_last_provider_route_clears_selection_and_route_health_note(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        for route in list(routes.get_routes(s)):
+            if route["id"] != "groq":
+                routes.remove_route(s, route["id"])
+        s["manual_route_id"] = "groq"
+        s["default_route_id"] = "groq"
+        s.setdefault("route_notes", {})["groq"] = "old failure"
+        routes.remove_route(s, "groq")
+        self.assertIsNone(routes.find_route(s, "groq"))
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertEqual(s["default_route_id"], "")
+        self.assertNotIn("groq", s["route_notes"])
+
     def test_add_edit_remove_custom_provider(self):
         s = legacy_settings()
         routes.ensure_routes(s)

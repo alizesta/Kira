@@ -70,11 +70,12 @@ def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
     providers = settings.get("providers") or {}
     selected = str(provider_id or settings.get("gemini_live_provider") or "").strip()
     if selected:
+        # A saved selection is an account boundary. Never silently authenticate
+        # Gemini Live with a different Google connection when it disappears.
         provider = providers.get(selected)
-        if isinstance(provider, dict):
-            key = str(provider.get("api_key") or "").strip()
-            if key:
-                return key
+        if not isinstance(provider, dict):
+            return ""
+        return str(provider.get("api_key") or "").strip()
     for pid, provider in providers.items():
         if not isinstance(provider, dict):
             continue

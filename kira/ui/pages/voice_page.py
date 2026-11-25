@@ -547,8 +547,10 @@ class VoicePage(QScrollArea):
         try:
             combo.clear()
             provider_ids = {provider_id for _label, provider_id in providers}
-            if selected and selected not in provider_ids and not providers:
-                combo.addItem("Provider ذخیره‌شده در Connections پیدا نشد", selected)
+            if selected and selected not in provider_ids:
+                # Keep a missing/empty saved connection selected until the user
+                # explicitly chooses another account; never auto-switch credentials.
+                combo.addItem("اتصال Google ذخیره‌شده در دسترس نیست؛ حساب دیگری را دستی انتخاب کن", selected)
             for label, provider_id in providers:
                 combo.addItem(label, provider_id)
             if not providers and not selected:
