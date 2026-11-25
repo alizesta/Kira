@@ -8,7 +8,7 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
-SETTINGS_SCHEMA_VERSION = 7
+SETTINGS_SCHEMA_VERSION = 8
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,
@@ -39,7 +39,7 @@ DEFAULTS = {
     "eye_live_min_interval_seconds": 5,      # Gemini Live frame budget: minimum seconds between frames
     "eye_live_max_frames_per_minute": 10,    # Gemini Live frame budget: hard per-minute cap
     "desktop_vision_monitor_id": "",          # empty = monitor containing the foreground window
-    "desktop_vision_allowlist": [],           # explicit exe:<name>, title:<pattern>, path:<pattern> exceptions
+    "desktop_vision_allowlist": [],           # explicit exe:<n>, title:<pattern>, path:<pattern> exceptions
     "desktop_vision_blocklist": {},           # custom privacy rules merged with defaults
     "desktop_vision_ocr_enabled": True,       # local OCR on changed desktop content when Tesseract already exists
     "vision_ocr_in_game_mode": False,         # OCR stays off during gameplay unless explicitly enabled
@@ -107,8 +107,11 @@ DEFAULTS = {
     "brain_reflection": "rules",    # rules (free) | model (also one small background call on deep turns) | off
     "brain_memory_writer": "off",   # off | idle (background fact writer; every fact must quote the user, verified in code)
     "role_routes": {"surface": "auto", "deep": "auto", "reflection": "auto", "memory": "auto"},   # route id per role, or "auto"
-    # Hard provider boundaries: normal/sensitive turns local, demanding analysis via Gemini only.
-    "role_provider_allowlist": {"surface": ["ollama"], "deep": ["google"], "reflection": ["google"], "memory": ["ollama"]},
+    # Provider boundaries per role. Since schema v8 the normal chat role (surface) may use the built-in Cloud
+    # providers as well as local Ollama (the owner's decision); deep/reflection stay Gemini-only and memory stays local.
+    # A Cloud provider is still only used when it is enabled and has a key. Custom providers must be added by hand.
+    "role_provider_allowlist": {"surface": ["ollama", "groq", "cloudflare", "mistral", "openrouter", "google"],
+                                "deep": ["google"], "reflection": ["google"], "memory": ["ollama"]},
     "role_route_models": {"surface": [LOCAL_UNCENSORED_MODEL]},
     "mcp_mode": "auto",             # auto = use kira_mcp.json when it exists | off (docs/MCP_AGENTS_FA.md)
     # Usage ledger (kira/usage.py, docs/USAGE_FA.md): numbers only; Unknown when the provider does not report.
@@ -124,7 +127,7 @@ DEFAULTS = {
     # Route Manager (1.5.1): "routes" itself is created by routes.ensure_routes() on load (migrated from the old layout).
     "manual_route_id": "",          # "" = automatic by priority; otherwise the route chosen by hand
     "failover_enabled": True,       # manual choice may still fall back within the active network policy
-    "network_policy": "local_only",  # Cloud fallback requires an explicit opt-in to cloud_permitted
+    "network_policy": "cloud_permitted",  # local_only blocks every Cloud route; since schema v8 the default is cloud_permitted (unknown values still fail closed to local_only)
     "default_route_id": "",
     "route_free_only": True,        # catalog refresh switches off routes whose model is explicitly no longer free
     "providers": {
