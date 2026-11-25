@@ -199,18 +199,41 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings["providers"]["ollama"]["num_ctx"], "invalid")
         self.assertEqual(settings["temperature"], 99)
 
+    def test_v6_migration_removes_route_health_notes_but_preserves_route_settings(self):
+        source = {
+            "settings_version": 6,
+            "routes": [
+                {"id": "groq", "provider": "groq", "model": "custom-model", "enabled": False},
+            ],
+            "manual_route_id": "groq",
+            "route_notes": {"groq": "model was auto-disabled after repeated failures"},
+            "providers": {"groq": {"api_key": "keep-this-key", "enabled": True}},
+            "user_extension": {"keep": True},
+        }
+        migrated = config._migrate_settings(source)
+        self.assertEqual(migrated["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertNotIn("route_notes", migrated)
+        self.assertFalse(migrated["routes"][0]["enabled"])
+        self.assertEqual(migrated["manual_route_id"], "groq")
+        self.assertEqual(migrated["providers"]["groq"]["api_key"], "keep-this-key")
+        self.assertEqual(migrated["user_extension"], {"keep": True})
+        self.assertIn("route_notes", source)
+        self.assertEqual(config._migrate_settings(migrated), migrated)
+
     def test_save_settings_never_persists_detected_capabilities(self):
         settings = helpers.fresh_settings()
         settings.update({
             "api_registry": {"groq": {"status": "valid"}},
             "model_catalog_refreshed_at": 12345,
             "model_tests": {"groq::model": {"ok": True}},
+            "route_notes": {"groq": "model was auto-disabled"},
         })
         config.save_settings(settings)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertNotIn("api_registry", saved)
         self.assertNotIn("model_catalog_refreshed_at", saved)
         self.assertNotIn("model_tests", saved)
+        self.assertNotIn("route_notes", saved)
 
     def test_v4_migration_removes_only_obsolete_voice_metadata(self):
         source = {

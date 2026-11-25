@@ -45,10 +45,14 @@ class ProviderApplicationServiceTests(unittest.TestCase):
             self.settings, "Custom", "https://example.test/v1", first_model="model-a"
         )
         self.service.registry()[provider_id] = {"status": "valid"}
+        removed_routes = route_model.get_routes(self.settings)
+        route_id = next(route["id"] for route in removed_routes if route["provider"] == provider_id)
+        self.service.detected_capabilities.mapping_set("route_notes", route_id, "temporary provider error")
         removed = self.service.remove_provider(self.settings, provider_id)
         self.assertTrue(removed)
         self.assertNotIn(provider_id, self.settings["providers"])
         self.assertNotIn(provider_id, self.service.registry())
+        self.assertIsNone(self.service.detected_capabilities.mapping_get("route_notes", route_id))
 
     def test_builtin_provider_cannot_be_removed(self):
         with self.assertRaises(ValueError):

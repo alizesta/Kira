@@ -7,6 +7,7 @@ from unittest import mock
 from tests import helpers
 from tests.helpers import CANARY
 from kira import config, routes
+from kira.app.detected_capabilities import DetectedCapabilities
 
 
 def legacy_settings():
@@ -19,6 +20,9 @@ def legacy_settings():
 
 
 class RouteModelTests(unittest.TestCase):
+    def setUp(self):
+        self.capabilities = DetectedCapabilities()
+
     def test_migration_keeps_order_models_keys_and_providers_untouched(self):
         s = legacy_settings()
         before = deepcopy(s["providers"])
@@ -41,9 +45,9 @@ class RouteModelTests(unittest.TestCase):
         ]
         s["manual_route_id"] = "ollama-3"
         s["default_route_id"] = "ollama-2"
-        s["route_notes"] = {"ollama-3": "previous local error"}
+        self.capabilities.mapping_set("route_notes", "ollama-3", "previous local error")
 
-        routes.ensure_routes(s)
+        routes.ensure_routes(s, capabilities=self.capabilities)
 
         local = [r for r in routes.get_routes(s) if r["provider"] == "ollama"]
         self.assertEqual(len(local), 1)
@@ -53,7 +57,8 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(local[0]["num_predict"], 256)
         self.assertEqual(s["manual_route_id"], "ollama")
         self.assertEqual(s["default_route_id"], "ollama")
-        self.assertEqual(s["route_notes"]["ollama"], "previous local error")
+        self.assertEqual(self.capabilities.mapping_get("route_notes", "ollama"), "previous local error")
+        self.assertNotIn("route_notes", s)
         self.assertNotIn("ollama-2", {r["id"] for r in routes.get_routes(s)})
         self.assertNotIn("ollama-3", {r["id"] for r in routes.get_routes(s)})
 
@@ -77,16 +82,19 @@ class RouteModelTests(unittest.TestCase):
             ],
             "manual_route_id": "reverse_api",
             "default_route_id": "reverse_api",
-            "route_notes": {"reverse_api": "retired", "ollama": "keep"},
         }
+        self.capabilities.mapping_set("route_notes", "reverse_api", "retired")
+        self.capabilities.mapping_set("route_notes", "ollama", "keep")
 
-        routes.ensure_routes(settings)
+        routes.ensure_routes(settings, capabilities=self.capabilities)
 
         self.assertNotIn("reverse_api", settings["providers"])
         self.assertNotIn("reverse_api", {item["provider"] for item in settings["routes"]})
         self.assertEqual(settings["manual_route_id"], "")
         self.assertEqual(settings["default_route_id"], "ollama")
-        self.assertEqual(settings["route_notes"], {"ollama": "keep"})
+        self.assertEqual(self.capabilities.mapping_get("route_notes", "ollama"), "keep")
+        self.assertIsNone(self.capabilities.mapping_get("route_notes", "reverse_api"))
+        self.assertNotIn("route_notes", settings)
         self.assertNotIn("reverse_api", settings["provider_order"])
 
     def test_derived_routes_do_not_write_into_settings(self):
@@ -162,12 +170,12 @@ class RouteModelTests(unittest.TestCase):
                 routes.remove_route(s, route["id"])
         s["manual_route_id"] = "groq"
         s["default_route_id"] = "groq"
-        s.setdefault("route_notes", {})["groq"] = "stale"
-        routes.remove_route(s, "groq")
+        self.capabilities.mapping_set("route_notes", "groq", "stale")
+        routes.remove_route(s, "groq", capabilities=self.capabilities)
         self.assertFalse(routes.get_routes(s))
         self.assertEqual(s["manual_route_id"], "")
         self.assertEqual(s["default_route_id"], "")
-        self.assertNotIn("groq", s["route_notes"])
+        self.assertIsNone(self.capabilities.mapping_get("route_notes", "groq"))
 
     def test_remove_provider_clears_default_and_route_notes(self):
         s = legacy_settings()
@@ -176,12 +184,12 @@ class RouteModelTests(unittest.TestCase):
         route = routes.add_route(s, pid, "temporary-model")
         s["manual_route_id"] = route["id"]
         s["default_route_id"] = route["id"]
-        s.setdefault("route_notes", {})[route["id"]] = "stale"
-        removed = routes.remove_provider(s, pid)
+        self.capabilities.mapping_set("route_notes", route["id"], "stale")
+        removed = routes.remove_provider(s, pid, capabilities=self.capabilities)
         self.assertEqual(removed, [route["id"]])
         self.assertEqual(s["manual_route_id"], "")
         self.assertNotEqual(s["default_route_id"], route["id"])
-        self.assertNotIn(route["id"], s["route_notes"])
+        self.assertIsNone(self.capabilities.mapping_get("route_notes", route["id"]))
 
     def test_add_edit_remove_custom_provider(self):
         s = legacy_settings()
@@ -260,9 +268,15 @@ class RouteModelTests(unittest.TestCase):
             route["enabled"] = route["provider"] == "ollama"
         s["providers"]["ollama"]["enabled"] = True
 
-        self.assertTrue(routes.disable_route(s, "ollama", "مدل روی سیستم نصب نیست"))
+        self.assertTrue(routes.disable_route(
+            s, "ollama", "مدل روی سیستم نصب نیست", capabilities=self.capabilities
+        ))
         self.assertFalse(routes.find_route(s, "ollama")["enabled"])
-        self.assertEqual(routes.route_note(s, "ollama"), "مدل روی سیستم نصب نیست")
+        self.assertEqual(
+            routes.route_note(s, "ollama", capabilities=self.capabilities),
+            "مدل روی سیستم نصب نیست",
+        )
+        self.assertNotIn("route_notes", s)
 
     def test_reorder_drag_drop_default_and_manual(self):
         s = legacy_settings()

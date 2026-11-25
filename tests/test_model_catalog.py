@@ -131,7 +131,7 @@ class ArchiveTests(unittest.TestCase):
         s = build()
         api_manager.set_model_enabled(s, "groq", "free-a", True)
         mc.archive_model(s, "groq", "free-a")
-        mc.restore_model(s, "groq", "free-a")
+        mc.restore_model(s, "groq", "free-a", capabilities=CAPABILITIES)
         row = by_model(catalog_rows(s))["free-a"]
         self.assertEqual(row["tabs"], [mc.TAB_FREE])
         self.assertFalse(row["enabled"])
@@ -149,11 +149,13 @@ class ArchiveTests(unittest.TestCase):
         api_manager.set_model_enabled(s, "groq", "free-a", True)
         api_manager.set_model_enabled(s, "mistral", "m-free", True)
         rid = next(r["id"] for r in routes.get_routes(s) if r["model"] == "free-a")
-        routes.disable_route(s, rid, "این مدل دیگر رایگان نیست")
+        routes.disable_route(
+            s, rid, "این مدل دیگر رایگان نیست", capabilities=CAPABILITIES
+        )
         row = by_model(catalog_rows(s))["free-a"]
         self.assertEqual(row["tabs"], [mc.TAB_ARCHIVED])
         self.assertIn("خودکار", row["reason"])
-        mc.restore_model(s, "groq", "free-a")
+        mc.restore_model(s, "groq", "free-a", capabilities=CAPABILITIES)
         self.assertEqual(by_model(catalog_rows(s))["free-a"]["tabs"], [mc.TAB_FREE])
 
     def test_forget_provider_clears_archive_and_tests(self):
