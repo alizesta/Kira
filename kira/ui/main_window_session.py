@@ -275,6 +275,27 @@ class SessionController(WindowFeatureController):
             buttons[character_id] = button
         return button
 
+    def _create_session_vision_router(self, session):
+        """Create a cancellation-isolated Vision transport owned by exactly one Session."""
+        provider_service = self.context.services.provider_application_service
+        router = provider_service.create_isolated_router(
+            self.context.services.settings,
+            previous_router=session.client,
+        )
+        manager = getattr(self.context.services, "session_manager", None)
+        state = getattr(self.context, "state", None)
+        sessions = (
+            manager.list_sessions()
+            if manager is not None
+            else tuple(getattr(state, "sessions", {}).values()) if state is not None else ()
+        )
+        for other in sessions:
+            if other is session:
+                continue
+            if router is getattr(other, "vision_router", None) or router is getattr(other, "client", None):
+                raise RuntimeError("Vision router factory reused a router owned by another Session")
+        return router
+
     def _ensure_session_ui_resources(self, session, profile):
         """Attach Qt resources only when a character chat is opened."""
         if session.view is None:
@@ -286,6 +307,8 @@ class SessionController(WindowFeatureController):
             session.timer.timeout.connect(session.relay.tick)
         if session.client is None:
             session.client = self._new_router()
+        if getattr(session, "vision_router", None) is None:
+            session.vision_router = self._create_session_vision_router(session)
         session.theme = self.theme_for_character(session.cid, profile)
 
     def _ensure_session(self, cid, profile):
@@ -338,13 +361,22 @@ class SessionController(WindowFeatureController):
         return SessionApplicationService.worker_is_running(worker)
 
     def _session_has_pending_chat_work(self, session):
-        return self.context.services.session_application_service.has_pending_work(session)
+        if getattr(session, "status", "") == "closing":
+            with self._as(session):
+                self.feature_controller("attachments_vision")._cancel_vision_worker(session)
+        if self.context.services.session_application_service.has_pending_work(session):
+            return True
+        vision_service = self.context.services.vision_application_service
+        return vision_service.has_pending_frame_work(session.session_id)
 
     def _dispose_chat_session(self, session):
+        with self._as(session):
+            self.feature_controller("attachments_vision")._cancel_vision_worker(session)
         return self.context.services.session_application_service.close_session(session)
 
     def _release_chat_session_resources(self, session):
         """Release UI/provider resources after SessionManager confirms the work has drained."""
+        self.context.services.vision_application_service.cancel_frame_session(session.session_id)
         self.context.services.chat_application_service.close_session(session.session_id)
         self.context.services.tool_agent.release_session(session.cid)
         session.dispatch_scheduled = False
@@ -385,6 +417,11 @@ class SessionController(WindowFeatureController):
                     pass
                 session._vision_worker = None
             session._vision_session = None
+        vision_router = getattr(session, "vision_router", None)
+        if vision_router is not None:
+            vision_router.cancel()
+            session.vision_router = None
+        session._vision_frame_context = None
         if not getattr(self.context.state, "_closing", False) and (self.context.state.front is session or self.context.state.cur is session):
             fallback = next(
                 (item for item in self.context.services.session_manager.list_sessions()

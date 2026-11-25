@@ -628,13 +628,16 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 vision_service.reset()
             except Exception:
                 return False
-        vision_router = getattr(self.context.services, "vision_router", None)
-        if vision_router is not None:
+        for session in self.context.services.session_application_service.list_sessions():
+            vision_router = getattr(session, "vision_router", None)
+            if vision_router is None:
+                continue
             try:
                 vision_router.cancel()
             except Exception:
                 return False
-            self.context.services.vision_router = None
+            session.vision_router = None
+            session._vision_frame_context = None
         return True
 
     def closeEvent(self, event):

@@ -97,6 +97,7 @@ class VisionFrameOrchestrator:
         self._generations: dict[str, int] = {}
         self._sent_at: dict[str, deque[float]] = {}
         self._budget_decisions: dict[str, tuple[str, float]] = {}
+        self._session_budgets: dict[str, tuple[int, float]] = {}
         self._in_flight: dict[str, str] = {}
         self._history_size = max(64, int(history_size))
         self.dropped_pending = 0
@@ -123,21 +124,36 @@ class VisionFrameOrchestrator:
         while len(self._decisions) > self._history_size:
             self._decisions.popitem(last=False)
 
-    def configure_budget(self, *, max_frames_per_minute: int, min_interval_seconds: float) -> None:
-        """Update the active route budget while retaining the shared session history."""
+    def configure_budget(
+        self,
+        *,
+        max_frames_per_minute: int,
+        min_interval_seconds: float,
+        session_id: str | None = None,
+    ) -> None:
+        """Configure a default or Session-owned route budget without cross-session mutation."""
+        budget = (
+            max(0, int(max_frames_per_minute)),
+            max(0.0, float(min_interval_seconds)),
+        )
         with self._lock:
-            self.max_frames_per_minute = max(0, int(max_frames_per_minute))
-            self.min_interval_seconds = max(0.0, float(min_interval_seconds))
+            if session_id is None:
+                self.max_frames_per_minute, self.min_interval_seconds = budget
+            else:
+                self._session_budgets[str(session_id or "")] = budget
 
     def _over_budget(self, session_id: str, now: float) -> bool:
         sent = self._sent_at.setdefault(session_id, deque())
         while sent and now - sent[0] >= 60.0:
             sent.popleft()
-        if self.max_frames_per_minute and len(sent) >= self.max_frames_per_minute:
+        max_frames_per_minute, min_interval_seconds = self._session_budgets.get(
+            session_id, (self.max_frames_per_minute, self.min_interval_seconds)
+        )
+        if max_frames_per_minute and len(sent) >= max_frames_per_minute:
             return True
         return bool(
-            self.min_interval_seconds and sent
-            and now - sent[-1] < self.min_interval_seconds
+            min_interval_seconds and sent
+            and now - sent[-1] < min_interval_seconds
         )
 
     def decide(
@@ -258,6 +274,16 @@ class VisionFrameOrchestrator:
                 self.cancelled_frames += 1
             return None
 
+    def has_session_work(self, session_id: str) -> bool:
+        """Return whether a Session still owns queued or reserved frame work."""
+        key = str(session_id or "")
+        with self._lock:
+            return (
+                any(job.context.session_id == key for job in self._pending)
+                or any(owner == key for owner in self._in_flight.values())
+                or any(owner == key for owner, _moment in self._budget_decisions.values())
+            )
+
     def cancel_session(self, session_id: str) -> int:
         """Invalidate in-flight contexts and remove pending work for one session."""
         key = str(session_id or "")
@@ -268,6 +294,7 @@ class VisionFrameOrchestrator:
             self._pending = kept
             self.cancelled_frames += removed
             self._sent_at.pop(key, None)
+            self._session_budgets.pop(key, None)
             self._budget_decisions = {
                 frame_id: reservation
                 for frame_id, reservation in self._budget_decisions.items()
@@ -287,6 +314,7 @@ class VisionFrameOrchestrator:
             for session_id in set(self._generations) | set(self._sent_at):
                 self._generations[session_id] = self._generations.get(session_id, 0) + 1
             self._sent_at.clear()
+            self._session_budgets.clear()
             self._budget_decisions.clear()
             self._in_flight.clear()
             self.cancelled_frames += removed

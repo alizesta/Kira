@@ -47,6 +47,8 @@ SESSION_FIELDS = {
     "application_request_id": lambda: None,
     "_vision_worker": lambda: None,
     "_vision_session": lambda: None,
+    "vision_router": lambda: None,
+    "_vision_frame_context": lambda: None,
     "_voice_next": lambda: False,
 }
 

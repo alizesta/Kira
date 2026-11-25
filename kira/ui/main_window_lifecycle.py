@@ -102,20 +102,50 @@ class LifecycleController(WindowFeatureController):
         except Exception as exc:
             QMessageBox.critical(self.window, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
             return
-        # Build replacements before touching live routers. Vision keeps its own
-        # request/cancellation channel, and an old analysis is cancelled against
-        # that channel only.
+        # Build every Session-owned Vision replacement before mutating live routers.
         provider_service = self.context.services.provider_application_service
-        previous_vision_router = self.context.services.vision_router
-        replacement_vision_router = provider_service.create_isolated_router(
-            s, previous_router=previous_vision_router
-        )
-        provider_service.rebuild_session_routers(
-            s, self.context.state.sessions.values(), previous_router=self.context.session.client
-        )
-        self.feature_controller("attachments_vision")._cancel_vision_worker()
-        previous_vision_router.cancel()
-        self.context.services.vision_router = replacement_vision_router
+        sessions = tuple(self.context.services.session_manager.list_sessions())
+        previous_vision_routers = {
+            session.session_id: getattr(session, "vision_router", None)
+            for session in sessions
+        }
+        replacement_vision_routers = {}
+        protected_router_ids = {
+            id(router)
+            for session in sessions
+            for router in (
+                getattr(session, "client", None),
+                getattr(session, "vision_router", None),
+            )
+            if router is not None
+        }
+        try:
+            for session in sessions:
+                previous = previous_vision_routers[session.session_id] or session.client
+                replacement = provider_service.create_isolated_router(
+                    s, previous_router=previous
+                )
+                if id(replacement) in protected_router_ids or id(replacement) in {
+                    id(router) for router in replacement_vision_routers.values()
+                }:
+                    raise RuntimeError(
+                        "Vision router factory reused a router owned by another Session"
+                    )
+                replacement_vision_routers[session.session_id] = replacement
+            provider_service.rebuild_session_routers(
+                s, sessions, previous_router=self.context.session.client
+            )
+        except Exception:
+            for router in replacement_vision_routers.values():
+                router.cancel()
+            raise
+
+        self.feature_controller("attachments_vision")._cancel_all_vision_workers()
+        for session in sessions:
+            session.vision_router = replacement_vision_routers[session.session_id]
+        for router in previous_vision_routers.values():
+            if router is not None:
+                router.cancel()
         self.context.services.runtime_settings_application_service.apply(s, tool_agent=self.context.services.tool_agent)
         self.context.services.ollama_client = self.context.services.provider_application_service.create_ollama_client(s)
         self.feature_controller("provider_settings").refresh_route_list()

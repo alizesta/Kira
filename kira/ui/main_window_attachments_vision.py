@@ -29,14 +29,6 @@ from .main_window_attachments_vision_support import (
 
 from .window_feature_controller import WindowFeatureController
 
-# Last (game_detected, frame_ok, source) tuple written to the vision trace; the capture timer
-# only logs when this changes so the log is not flooded every few seconds.
-_LAST_CAPTURE_STATE = {}
-
-# Where the frame attached to the most recent chat turn came from: "game" (the detected
-# game window) or "screen" (the whole primary screen, used when no game window is captured).
-_FRAME_SOURCE = {"value": None}
-_FRAME_WINDOW_INFO = {"value": None}
 LIVE_VIDEO_MAX_WIDTH = 480
 LIVE_VIDEO_MAX_HEIGHT = 270
 LIVE_VIDEO_JPEG_QUALITY = 35
@@ -83,18 +75,28 @@ def _game_fields(game):
     return {"exe": str(game.get("exe") or "")[:80]}
 
 
-def _trace_capture_state(game, frame, source=None):
-    state = (bool(game), frame is not None and not frame.isNull(), source)
-    if _LAST_CAPTURE_STATE.get("value") == state:
-        return
-    _LAST_CAPTURE_STATE["value"] = state
-    vision_trace(
-        "capture_state", game_detected=state[0], frame_ok=state[1], source=source,
-        **_game_fields(game),
-    )
-
-
 class AttachmentsVisionController(WindowFeatureController):
+    @staticmethod
+    def _vision_session_id(session):
+        if session is None:
+            return ""
+        return str(
+            getattr(session, "session_id", None)
+            or getattr(session, "cid", None)
+            or id(session)
+        )
+
+    def _trace_capture_state(self, game, frame, source=None):
+        """Deduplicate capture diagnostics within this controller, never across windows."""
+        state = (bool(game), frame is not None and not frame.isNull(), source)
+        if getattr(self, "_last_capture_state", None) == state:
+            return
+        self._last_capture_state = state
+        vision_trace(
+            "capture_state", game_detected=state[0], frame_ok=state[1], source=source,
+            **_game_fields(game),
+        )
+
     def _perception_engine(self):
         engine = getattr(self, "_desktop_perception_engine", None)
         if engine is None:
@@ -798,25 +800,20 @@ class AttachmentsVisionController(WindowFeatureController):
         privacy.set_enabled(allowed)
         self.context.adapters.game_mode.set_enabled(allowed)
         if not allowed:
-            self._cancel_vision_worker()
+            self._cancel_all_vision_workers()
             self._cancel_perception_worker()
             self._clear_live_video_state()
             self.context.services.desktop_context_application_service.clear()
             self.context.state._game_capture_timer.stop()
             self.context.state._latest_game_frame = None
             self.context.services.vision_application_service.reset()
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             return
-        # Drop any in-flight game-window result before switching the shared pipeline
-        # to the selected-monitor source.
-        self._cancel_vision_worker()
+        # Drop every in-flight result before switching the window-wide capture source.
+        self._cancel_all_vision_workers()
         self._cancel_perception_worker()
         self._clear_live_video_state()
         self.context.services.desktop_context_application_service.clear()
         self.context.services.vision_application_service.reset()
-        _FRAME_SOURCE["value"] = None
-        _FRAME_WINDOW_INFO["value"] = None
         self.context.state._game_capture_timer.setInterval(self._vision_interval_ms())
         self._capture_desktop_frame()
         self.context.state._game_capture_timer.start()
@@ -843,10 +840,8 @@ class AttachmentsVisionController(WindowFeatureController):
         for monitor_id_value, action in self.context.views.desktop_vision_monitor_actions.items():
             action.setChecked(monitor_id_value == selected)
         self.context.views.desktop_vision_auto_action.setChecked(not selected)
+        self._cancel_all_vision_workers()
         self.context.services.vision_application_service.reset()
-        self._cancel_vision_worker()
-        _FRAME_SOURCE["value"] = None
-        _FRAME_WINDOW_INFO["value"] = None
         if privacy.enabled:
             self._capture_desktop_frame()
         return True
@@ -864,20 +859,33 @@ class AttachmentsVisionController(WindowFeatureController):
         if self.context.state._game_mode_enabled:
             self._capture_desktop_frame()
 
-    def _cancel_vision_worker(self):
-        session = self.context.session
-        session_id = (
-            getattr(session, "session_id", None)
-            or getattr(session, "cid", None)
-            or str(id(session))
-        )
-        service = getattr(self.context.services, "vision_application_service", None)
+    def _cancel_vision_worker(self, session=None):
+        """Invalidate and cancel only the work owned by one Session."""
+        session = session or self.context.session
+        if session is None:
+            return
+        session_id = self._vision_session_id(session)
+        services = getattr(self.context, "services", None)
+        service = getattr(services, "vision_application_service", None)
         if service is not None:
-            service.frame_orchestrator.cancel_session(session_id)
+            service.cancel_frame_session(session_id)
         session._vision_frame_context = None
         worker = getattr(session, "_vision_worker", None)
         if worker is not None and worker.isRunning():
             worker.cancel_request()
+
+    def _cancel_all_vision_workers(self):
+        """Cancel every Session because the window-wide capture policy is changing."""
+        manager = getattr(self.context.services, "session_manager", None)
+        if manager is not None:
+            sessions = tuple(manager.list_sessions())
+        else:
+            sessions = tuple(getattr(self.context.state, "sessions", {}).values())
+        if not sessions:
+            session = self.context.session
+            sessions = (session,) if session is not None else ()
+        for session in sessions:
+            self._cancel_vision_worker(session)
 
     def _stop_local_code_jobs(self):
         code_chat = getattr(self.context.views, "code_chat", None)
@@ -892,11 +900,9 @@ class AttachmentsVisionController(WindowFeatureController):
         self.context.state._game_mode_profile = self.context.services.game_mode_application_service.normalize_profile(profile)
         if self.context.state._game_mode_profile != previous:
             # An analysis started under the old profile must not deliver its result under the new one.
-            self._cancel_vision_worker()
+            self._cancel_all_vision_workers()
             self._clear_live_video_state()
             self.context.services.vision_application_service.reset()
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
         self.set_game_mode(True)
 
     def handle_game_mode_command(self, action):
@@ -1019,7 +1025,10 @@ class AttachmentsVisionController(WindowFeatureController):
             game_mode=bool(self.context.state._game_mode_enabled),
             desktop_vision=bool(self.context.services.vision_application_service.desktop_capture_application_service.enabled),
             live_frame_flag=code == "attached",
-            frame_source=_FRAME_SOURCE.get("value") if code == "attached" else None,
+            frame_source=(
+                str(turn_extra.get("live_vision_frame_source") or "")
+                or ("desktop" if turn_extra.get("live_game_frame_attached") is True else "unknown")
+            ) if code.startswith("attached") and isinstance(turn_extra, dict) else None,
             images_in_turn=len(images or []),
             image_names=names[:200],
             **_game_fields(game),
@@ -1192,10 +1201,8 @@ class AttachmentsVisionController(WindowFeatureController):
         ):
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
-            service.reset()
-            _trace_capture_state(None, None)
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
+            self._cancel_vision_worker()
+            self._trace_capture_state(None, None)
             return
         self.context.adapters.game_mode.poll()
         window_info = self.context.adapters.game_mode.last_game
@@ -1207,15 +1214,12 @@ class AttachmentsVisionController(WindowFeatureController):
         ):
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             if window_info:
                 _allowed, reason = service.desktop_capture_application_service.evaluate_window(
                     window_info, explicit=True
                 )
                 vision_trace("capture_blocked", exe=str(window_info.get("exe") or "")[:80], reason=reason)
             self._cancel_vision_worker()
-            service.reset()
             return
         capture = self.context.adapters.game_mode.capture_service
         policy = service.policy
@@ -1224,7 +1228,7 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
-        _trace_capture_state(window_info, frame, "game" if frame is not None else None)
+        self._trace_capture_state(window_info, frame, "game" if frame is not None else None)
         if frame is None:
             return
         frame_context, decision = self._submit_vision_frame(frame, "game", window_info)
@@ -1245,15 +1249,12 @@ class AttachmentsVisionController(WindowFeatureController):
         if not allowed:
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             vision_trace(
                 "capture_blocked",
                 exe=str((window_info or {}).get("exe") or "")[:80] or None,
                 reason=reason,
             )
             self._cancel_vision_worker()
-            service.reset()
             return
         policy = service.policy
         pixmap = capture.capture_monitor_for_window(
@@ -1265,8 +1266,6 @@ class AttachmentsVisionController(WindowFeatureController):
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
         if frame is None:
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             vision_trace(
                 "capture_skipped", source="desktop",
                 exe=str(window_info.get("exe") or "")[:80],
@@ -1302,11 +1301,7 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         runtime = self.feature_controller("runtime")
         live_ready = bool(runtime.is_gemini_live_ready())
-        session_id = (
-            getattr(self.context.session, "session_id", None)
-            or getattr(self.context.session, "cid", None)
-            or str(id(self.context.session))
-        )
+        session_id = self._vision_session_id(self.context.session)
         orchestrator = service.frame_orchestrator
         if live_ready:
             interval_seconds, max_frames_per_minute = self._live_budget_values()
@@ -1316,6 +1311,7 @@ class AttachmentsVisionController(WindowFeatureController):
         orchestrator.configure_budget(
             max_frames_per_minute=max_frames_per_minute,
             min_interval_seconds=interval_seconds,
+            session_id=session_id,
         )
         frame_context = orchestrator.create_context(session_id, source, window_info)
         decision = orchestrator.decide(
@@ -1356,8 +1352,6 @@ class AttachmentsVisionController(WindowFeatureController):
             self._dispatch_next_vision_job()
         except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
             service.discard_frame(frame_context)
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             vision_trace("analysis_error", source=source, error=f"{type(exc).__name__}: {exc}")
             self.feature_controller("session").add_chat(
                 "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
@@ -1368,17 +1362,22 @@ class AttachmentsVisionController(WindowFeatureController):
         """Dispatch the newest queued frame only when its owning session is ready."""
         service = self.context.services.vision_application_service
         session = self.context.session
-        if self.context.state._closing or session is None:
-            service.frame_orchestrator.cancel_all()
+        if session is None:
+            return
+        session_id = self._vision_session_id(session)
+        if self.context.state._closing:
+            self._cancel_vision_worker(session)
+            return
+        status = getattr(session, "status", "")
+        if status in ("closing", "closed", "failed"):
+            self._cancel_vision_worker(session)
+            active = getattr(session, "_vision_worker", None)
+            if status == "closing" and (active is None or not active.isRunning()):
+                self.feature_controller("session")._dispose_chat_session(session)
             return
         active = getattr(session, "_vision_worker", None)
         if active is not None and active.isRunning():
             return
-        session_id = str(
-            getattr(session, "session_id", None)
-            or getattr(session, "cid", None)
-            or str(id(session))
-        )
         job = service.take_next_frame(session_id)
         if job is None:
             return
@@ -1411,14 +1410,18 @@ class AttachmentsVisionController(WindowFeatureController):
             if not eligible:
                 service.release_frame_budget(frame_context)
                 return
-            if not service.accept_frame(job.payload, visual_sample=job.visual_sample):
+            if not service.accept_frame(
+                job.payload,
+                visual_sample=job.visual_sample,
+                session_id=session_id,
+            ):
                 service.release_frame_budget(frame_context)
                 return
             image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
             image = att.image_attachment(job.payload, image_name, "image/jpeg")
-            router = getattr(self.context.services, "vision_router", None)
+            router = getattr(session, "vision_router", None)
             if router is None:
-                raise RuntimeError("isolated Vision router is unavailable")
+                raise RuntimeError("session-owned Vision router is unavailable")
             worker = VisionAnalysisWorker(
                 router, image,
                 ocr_enabled=(
@@ -1430,8 +1433,6 @@ class AttachmentsVisionController(WindowFeatureController):
             session._vision_session = session
             session._vision_frame_context = frame_context
             session._vision_worker = worker
-            _FRAME_SOURCE["value"] = source
-            _FRAME_WINDOW_INFO["value"] = window_info
             vision_trace(
                 "analysis_started", frame_id=frame_context.frame_id,
                 session_id=frame_context.session_id, source=source,
@@ -1459,37 +1460,50 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _on_game_vision_result(self, ok, result, latency_ms, frame_context=None):
         service = self.context.services.vision_application_service
+        session = self.context.session
+        session_id = self._vision_session_id(session)
         if frame_context is None:
-            frame_context = getattr(self.context.session, "_vision_frame_context", None)
-        if frame_context is None and getattr(self.context.session, "_vision_worker", None) is not None:
+            frame_context = getattr(session, "_vision_frame_context", None)
+        if frame_context is None:
             vision_trace(
-                "analysis_discarded", source=_FRAME_SOURCE.get("value") or "unknown",
+                "analysis_discarded", session_id=session_id,
                 reason="missing_frame_context",
             )
-            self.context.session._vision_frame_context = None
             return
-        if frame_context is not None and not service.frame_orchestrator.is_current(frame_context):
+        if frame_context.session_id != session_id:
             vision_trace(
-                "analysis_discarded",
-                frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id,
-                source=frame_context.source,
-                reason="stale_session_generation",
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id, active_session_id=session_id,
+                source=frame_context.source, reason="session_context_mismatch",
             )
-            self.context.session._vision_frame_context = None
             return
-        self.context.session._vision_frame_context = None
-        source = frame_context.source if frame_context is not None else (_FRAME_SOURCE.get("value") or "game")
-        captured = (
-            {
-                "hwnd": frame_context.window_identity[0],
-                "pid": frame_context.window_identity[1],
-                "exe": frame_context.window_identity[2],
-                "title": frame_context.window_identity[3],
-                "path": frame_context.window_identity[4],
-            }
-            if frame_context is not None else (_FRAME_WINDOW_INFO.get("value") or {})
-        )
+        owned_context = getattr(session, "_vision_frame_context", None)
+        if owned_context is not None and owned_context.frame_id != frame_context.frame_id:
+            vision_trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=session_id, source=frame_context.source,
+                reason="superseded_session_job",
+            )
+            return
+        if self.context.state._closing or not service.frame_context_is_current(frame_context):
+            vision_trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=session_id, source=frame_context.source,
+                reason="window_shutdown" if self.context.state._closing else "stale_session_generation",
+            )
+            if owned_context is not None and owned_context.frame_id == frame_context.frame_id:
+                session._vision_frame_context = None
+            return
+        if owned_context is not None and owned_context.frame_id == frame_context.frame_id:
+            session._vision_frame_context = None
+        source = frame_context.source
+        captured = {
+            "hwnd": frame_context.window_identity[0],
+            "pid": frame_context.window_identity[1],
+            "exe": frame_context.window_identity[2],
+            "title": frame_context.window_identity[3],
+            "path": frame_context.window_identity[4],
+        }
         current = self.context.adapters.game_mode.capture_service.foreground_window_info(
             allow_partial_identity=(source == "desktop")
         )
@@ -1515,8 +1529,8 @@ class AttachmentsVisionController(WindowFeatureController):
             if source == "desktop"
             else (same_window and bool(self.context.state._game_mode_enabled))
         )
-        service.mark_latency(latency_ms)
-        stats = service.snapshot()
+        service.mark_latency(latency_ms, session_id=session_id)
+        stats = service.snapshot(session_id=session_id)
         self.context.views.game_mode_btn.setToolTip(
             f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
             f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
@@ -1532,8 +1546,6 @@ class AttachmentsVisionController(WindowFeatureController):
                     else "foreground_window_changed"
                 ),
             )
-            _FRAME_SOURCE["value"] = None
-            _FRAME_WINDOW_INFO["value"] = None
             return
         if source == "desktop" and not same_window:
             vision_trace(
@@ -1550,6 +1562,7 @@ class AttachmentsVisionController(WindowFeatureController):
             result=result,
             source=source,
             window_info=current,
+            session_id=session_id,
         )
         vision_trace(
             "analysis_result",

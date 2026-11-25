@@ -61,6 +61,46 @@ class VisionApplicationServiceTests(unittest.TestCase):
             "new scene",
         )
 
+    def test_result_deduplication_is_scoped_to_each_session(self):
+        self.assertEqual(
+            self.service.consume_result(
+                enabled=True, profile="story", ok=True, result="same observation",
+                session_id="session-a",
+            ),
+            "same observation",
+        )
+        self.assertIsNone(
+            self.service.consume_result(
+                enabled=True, profile="story", ok=True, result="same observation",
+                session_id="session-a",
+            )
+        )
+        self.assertEqual(
+            self.service.consume_result(
+                enabled=True, profile="story", ok=True, result="same observation",
+                session_id="session-b",
+            ),
+            "same observation",
+        )
+
+    def test_frame_deduplication_and_rate_limit_are_scoped_to_each_session(self):
+        payload = b"same-frame"
+        for session_id in ("session-a", "session-b"):
+            self.service._frame_gate_for(session_id)._clock = lambda: 100.0
+        self.assertTrue(self.service.accept_frame(payload, session_id="session-a"))
+        self.assertFalse(self.service.accept_frame(payload, session_id="session-a"))
+        self.assertTrue(self.service.accept_frame(payload, session_id="session-b"))
+
+    def test_cancelling_a_session_releases_only_its_frame_gate(self):
+        payload = b"same-frame"
+        for session_id in ("session-a", "session-b"):
+            self.service._frame_gate_for(session_id)._clock = lambda: 100.0
+        self.assertTrue(self.service.accept_frame(payload, session_id="session-a"))
+        self.assertTrue(self.service.accept_frame(payload, session_id="session-b"))
+        self.service.cancel_frame_session("session-a")
+        self.assertTrue(self.service.accept_frame(payload, session_id="session-a"))
+        self.assertFalse(self.service.accept_frame(payload, session_id="session-b"))
+
     def test_desktop_source_uses_independent_manual_privacy_gate(self):
         desktop = DesktopCaptureApplicationService()
         service = VisionApplicationService(self.game_mode, "economic", desktop)

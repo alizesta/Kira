@@ -8,6 +8,9 @@ from types import SimpleNamespace
 from tests import helpers
 from kira.hybrid_ai import HybridRouter, ProgressBody
 from kira.ui.main_window_chat import ChatController
+from kira.ui.main_window_session import SessionController
+from kira.vision_orchestrator import VisionFrameOrchestrator
+from kira.ui import main_window_attachments_vision as vision_module
 from kira.ui.main_window_attachments_vision import AttachmentsVisionController
 from kira.ui.main_window_support import SessionRelay
 from kira.ui.workers import StreamWorker, VisionAnalysisWorker
@@ -305,6 +308,7 @@ class VisionRoutingTests(unittest.TestCase):
         controller = SimpleNamespace(
             context=context,
             _cancel_vision_worker=mock.Mock(),
+            _cancel_all_vision_workers=mock.Mock(),
             _cancel_perception_worker=mock.Mock(),
             _clear_live_video_state=mock.Mock(),
         )
@@ -317,7 +321,7 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertIsNone(context.state._latest_game_frame)
         vision_service.reset.assert_called_once_with()
         desktop_context.clear.assert_called_once_with()
-        controller._cancel_vision_worker.assert_called_once_with()
+        controller._cancel_all_vision_workers.assert_called_once_with()
         controller._cancel_perception_worker.assert_called_once_with()
         controller._clear_live_video_state.assert_called_once_with()
 
@@ -341,6 +345,7 @@ class VisionRoutingTests(unittest.TestCase):
         controller = SimpleNamespace(
             context=context,
             _cancel_vision_worker=mock.Mock(),
+            _cancel_all_vision_workers=mock.Mock(),
             _cancel_perception_worker=mock.Mock(),
             _clear_live_video_state=mock.Mock(),
             _vision_interval_ms=mock.Mock(return_value=1000),
@@ -360,11 +365,160 @@ class VisionRoutingTests(unittest.TestCase):
     def test_cancel_vision_worker_uses_the_active_chat_session(self):
         worker = FakeVisionWorker()
         session = SimpleNamespace(_vision_worker=worker)
-        controller = SimpleNamespace(context=SimpleNamespace(session=session))
+        service = SimpleNamespace(cancel_frame_session=mock.Mock())
+        controller = SimpleNamespace(
+            context=SimpleNamespace(
+                session=session,
+                services=SimpleNamespace(vision_application_service=service),
+            ),
+            _vision_session_id=AttachmentsVisionController._vision_session_id,
+        )
 
         AttachmentsVisionController._cancel_vision_worker(controller)
 
         self.assertTrue(worker.cancelled)
+        service.cancel_frame_session.assert_called_once_with(
+            AttachmentsVisionController._vision_session_id(session)
+        )
+
+    def test_cancel_vision_worker_invalidates_only_its_own_session(self):
+        worker_a = FakeVisionWorker()
+        worker_b = FakeVisionWorker()
+        session_a = SimpleNamespace(session_id="session-a", _vision_worker=worker_a)
+        session_b = SimpleNamespace(session_id="session-b", _vision_worker=worker_b)
+        service = SimpleNamespace(cancel_frame_session=mock.Mock())
+        controller = SimpleNamespace(
+            context=SimpleNamespace(
+                session=session_a,
+                services=SimpleNamespace(vision_application_service=service),
+            ),
+            _vision_session_id=AttachmentsVisionController._vision_session_id,
+        )
+
+        AttachmentsVisionController._cancel_vision_worker(controller, session_a)
+
+        self.assertTrue(worker_a.cancelled)
+        self.assertFalse(worker_b.cancelled)
+        service.cancel_frame_session.assert_called_once_with("session-a")
+
+    def test_closing_session_is_finalized_after_its_worker_has_drained(self):
+        session = SimpleNamespace(
+            session_id="session-a", status="closing",
+            _vision_worker=FakeVisionWorker(running=False),
+        )
+        cancel = mock.Mock()
+        dispose = mock.Mock()
+        session_controller = SimpleNamespace(_dispose_chat_session=dispose)
+        controller = SimpleNamespace(
+            context=SimpleNamespace(
+                session=session,
+                state=SimpleNamespace(_closing=False),
+                services=SimpleNamespace(vision_application_service=SimpleNamespace()),
+            ),
+            _vision_session_id=lambda target: target.session_id,
+            _cancel_vision_worker=cancel,
+            feature_controller=lambda name: session_controller,
+        )
+
+        AttachmentsVisionController._dispatch_next_vision_job(controller)
+
+        cancel.assert_called_once_with(session)
+        dispose.assert_called_once_with(session)
+
+    def test_frame_operation_state_is_not_stored_at_module_scope(self):
+        for name in ("_FRAME_SOURCE", "_FRAME_WINDOW_INFO", "_LAST_CAPTURE_STATE"):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(vision_module, name))
+
+    def test_each_chat_session_gets_its_own_vision_router(self):
+        router_a, router_b = object(), object()
+        provider_service = SimpleNamespace(
+            create_isolated_router=mock.Mock(side_effect=[router_a, router_b])
+        )
+        controller = SimpleNamespace(
+            context=SimpleNamespace(services=SimpleNamespace(
+                provider_application_service=provider_service,
+                settings={},
+            )),
+            theme_for_character=lambda _cid, _profile: "theme",
+        )
+        controller._create_session_vision_router = lambda target: (
+            SessionController._create_session_vision_router(controller, target)
+        )
+        session_a = SimpleNamespace(
+            view=object(), client=object(), vision_router=None, cid="a"
+        )
+        session_b = SimpleNamespace(
+            view=object(), client=object(), vision_router=None, cid="b"
+        )
+        controller.context.state = SimpleNamespace(
+            sessions={"a": session_a, "b": session_b}
+        )
+
+        SessionController._ensure_session_ui_resources(controller, session_a, {})
+        SessionController._ensure_session_ui_resources(controller, session_b, {})
+
+        self.assertIs(session_a.vision_router, router_a)
+        self.assertIs(session_b.vision_router, router_b)
+        self.assertIsNot(session_a.vision_router, session_b.vision_router)
+        self.assertEqual(provider_service.create_isolated_router.call_count, 2)
+
+    def test_session_router_factory_cannot_reuse_another_sessions_router(self):
+        shared_router = object()
+        provider_service = SimpleNamespace(
+            create_isolated_router=mock.Mock(return_value=shared_router)
+        )
+        controller = SimpleNamespace(
+            context=SimpleNamespace(
+                services=SimpleNamespace(
+                    provider_application_service=provider_service,
+                    settings={},
+                ),
+            ),
+            theme_for_character=lambda _cid, _profile: "theme",
+        )
+        session_a = SimpleNamespace(
+            view=object(), client=object(), vision_router=None, cid="a"
+        )
+        session_b = SimpleNamespace(
+            view=object(), client=object(), vision_router=None, cid="b"
+        )
+        controller.context.state = SimpleNamespace(
+            sessions={"a": session_a, "b": session_b}
+        )
+        controller._create_session_vision_router = lambda target: (
+            SessionController._create_session_vision_router(controller, target)
+        )
+
+        SessionController._ensure_session_ui_resources(controller, session_a, {})
+        with self.assertRaisesRegex(RuntimeError, "another Session"):
+            SessionController._ensure_session_ui_resources(controller, session_b, {})
+
+        self.assertIs(session_a.vision_router, shared_router)
+        self.assertIsNone(session_b.vision_router)
+
+    def test_result_from_another_session_is_rejected_before_consumption(self):
+        service = SimpleNamespace(frame_context_is_current=mock.Mock(return_value=True))
+        owner = SimpleNamespace(
+            session_id="session-b",
+            _vision_frame_context=None,
+        )
+        context = SimpleNamespace(
+            session=owner,
+            services=SimpleNamespace(vision_application_service=service),
+        )
+        controller = SimpleNamespace(
+            context=context,
+            _vision_session_id=AttachmentsVisionController._vision_session_id,
+        )
+        frame_context = VisionFrameOrchestrator().create_context("session-a", "desktop")
+
+        AttachmentsVisionController._on_game_vision_result(
+            controller, True, "stale observation", 10, frame_context
+        )
+
+        service.frame_context_is_current.assert_not_called()
+        self.assertIsNone(owner._vision_frame_context)
 
     def test_image_route_is_selected_inside_role_and_kept_as_preference(self):
         router = FakeRouter()

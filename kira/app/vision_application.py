@@ -18,8 +18,10 @@ class VisionApplicationService:
         self.game_mode_service = game_mode_service
         self.desktop_capture_application_service = desktop_capture_application_service
         self.frame_gate = FrameGate(policy_for(mode))
+        self._session_frame_gates: dict[str, FrameGate] = {}
         self.frame_orchestrator = VisionFrameOrchestrator(capacity=1)
         self._last_note = ""
+        self._session_last_notes: dict[str, str] = {}
         self._active = True
         self._disposed = False
 
@@ -51,6 +53,8 @@ class VisionApplicationService:
             raise RuntimeError("VisionApplicationService has been disposed")
         policy = policy_for(mode)
         self.frame_gate.set_policy(policy)
+        for gate in self._session_frame_gates.values():
+            gate.set_policy(policy)
         return policy
 
     def capture_allowed(self, enabled: bool, profile: str | None, *,
@@ -91,14 +95,19 @@ class VisionApplicationService:
 
     def consume_result(self, *, enabled: bool, profile: str | None, ok: bool,
                        result: Any, source: str = GAME_SOURCE,
-                       window_info: dict | None = None) -> str | None:
+                       window_info: dict | None = None,
+                       session_id: str | None = None) -> str | None:
         if not self.capture_allowed(enabled, profile, source=source, window_info=window_info):
             return None
         message = str(result or "").strip()
         if not ok and not message:
             message = "تحلیل تصویر ناموفق بود."
-        if not message or message == self._last_note:
+        key = str(session_id or "")
+        previous = self._session_last_notes.get(key, "") if key else self._last_note
+        if not message or message == previous:
             return None
+        if key:
+            self._session_last_notes[key] = message
         self._last_note = message
         return message
 
@@ -106,16 +115,35 @@ class VisionApplicationService:
     def policy(self):
         return self.frame_gate.policy
 
-    def accept_frame(self, jpeg: bytes, visual_sample: bytes | None = None) -> bool:
-        return self._active and not self._disposed and self.frame_gate.accept(
+    def _frame_gate_for(self, session_id: str | None = None) -> FrameGate:
+        key = str(session_id or "")
+        if not key:
+            return self.frame_gate
+        gate = self._session_frame_gates.get(key)
+        if gate is None:
+            gate = FrameGate(self.policy)
+            self._session_frame_gates[key] = gate
+        return gate
+
+    def accept_frame(
+        self,
+        jpeg: bytes,
+        visual_sample: bytes | None = None,
+        *,
+        session_id: str | None = None,
+    ) -> bool:
+        return self._active and not self._disposed and self._frame_gate_for(session_id).accept(
             jpeg, visual_sample=visual_sample
         )
 
-    def mark_latency(self, milliseconds: int) -> None:
-        self.frame_gate.mark_latency(milliseconds)
+    def mark_latency(self, milliseconds: int, *, session_id: str | None = None) -> None:
+        self._frame_gate_for(session_id).mark_latency(milliseconds)
 
-    def snapshot(self):
-        return self.frame_gate.snapshot()
+    def snapshot(self, *, session_id: str | None = None):
+        return self._frame_gate_for(session_id).snapshot()
+
+    def has_pending_frame_work(self, session_id: str) -> bool:
+        return self.frame_orchestrator.has_session_work(session_id)
 
     def create_frame_context(self, session_id: str, source: str, window_info: dict | None = None) -> FrameContext:
         return self.frame_orchestrator.create_context(session_id, source, window_info)
@@ -129,7 +157,11 @@ class VisionApplicationService:
         return self.frame_orchestrator.is_current(context)
 
     def cancel_frame_session(self, session_id: str) -> int:
-        return self.frame_orchestrator.cancel_session(session_id)
+        key = str(session_id or "")
+        removed = self.frame_orchestrator.cancel_session(key)
+        self._session_last_notes.pop(key, None)
+        self._session_frame_gates.pop(key, None)
+        return removed
 
     def enqueue_frame(self, job: FrameJob) -> bool:
         return self.frame_orchestrator.enqueue(job)
@@ -150,3 +182,5 @@ class VisionApplicationService:
         self.frame_gate.reset()
         self.frame_orchestrator.cancel_all()
         self._last_note = ""
+        self._session_last_notes.clear()
+        self._session_frame_gates.clear()

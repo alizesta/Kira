@@ -223,6 +223,39 @@ class VisionOrchestratorTests(unittest.TestCase):
         analysis = orchestrator.create_context("s", "desktop")
         self.assertEqual(orchestrator.decide(analysis, live_ready=False, now=103).route, "analysis")
 
+    def test_session_pending_work_is_scoped_to_its_owner(self):
+        orchestrator = VisionFrameOrchestrator()
+        first = orchestrator.create_context("session-a", "desktop")
+        second = orchestrator.create_context("session-b", "desktop")
+        orchestrator.decide(first, live_ready=False)
+        orchestrator.decide(second, live_ready=False)
+        orchestrator.enqueue(FrameJob(first, b"frame-a"))
+        orchestrator.enqueue(FrameJob(second, b"frame-b"))
+        self.assertTrue(orchestrator.has_session_work("session-a"))
+        self.assertTrue(orchestrator.has_session_work("session-b"))
+        orchestrator.cancel_session("session-a")
+        self.assertFalse(orchestrator.has_session_work("session-a"))
+        self.assertTrue(orchestrator.has_session_work("session-b"))
+
+    def test_configured_frame_budgets_are_isolated_per_session(self):
+        orchestrator = VisionFrameOrchestrator()
+        orchestrator.configure_budget(
+            max_frames_per_minute=1, min_interval_seconds=5, session_id="session-a"
+        )
+        orchestrator.configure_budget(
+            max_frames_per_minute=2, min_interval_seconds=0, session_id="session-b"
+        )
+
+        a_first = orchestrator.create_context("session-a", "desktop")
+        a_second = orchestrator.create_context("session-a", "desktop")
+        b_first = orchestrator.create_context("session-b", "desktop")
+        self.assertEqual(orchestrator.decide(a_first, live_ready=False, now=100).route, "analysis")
+        self.assertEqual(
+            orchestrator.decide(a_second, live_ready=False, now=101).reason,
+            "frame_budget_exhausted",
+        )
+        self.assertEqual(orchestrator.decide(b_first, live_ready=False, now=101).route, "analysis")
+
 
 if __name__ == "__main__":
     unittest.main()
