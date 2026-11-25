@@ -120,8 +120,9 @@ class DesktopCaptureService:
                     exe = os.path.basename(path).lower()
             finally:
                 self._kernel32.CloseHandle(process)
-        if not exe or not path or not title.value.strip():
-            return None
+        # Shell windows, overlays and some games do not expose a readable
+        # title or process path. HWND/PID/rect still let capture verify that
+        # the same foreground window owns the selected monitor.
         return {
             "hwnd": int(hwnd), "pid": int(pid.value), "exe": exe, "path": path,
             "title": title.value.strip(), "rect": (rect.left, rect.top, rect.right, rect.bottom),
