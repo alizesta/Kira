@@ -343,11 +343,14 @@ class HybridRouter:
     def reset_quota_blocks(self, route_id=None):
         """Clear runtime quota observations; never changes Provider or Route configuration."""
         if route_id:
-            for scope in list(self.quota_blocks):
-                if scope == ("route-model",):
-                    continue
-                if scope[0] == "route-model" and scope[1] == str(route_id):
-                    self.quota_blocks.pop(scope, None)
+            route = next((item for item in self.routes() if str(item.get("id") or "") == str(route_id)), None)
+            if route is None:
+                return
+            scope = self._google_quota_scope(route) or (
+                "route-model", str(route.get("provider") or "").casefold(),
+                str(route.get("model") or "").casefold(),
+            )
+            self.quota_blocks.pop(scope, None)
         else:
             self.quota_blocks.clear()
 
@@ -383,6 +386,9 @@ class HybridRouter:
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
         quota_kind_value = str(getattr(exc, "quota", "") or "")
         if quota_kind_value in ("no_free", "daily"):
+            if quota_kind_value == "no_free":
+                st["retryable"] = False
+                st["failure_class"] = "permanent"
             quota_scope = self._google_quota_scope(route) or (
                 "route-model", str(route.get("provider") or "").casefold(),
                 str(route.get("model") or "").casefold(),
@@ -723,8 +729,13 @@ class HybridRouter:
                 provider = None
                 if self._cancel.is_set():
                     return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                quota_state = self._quota_status(route)
+                if quota_state:
+                    self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
+                                               "result": "quota_blocked", "quota_kind": quota_state["kind"]})
+                    continue
                 ok, reason = self.eligibility(route)
-                if not ok or self._quota_status(route):
+                if not ok:
                     continue
                 info = self.route_info(route)
                 try:
