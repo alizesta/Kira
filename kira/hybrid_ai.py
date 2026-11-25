@@ -302,13 +302,15 @@ class HybridRouter:
     def _state(self, rid):
         return self.states.setdefault(rid, {"health": "unknown", "last_error": None, "last_ms": None,
                                             "latency_ms": None, "last_ok_at": None,
-                                            "last_attempt_at": None, "failures": 0, "last_kind": None})
+                                            "last_attempt_at": None, "failures": 0, "last_kind": None,
+                                            "retryable": None, "failure_class": None})
 
     def _mark_success(self, route, ms, latency_ms=None):
         st = self._state(route["id"])
         measured = latency_ms if isinstance(latency_ms, (int, float)) and latency_ms >= 0 else ms
         st.update(health="healthy", last_error=None, last_ms=ms, latency_ms=measured,
-                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None, model_failures=0)
+                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None,
+                  retryable=None, failure_class=None, model_failures=0)
         self.cooldowns.pop(route["id"], None)
 
     def _google_quota_scope(self, route):
@@ -347,6 +349,8 @@ class HybridRouter:
         st = self._state(route["id"])
         st["failures"] += 1
         st["last_kind"] = kind
+        st["retryable"] = bool(retryable)
+        st["failure_class"] = "transient" if retryable else "permanent"
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
@@ -937,5 +941,6 @@ class HybridRouter:
                         "cooldown": max(0, int(self.cooldowns.get(route["id"], 0) - now)),
                         "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"],
                         "policy_decision": next((d["reason"] for d in self.last_route_decisions
-                                                 if d["route_id"] == str(route.get("id") or "")), None)})
+                                                 if d["route_id"] == str(route.get("id") or "")), None),
+                        "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
         return out
