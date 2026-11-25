@@ -547,10 +547,14 @@ class VoicePage(QScrollArea):
         try:
             combo.clear()
             provider_ids = {provider_id for _label, provider_id in providers}
-            if selected and selected not in provider_ids and not providers:
-                combo.addItem("Provider ذخیره‌شده در Connections پیدا نشد", selected)
+            # Keep a stale saved id visible even when another Google key exists.
+            # The user must explicitly select the replacement account.
+            if selected and selected not in provider_ids:
+                combo.addItem("اتصال انتخاب‌شده حذف شده یا کلید ندارد", selected)
             for label, provider_id in providers:
                 combo.addItem(label, provider_id)
+            if not selected and providers:
+                selected = providers[0][1]
             if not providers and not selected:
                 combo.addItem("ابتدا Google AI Studio را در بخش اتصالات ثبت کن", "")
             index = combo.findData(selected)
