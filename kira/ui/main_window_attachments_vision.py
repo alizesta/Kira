@@ -412,7 +412,7 @@ class AttachmentsVisionController(WindowFeatureController):
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         allowed, reason = privacy.evaluate_window(
             window_info, explicit=(source == "game"),
-            allow_partial_identity=(source == "desktop"),
+            allow_partial_identity=True,
         )
         if not allowed:
             context.clear_sensitive(
@@ -898,7 +898,9 @@ class AttachmentsVisionController(WindowFeatureController):
         self._capture_desktop_frame()
         window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        allowed, reason = privacy.evaluate_window(window_info)
+        allowed, reason = privacy.evaluate_window(
+            window_info, allow_partial_identity=True
+        )
         if not allowed:
             return f"Eye Mode روشن است، اما پنجرهٔ فعال به‌دلیل محدودیت حریم خصوصی مسدود شد: {reason}"
         frame = self.context.state._latest_game_frame
@@ -1180,7 +1182,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.state._game_mode_enabled,
             self.context.state._game_mode_profile,
             source="game",
-            window_info=window_info,
+            window_info=window_info, allow_partial_identity=True,
         ):
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
@@ -1274,7 +1276,7 @@ class AttachmentsVisionController(WindowFeatureController):
             speech_active=self.context.services.voice_application_service.is_speaking(),
             source=source,
             window_info=window_info,
-            allow_partial_identity=(source == "desktop"),
+            allow_partial_identity=True,
         ):
             return
         try:
@@ -1400,7 +1402,7 @@ class AttachmentsVisionController(WindowFeatureController):
             result=result,
             source=source,
             window_info=current,
-            allow_partial_identity=(source == "desktop"),
+            allow_partial_identity=True,
         )
         vision_trace(
             "analysis_result",
