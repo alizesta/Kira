@@ -538,6 +538,42 @@ def initialize_main_window(
         action.triggered.connect(lambda checked=False, idx=i: self.controllers.require("session").go_tab(idx))
         self.state._menu_actions.append(action)
 
+    # Compose one runtime graph here; UI feature controllers only consume it.
+    from ..app.vision_runtime import VisionRuntimeServices
+    from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
+    from .perception_worker_controller import PerceptionWorkerController
+    from ..request_trace import vision_trace
+    from ..gemini_live import MAX_VIDEO_FRAME_BYTES
+
+    runtime_controller = self.controllers.require("runtime")
+    vision_frame_codec = QtVisionFrameCodec()
+    vision_live_transport = GeminiLiveTransportAdapter(
+        readiness=runtime_controller.is_gemini_live_ready,
+        clear_frames=runtime_controller.clear_gemini_video_frames,
+        send_frame=runtime_controller.send_gemini_video_frame,
+    )
+    vision_runtime = VisionRuntimeServices(
+        game_mode_adapter=self.adapters.game_mode,
+        game_mode_application_service=self.services.game_mode_application_service,
+        vision_application_service=self.services.vision_application_service,
+        desktop_context_application_service=self.services.desktop_context_application_service,
+        settings=self.services.settings,
+        frame_codec=vision_frame_codec,
+        live_transport=vision_live_transport,
+        max_frame_bytes_provider=lambda: MAX_VIDEO_FRAME_BYTES,
+        trace=vision_trace,
+    )
+    self.services.vision_runtime_services = vision_runtime
+    self.services.perception_worker_controller = PerceptionWorkerController(
+        vision_runtime.perception_application_service,
+        vision_frame_codec,
+        self.services.settings,
+        is_closing=lambda: bool(self.state._closing),
+        game_mode_enabled=lambda: bool(self.state._game_mode_enabled),
+        trace=vision_trace,
+        parent=self.host,
+    )
+
     # Eye Mode is explicit opt-in. Keep the compatibility setting disabled without
     # constructing the deferred Vision and desktop-capture services during composition.
     self.services.settings["desktop_vision_enabled"] = False

@@ -2,12 +2,7 @@
 from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
 from ..perception.events import PerceptionEvent
-from ..vision_runtime_services import (
-    LiveSessionManager,
-    VisionAnalysisCoordinator,
-    VisionCaptureService,
-)
-from ..app.perception_application import PerceptionApplicationService
+from ..vision_runtime_services import _service_value
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
     AttachmentTile,
@@ -27,8 +22,7 @@ from .main_window_attachments_vision_support import (
 
 
 from .window_feature_controller import WindowFeatureController
-from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
-from .perception_worker_controller import PerceptionWorkerController
+
 
 
 def _game_fields(game):
@@ -57,66 +51,27 @@ class AttachmentsVisionController(WindowFeatureController):
             or id(session)
         )
 
+    def _vision_runtime(self):
+        runtime = getattr(self.context.services, "vision_runtime_services", None)
+        if runtime is None:
+            raise RuntimeError("Vision runtime was not composed by the application root")
+        return runtime
+
     def _frame_codec(self):
-        codec = getattr(self, "_vision_qt_frame_codec", None)
-        if codec is None:
-            codec = QtVisionFrameCodec()
-            self._vision_qt_frame_codec = codec
-        return codec
+        return self._vision_runtime().frame_codec
 
     def _capture_service(self):
-        service = getattr(self, "_vision_capture_service", None)
-        if service is None:
-            service = VisionCaptureService(
-                self.context.adapters.game_mode,
-                self.context.services.vision_application_service,
-            )
-            self._vision_capture_service = service
-        return service
+        return self._vision_runtime().capture_service
 
     def _analysis_coordinator(self):
-        coordinator = getattr(self, "_vision_analysis_coordinator", None)
-        if coordinator is None:
-            coordinator = VisionAnalysisCoordinator(
-                self.context.services.vision_application_service,
-                self._frame_codec().encode_analysis_frame,
-                capture_service=self._capture_service(),
-                trace=vision_trace,
-            )
-            self._vision_analysis_coordinator = coordinator
-        return coordinator
+        return self._vision_runtime().analysis_coordinator
 
     def _live_transport(self):
-        transport = getattr(self, "_vision_live_transport", None)
-        if transport is None:
-            runtime = self.feature_controller("runtime")
-            transport = GeminiLiveTransportAdapter(
-                readiness=runtime.is_gemini_live_ready,
-                clear_frames=runtime.clear_gemini_video_frames,
-                send_frame=runtime.send_gemini_video_frame,
-            )
-            self._vision_live_transport = transport
-        return transport
-
-    def _max_live_frame_bytes(self):
-        from ..gemini_live import MAX_VIDEO_FRAME_BYTES
-        return MAX_VIDEO_FRAME_BYTES
+        return self._vision_runtime().live_transport
 
     def _live_session_manager(self):
-        manager = getattr(self, "_vision_live_session_manager", None)
-        if manager is None:
-            manager = LiveSessionManager(
-                self.context.services.settings,
-                self._capture_service(),
-                self.context.services.vision_application_service,
-                self.context.services.game_mode_application_service,
-                self._live_transport(),
-                self._frame_codec(),
-                max_frame_bytes_provider=self._max_live_frame_bytes,
-                trace=vision_trace,
-            )
-            self._vision_live_session_manager = manager
-        return manager
+        return self._vision_runtime().live_session_manager
+
     def _trace_capture_state(self, game, frame, source=None):
         """Deduplicate capture diagnostics within this controller, never across windows."""
         state = (bool(game), frame is not None and not frame.isNull(), source)
@@ -244,26 +199,13 @@ class AttachmentsVisionController(WindowFeatureController):
         )
 
     def _perception_worker_controller(self):
-        controller = getattr(self, "_perception_worker_controller", None)
+        controller = getattr(self.context.services, "perception_worker_controller", None)
         if controller is None:
-            service = PerceptionApplicationService(
-                self.context.services.desktop_context_application_service,
-                self._capture_service(),
-                trace=vision_trace,
-            )
-            controller = PerceptionWorkerController(
-                service,
-                self._frame_codec(),
-                self.context.services.settings,
-                is_closing=lambda: bool(self.context.state._closing),
-                game_mode_enabled=lambda: bool(self.context.state._game_mode_enabled),
-                trace=vision_trace,
-            )
-            self._perception_worker_controller = controller
+            raise RuntimeError("Perception worker adapter was not composed by the application root")
         return controller
 
     def perception_worker(self):
-        controller = getattr(self, "_perception_worker_controller", None)
+        controller = getattr(self.context.services, "perception_worker_controller", None)
         return controller.worker if controller is not None else None
 
     def _queue_perception_ocr(self, frame, source, window_info):
@@ -1057,12 +999,12 @@ class AttachmentsVisionController(WindowFeatureController):
     def dispose_runtime_services(self):
         """Cancel and dispose service-owned Vision and Perception work after worker drain."""
         self._cancel_all_vision_workers()
-        perception_controller = getattr(self, "_perception_worker_controller", None)
+        perception_controller = getattr(
+            self.context.services, "perception_worker_controller", None
+        )
         if perception_controller is not None and not perception_controller.dispose():
             return False
-        manager = getattr(self, "_vision_live_session_manager", None)
-        if manager is not None:
-            manager.dispose()
+        self._vision_runtime().dispose()
         sessions = tuple(self.context.state.sessions.values())
         return not any(
             (worker := getattr(session, "_vision_worker", None)) is not None
