@@ -84,7 +84,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _cancel_perception_worker(self):
         controller = getattr(
-            self.context.services, "perception_worker_controller", None
+            self.context.adapters, "perception_worker_controller", None
         )
         if controller is not None:
             controller.cancel()

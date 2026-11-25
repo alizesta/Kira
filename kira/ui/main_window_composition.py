@@ -566,7 +566,7 @@ def initialize_main_window(
             max_frame_bytes_provider=lambda: MAX_VIDEO_FRAME_BYTES,
             trace=vision_trace,
         )
-        self.services.perception_worker_controller = PerceptionWorkerController(
+        self.adapters.perception_worker_controller = PerceptionWorkerController(
             runtime.perception_application_service,
             frame_codec,
             self.services.settings,

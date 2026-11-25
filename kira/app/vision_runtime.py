@@ -72,7 +72,7 @@ class VisionRuntimeServices:
 
 
 class VisionRuntimeProvider:
-    """Thread-safe-by-construction lazy owner for one window's Vision graph."""
+    """Lazy owner for one window's Vision graph."""
 
     def __init__(self, factory: Callable[[], VisionRuntimeServices]) -> None:
         if not callable(factory):
