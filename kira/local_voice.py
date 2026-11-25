@@ -290,6 +290,8 @@ def _resample_mono_float32(audio, sample_rate, target_rate=SHENAVA_SAMPLE_RATE):
 
 def unload_shenava():
     """Release the active recognizer and clear its model identity."""
+    import gc
+
     global _shenava_recognizer, _shenava_model_path, _shenava_error
     with _asr_lock:
         previous, _shenava_recognizer = _shenava_recognizer, None
