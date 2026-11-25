@@ -30,6 +30,7 @@ class ModelCatalogReconciliationTests(unittest.TestCase):
             ],
             "manual_route_id": "groq-extra",
             "default_route_id": "groq-main",
+            "network_policy": "cloud_permitted",
         }
 
     def test_refresh_removes_stale_routes_when_a_current_route_remains(self):
@@ -69,6 +70,7 @@ class RoutePriorityTests(unittest.TestCase):
                 {"id": "fast", "provider": "openrouter", "model": "fast-model", "enabled": True},
             ],
             "failover_enabled": True,
+            "network_policy": "cloud_permitted",
         }
         router = HybridRouter(settings)
         router.states["slow"] = {"latency_ms": 520, "last_kind": None}
@@ -88,6 +90,7 @@ class RoutePriorityTests(unittest.TestCase):
                 {"id": "known", "provider": "mistral", "model": "known-model", "enabled": True},
             ],
             "failover_enabled": True,
+            "network_policy": "cloud_permitted",
         }
         router = HybridRouter(settings)
         router.states["known"] = {"latency_ms": 140, "last_kind": None}
