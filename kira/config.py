@@ -156,6 +156,47 @@ DEFAULTS = {
     }
 }
 
+# Semantic constraints are part of the settings schema, not UI-only assumptions.
+SETTING_CHOICES = {
+    "voice_engine": frozenset({"gemini_live", "local"}),
+    "tts_engine": frozenset({"piper", "kitten"}),
+    "kitten_model": frozenset({"pico", "nano", "mini"}),
+    "web_depth": frozenset({"basic", "advanced"}),
+    "eye_mode_profile": frozenset({"competitive_safe", "story"}),
+    "ui_lang": frozenset({"en", "fa"}),
+    "window_effect": frozenset({"acrylic", "mica", "off"}),
+    "evidence_memory": frozenset({"auto", "off"}),
+    "embedding_backend": frozenset({"off", "ollama", "provider"}),
+    "brain_mode": frozenset({"auto", "surface_only", "off"}),
+    "brain_reflection": frozenset({"rules", "model", "off"}),
+    "brain_memory_writer": frozenset({"off", "idle"}),
+    "mcp_mode": frozenset({"auto", "off"}),
+    "tools_mode": frozenset({"auto", "always", "off"}),
+    "agent_planning": frozenset({"auto", "off"}),
+}
+SETTING_RANGES = {
+    "temperature": (0.0, 2.0),
+    "voice_volume": (0.0, 1.0),
+    "mic_gain": (50, 300),
+    "mic_sensitivity": (50, 200),
+    "wake_timeout": (1, 300),
+    "companion_height": (100, 2000),
+    "follow_strength": (0.0, 2.0),
+    "motion_strength": (0.0, 2.0),
+    "eye_live_min_interval_seconds": (1, 60),
+    "eye_live_max_frames_per_minute": (1, 60),
+    "web_research_max_searches": (1, 20),
+    "web_research_max_pages": (1, 25),
+    "web_research_max_seconds": (15, 300),
+    "web_research_max_chars": (2500, 14000),
+    "tools_max_rounds": (1, 6),
+    "agent_max_steps": (2, 15),
+    "agent_max_replans": (0, 5),
+    "memory_context_limit": (1, 100),
+    "memory_top_k": (1, 50),
+    "providers.ollama.num_ctx": (1024, 32768),
+}
+ 
 CLOUD_PROVIDERS = ("groq", "cloudflare", "mistral", "openrouter")
 # Models Groq has retired -> current replacement (only applied to the exact retired IDs).
 RETIRED_GROQ_MODELS = {
@@ -345,6 +386,15 @@ def _validate_value(value, default, path, repaired):
                 else:
                     value[child_key] = deepcopy(child_default)
                     repaired.append(f"{path}.{child_key}")
+    choices = SETTING_CHOICES.get(path)
+    if valid and choices is not None and value not in choices:
+        valid = False
+    bounds = SETTING_RANGES.get(path)
+    if valid and bounds is not None:
+        try:
+            valid = bounds[0] <= value <= bounds[1]
+        except (TypeError, ValueError, OverflowError):
+            valid = False
     if not valid:
         repaired.append(path)
         return deepcopy(default)

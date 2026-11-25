@@ -110,6 +110,18 @@ class ConfigTests(unittest.TestCase):
             self.path.write_text(json.dumps({"providers": {"ollama": {"num_ctx": value}}}), encoding="utf-8")
             self.assertEqual(config.load_settings()["providers"]["ollama"]["num_ctx"], value)
 
+    def test_invalid_setting_choices_and_ranges_are_repaired(self):
+        self.path.write_text(
+            json.dumps({"voice_engine": "not-an-engine", "temperature": 99}),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        self.assertEqual(settings["voice_engine"], config.DEFAULTS["voice_engine"])
+        self.assertEqual(settings["temperature"], config.DEFAULTS["temperature"])
+        warning = " ".join(config.LOAD_WARNINGS)
+        self.assertIn("voice_engine", warning)
+        self.assertIn("temperature", warning)
+
     def test_invalid_known_setting_is_repaired_from_schema_default(self):
         self.path.write_text(json.dumps({"temperature": "hot"}), encoding="utf-8")
         settings = config.load_settings()
