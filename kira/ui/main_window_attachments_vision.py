@@ -859,7 +859,7 @@ class AttachmentsVisionController(WindowFeatureController):
         session_id = (
             getattr(session, "session_id", None)
             or getattr(session, "cid", None)
-            or "default"
+            or str(id(session))
         )
         service = getattr(self.context.services, "vision_application_service", None)
         if service is not None:
@@ -1295,7 +1295,7 @@ class AttachmentsVisionController(WindowFeatureController):
         session_id = (
             getattr(self.context.session, "session_id", None)
             or getattr(self.context.session, "cid", None)
-            or "default"
+            or str(id(self.context.session))
         )
         orchestrator = service.frame_orchestrator
         frame_context = orchestrator.create_context(session_id, source, window_info)
@@ -1359,7 +1359,7 @@ class AttachmentsVisionController(WindowFeatureController):
         session_id = str(
             getattr(session, "session_id", None)
             or getattr(session, "cid", None)
-            or "default"
+            or str(id(session))
         )
         if session_id != frame_context.session_id or not service.frame_context_is_current(frame_context):
             vision_trace(
