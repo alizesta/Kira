@@ -93,6 +93,34 @@ def _trace_capture_state(game, frame, source=None):
     )
 
 
+def _live_window_identity(window_info):
+    """Validate the stable foreground anchor and normalize optional process metadata."""
+    if not isinstance(window_info, dict):
+        return None
+    try:
+        hwnd = int(window_info.get("hwnd") or 0)
+        pid = int(window_info.get("pid") or 0)
+        rect = tuple(int(value) for value in window_info.get("rect") or ())
+    except (TypeError, ValueError):
+        return None
+    if hwnd <= 0 or pid <= 0 or len(rect) != 4 or rect[2] <= rect[0] or rect[3] <= rect[1]:
+        return None
+    return (
+        hwnd, pid,
+        str(window_info.get("exe") or "").strip().casefold(),
+        str(window_info.get("title") or "").strip().casefold(),
+        str(window_info.get("path") or "").strip().casefold(),
+    )
+
+
+def _same_live_window(left, right):
+    """Require the same HWND/PID; compare optional fields whenever both are available."""
+    first, second = _live_window_identity(left), _live_window_identity(right)
+    if first is None or second is None or first[:2] != second[:2]:
+        return False
+    return all(not a or not b or a == b for a, b in zip(first[2:], second[2:]))
+
+
 class AttachmentsVisionController(WindowFeatureController):
     def _perception_engine(self):
         engine = getattr(self, "_desktop_perception_engine", None)
@@ -274,24 +302,16 @@ class AttachmentsVisionController(WindowFeatureController):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
             return False
-        foreground_identity = (
-            int(current.get("hwnd") or 0), int(current.get("pid") or 0),
-            str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
-            str(current.get("path") or "").casefold(),
-        )
-        expected = (
-            int((window_info or {}).get("hwnd") or 0), int((window_info or {}).get("pid") or 0),
-            str((window_info or {}).get("exe") or "").casefold(),
-            str((window_info or {}).get("title") or "").strip(),
-            str((window_info or {}).get("path") or "").casefold(),
-        )
-        # Desktop Eye Mode captures the selected monitor, not the foreground window.
-        # Keep its Live stream stable while focus moves between applications.
+        foreground_identity = _live_window_identity(current)
+        # Desktop mode streams the selected monitor; game mode stays bound to the
+        # same foreground window. exe/title/path are optional Windows metadata.
         identity = (
             ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
             if source == "desktop" else foreground_identity
         )
-        if source == "game" and (not all(foreground_identity) or foreground_identity != expected):
+        if foreground_identity is None or (
+            source == "game" and not _same_live_window(current, window_info)
+        ):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
             return False
@@ -310,16 +330,14 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
             return False
         latest = capture.foreground_window_info()
-        latest_identity = (
-            int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
-            str((latest or {}).get("exe") or "").casefold(),
-            str((latest or {}).get("title") or "").strip(),
-            str((latest or {}).get("path") or "").casefold(),
-        )
-        if (source == "game" and latest_identity != foreground_identity) or not service.capture_allowed(
-            self.context.state._game_mode_enabled if source == "game" else False,
-            self.context.state._game_mode_profile if source == "game" else None,
-            source=source, window_info=latest,
+        if (
+            _live_window_identity(latest) is None
+            or (source == "game" and not _same_live_window(latest, current))
+            or not service.capture_allowed(
+                self.context.state._game_mode_enabled if source == "game" else False,
+                self.context.state._game_mode_profile if source == "game" else None,
+                source=source, window_info=latest,
+            )
         ):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
@@ -372,6 +390,10 @@ class AttachmentsVisionController(WindowFeatureController):
         if not runtime.send_gemini_video_frame(jpeg):
             return False
         selector.commit(sample)
+        min_interval = max(1.0, float(selector.policy.min_interval_seconds or 1.0))
+        configured_per_minute = max(1, int(selector.policy.max_frames_per_minute or 1))
+        effective_per_minute = min(configured_per_minute, int(60.0 / min_interval), 60)
+        effective_fps = min(1.0, 1.0 / min_interval, effective_per_minute / 60.0)
         vision_trace(
             "live_video_frame_queued", source=source,
             reason=decision.reason, mean_change=round(decision.mean_change, 4),
@@ -381,10 +403,11 @@ class AttachmentsVisionController(WindowFeatureController):
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
-            max_bytes=MAX_VIDEO_FRAME_BYTES, gate_max_fps=1,
-            min_interval_seconds=selector.policy.min_interval_seconds,
-            max_frames_per_minute=selector.policy.max_frames_per_minute,
-            approx_kib_per_frame=round(len(jpeg) / 1024.0, 2),
+            max_bytes=MAX_VIDEO_FRAME_BYTES,
+            min_interval_seconds=min_interval,
+            max_frames_per_minute=effective_per_minute,
+            effective_max_fps=round(effective_fps, 4),
+            approx_kib_per_second=round((len(jpeg) / 1024.0) * effective_fps, 2),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
