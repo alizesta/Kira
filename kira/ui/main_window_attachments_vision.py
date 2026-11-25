@@ -4,6 +4,7 @@ from ..request_trace import vision_trace
 from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
 from ..live_video_selector import LiveFrameSelector, SAMPLE_HEIGHT, SAMPLE_WIDTH, SelectorPolicy
+from ..vision_orchestrator import FrameJob
 from ..vision_ocr import OcrResult, TesseractOcrEngine
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
@@ -1280,7 +1281,7 @@ class AttachmentsVisionController(WindowFeatureController):
             enabled=enabled,
             profile=profile,
             frame_available=True,
-            worker_running=bool(worker is not None and worker.isRunning()),
+            worker_running=False,
             chat_busy=self.context.session.busy,
             provider_busy=self.context.session.client.busy,
             speech_active=self.context.services.voice_application_service.is_speaking(),
@@ -1327,39 +1328,9 @@ class AttachmentsVisionController(WindowFeatureController):
                 for y in range(thumbnail.height())
                 for x in range(thumbnail.width())
             )
-            if not service.accept_frame(jpeg, visual_sample=visual_sample):
+            if not service.enqueue_frame(FrameJob(frame_context, jpeg, visual_sample)):
                 return frame_context, decision
-            name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
-            image = att.image_attachment(jpeg, name, "image/jpeg")
-            session = self.context.state.cur
-            self.context.session._vision_session = session
-            vision_router = getattr(self.context.services, "vision_router", None)
-            if vision_router is None:
-                raise RuntimeError("isolated Vision router is unavailable")
-            self.context.session._vision_worker = VisionAnalysisWorker(
-                vision_router,
-                image,
-                ocr_enabled=(
-                    bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
-                    if source == "game" else False
-                ),
-            )
-            self.context.session._vision_frame_context = frame_context
-            _FRAME_SOURCE["value"] = source
-            _FRAME_WINDOW_INFO["value"] = dict(window_info or {})
-            vision_trace(
-                "analysis_started",
-                frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id,
-                source=source,
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
-                jpeg_bytes=len(jpeg),
-                width=frame.width(),
-                height=frame.height(),
-            )
-            self.context.session._vision_worker.done.connect(session.relay.game_vision_done)
-            self.context.session._vision_worker.finished.connect(session.relay.game_vision_finished)
-            self.context.session._vision_worker.start()
+            self._dispatch_next_vision_job()
         except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
@@ -1368,6 +1339,77 @@ class AttachmentsVisionController(WindowFeatureController):
                 "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
             )
         return frame_context, decision
+
+    def _dispatch_next_vision_job(self):
+        """Dispatch the newest queued frame only when its owning session is ready."""
+        service = self.context.services.vision_application_service
+        session = self.context.session
+        if self.context.state._closing or session is None:
+            service.frame_orchestrator.cancel_all()
+            return
+        active = getattr(session, "_vision_worker", None)
+        if active is not None and active.isRunning():
+            return
+        job = service.take_next_frame()
+        if job is None:
+            return
+        frame_context = job.context
+        session_id = str(
+            getattr(session, "session_id", None)
+            or getattr(session, "cid", None)
+            or "default"
+        )
+        if session_id != frame_context.session_id or not service.frame_context_is_current(frame_context):
+            vision_trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id, source=frame_context.source,
+                reason="stale_session_context",
+            )
+            return
+        source = frame_context.source
+        enabled = self.context.state._game_mode_enabled if source == "game" else True
+        profile = self.context.state._game_mode_profile if source == "game" else None
+        window_info = {
+            "hwnd": frame_context.window_identity[0],
+            "pid": frame_context.window_identity[1],
+            "exe": frame_context.window_identity[2],
+            "title": frame_context.window_identity[3],
+            "path": frame_context.window_identity[4],
+        }
+        if not service.should_analyze(
+            enabled=enabled, profile=profile, frame_available=True,
+            worker_running=False, chat_busy=session.busy, provider_busy=session.client.busy,
+            speech_active=self.context.services.voice_application_service.is_speaking(),
+            source=source, window_info=window_info,
+        ):
+            return
+        if not service.accept_frame(job.payload, visual_sample=job.visual_sample):
+            return
+        image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
+        image = att.image_attachment(job.payload, image_name, "image/jpeg")
+        router = getattr(self.context.services, "vision_router", None)
+        if router is None:
+            raise RuntimeError("isolated Vision router is unavailable")
+        worker = VisionAnalysisWorker(
+            router, image,
+            ocr_enabled=(
+                bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
+                if source == "game" else False
+            ),
+        )
+        session._vision_session = session
+        session._vision_frame_context = frame_context
+        session._vision_worker = worker
+        _FRAME_SOURCE["value"] = source
+        _FRAME_WINDOW_INFO["value"] = window_info
+        vision_trace(
+            "analysis_started", frame_id=frame_context.frame_id,
+            session_id=frame_context.session_id, source=source,
+            jpeg_bytes=len(job.payload),
+        )
+        worker.done.connect(session.relay.game_vision_done)
+        worker.finished.connect(session.relay.game_vision_finished)
+        worker.start()
 
     def _send_pending_for_session(self, session):
         if self.context.state._closing or session is None or session.cid not in self.context.state.sessions:

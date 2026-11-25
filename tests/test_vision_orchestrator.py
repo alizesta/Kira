@@ -66,6 +66,15 @@ class VisionOrchestratorTests(unittest.TestCase):
         with self.assertRaises(Exception):
             context.session_id = "other"
 
+    def test_cancel_invalidates_an_already_decided_frame(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(context, live_ready=True).route, "live")
+        orchestrator.cancel_session("s")
+        stale = orchestrator.decide(context, live_ready=False)
+        self.assertEqual(stale.route, "drop")
+        self.assertEqual(stale.reason, "stale_session_generation")
+
     def test_concurrent_decisions_for_one_frame_are_idempotent(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("s", "desktop")

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..vision_pipeline import FrameGate, policy_for
-from ..vision_orchestrator import VisionFrameOrchestrator
+from ..vision_orchestrator import FrameContext, FrameJob, VisionFrameOrchestrator
 
 
 class VisionApplicationService:
@@ -116,6 +116,26 @@ class VisionApplicationService:
 
     def snapshot(self):
         return self.frame_gate.snapshot()
+
+    def create_frame_context(self, session_id: str, source: str, window_info: dict | None = None) -> FrameContext:
+        return self.frame_orchestrator.create_context(session_id, source, window_info)
+
+    def route_frame(self, context: FrameContext, *, live_ready: bool, analysis_allowed: bool = True):
+        return self.frame_orchestrator.decide(
+            context, live_ready=live_ready, analysis_allowed=analysis_allowed
+        )
+
+    def frame_context_is_current(self, context: FrameContext) -> bool:
+        return self.frame_orchestrator.is_current(context)
+
+    def cancel_frame_session(self, session_id: str) -> int:
+        return self.frame_orchestrator.cancel_session(session_id)
+
+    def enqueue_frame(self, job: FrameJob) -> bool:
+        return self.frame_orchestrator.enqueue(job)
+
+    def take_next_frame(self) -> FrameJob | None:
+        return self.frame_orchestrator.take_next()
 
     def reset(self) -> None:
         self.frame_gate.reset()

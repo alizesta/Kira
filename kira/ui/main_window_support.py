@@ -53,6 +53,7 @@ class SessionRelay(QObject):
         "on_web_done": "chat",
         "_on_game_vision_result": "attachments_vision",
         "_send_next_pending": "runtime",
+        "_dispatch_next_vision_job": "attachments_vision",
     }
 
     def __init__(self, context, session, widget_parent):
@@ -107,4 +108,5 @@ class SessionRelay(QObject):
 
     @Slot()
     def game_vision_finished(self):
+        self._run("_dispatch_next_vision_job")
         self._run("_send_next_pending")

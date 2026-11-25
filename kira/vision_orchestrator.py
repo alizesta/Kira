@@ -7,7 +7,7 @@ keeps only the newest pending job, and invalidates work when a session is cancel
 from __future__ import annotations
 
 from collections import OrderedDict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import threading
 import time
 import uuid
@@ -105,14 +105,19 @@ class VisionFrameOrchestrator:
         with self._lock:
             return context.generation == self._generations.get(context.session_id, 0)
 
+    def is_current(self, context: FrameContext) -> bool:
+        with self._lock:
+            return context.generation == self._generations.get(context.session_id, 0)
+
     def generation(self, session_id: str) -> int:
         with self._lock:
             return self._generations.get(str(session_id or ""), 0)
 
     def create_context(self, session_id: str, source: str, window_info: dict | None = None):
-        return FrameContext.create(
-            session_id, source, window_info, generation=self.generation(session_id)
-        )
+        key = str(session_id or "")
+        with self._lock:
+            generation = self._generations.setdefault(key, 0)
+        return FrameContext.create(session_id, source, window_info, generation=generation)
 
     def _remember(self, decision: FrameRoute) -> None:
         self._decisions[decision.frame_id] = decision
@@ -142,14 +147,16 @@ class VisionFrameOrchestrator:
         """Choose one and only one cloud path for a frame; repeated calls are idempotent."""
         moment = self._clock() if now is None else float(now)
         with self._lock:
+            current_generation = self._generations.get(context.session_id, 0)
+            if context.generation != current_generation:
+                decision = FrameRoute(context.frame_id, self.DROP, "stale_session_generation")
+                self._remember(decision)
+                return decision
             previous = self._decisions.get(context.frame_id)
             if previous is not None:
                 self.duplicate_frames += 1
                 return previous
-            current_generation = self._generations.get(context.session_id, 0)
-            if context.generation != current_generation:
-                decision = FrameRoute(context.frame_id, self.DROP, "stale_session_generation")
-            elif self._over_budget(context.session_id, moment):
+            if self._over_budget(context.session_id, moment):
                 decision = FrameRoute(context.frame_id, self.DROP, "frame_budget_exhausted")
             elif live_ready:
                 decision = FrameRoute(context.frame_id, self.LIVE, "live_session_ready")
