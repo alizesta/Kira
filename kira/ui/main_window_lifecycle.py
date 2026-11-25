@@ -383,7 +383,7 @@ class LifecycleController(WindowFeatureController):
             model_widget = getattr(self.context.views, "model", None)
             if model_widget is not None:
                 model_widget.set_models(detail)
-            self.context.state._ollama_models = list(detail)
+            self.context.services.provider_application_service.set_ollama_models(detail)
             self.feature_controller("session").set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
         else:
             self.feature_controller("session").set_status("st_off")

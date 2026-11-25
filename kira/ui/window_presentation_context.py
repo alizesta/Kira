@@ -55,7 +55,6 @@ STATE_FIELDS = frozenset({
     "_music_watcher_timer",
     "_nav_icon_map",
     "_neon_animations",
-    "_ollama_models",
     "_ollama_worker",
     "_provider_editing",
     "_provider_catalog_auto_refresh_started",
@@ -383,7 +382,7 @@ CONTROLLER_ACCESS = {
   "extras": frozenset({"session","is_background_session"}),
  },
  "lifecycle": {
-  "state": frozenset({"_closing","_effect","_ollama_models","_ollama_worker","_quitting","sessions"}),
+  "state": frozenset({"_closing","_effect","_ollama_worker","_quitting","sessions"}),
   "services": frozenset({"ollama_client","provider_application_service","runtime_settings_application_service","settings","tool_agent","vision_router"}),
   "adapters": frozenset({"animator","companion","bubble", "appearance_runtime"}),
   "views": frozenset({"appearance_page","avatar","character_page","conn_btn","conn_lbl","keep_alive","load_btn","mic_btn","model","modes_chk","name","num_ctx","num_predict","persona","route_ollama_enabled","speed_btn","tavily_key","temp","tray","ui_lang","unload_btn","url","voice_page","web_btn","web_depth","web_fallback_chk"}),
@@ -401,7 +400,7 @@ CONTROLLER_ACCESS = {
   "extras": frozenset({"session","resource","is_background_session"}),
  },
  "provider_settings": {
-  "state": frozenset({"_api_worker","_bench_busy","_bench_worker","_closing","_deepseek_login_worker","_loading_route","_model_catalog_worker","_ollama_models","_route_worker","_scan_worker"}),
+  "state": frozenset({"_api_worker","_bench_busy","_bench_worker","_closing","_deepseek_login_worker","_loading_route","_model_catalog_worker","_route_worker","_scan_worker"}),
   "services": frozenset({"provider_application_service","settings"}),
   "adapters": frozenset(),
   "views": frozenset({"assistant_page","api_add_status","bench_out","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_model_list","local_asr_path_edit","local_model_list","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_list","local_tts_model_path","local_voice_box","local_voice_progress","local_voice_status","local_whisper_path","mcp_registry_panel","model","route_bench_btn","route_cooldown","route_ctx","route_del_btn","route_enabled_chk","route_list","route_manual_lbl","route_model_edit","route_ollama_enabled","route_predict","route_provider_lbl","route_status","route_test_btn","route_timeout","route_use_btn","tabs","url","local_tts_test_btn","failover_chk","route_add_btn","route_auto_btn"}),

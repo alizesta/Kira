@@ -131,7 +131,7 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.services.provider_application_service.apply_failure(settings, pid, detection)
                 failed.append(pid)
         if updated:
-            settings["model_catalog_refreshed_at"] = int(time.time())
+            self.context.services.provider_application_service.set_model_catalog_refreshed_at(int(time.time()))
         self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
         self.refresh_api_table()
@@ -153,7 +153,7 @@ class ProviderSettingsController(WindowFeatureController):
         # Scan it on every startup so installed local models are always selectable,
         # even when cloud model metadata is still fresh.
         self.scan_ollama()
-        if time.time() - float(settings.get("model_catalog_refreshed_at") or 0) < self.CATALOG_MAX_AGE_SECONDS:
+        if time.time() - self.context.services.provider_application_service.model_catalog_refreshed_at < self.CATALOG_MAX_AGE_SECONDS:
             return
         self.refresh_model_catalogs()
 
@@ -249,8 +249,11 @@ class ProviderSettingsController(WindowFeatureController):
     def refresh_unified_models(self):
         """Populate the three cloud capability lists and the three local model lists."""
         if hasattr(self, "models_panel"):
-            self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
-            rows = model_catalog.model_rows(self.context.services.settings)
+            service = self.context.services.provider_application_service
+            service.ensure_registry(self.context.services.settings)
+            rows = model_catalog.model_rows(
+                self.context.services.settings, capabilities=service.detected_capabilities
+            )
             self.models_panel.set_rows(rows, model_catalog.tab_counts(rows))
             for key in getattr(self, "_model_test_workers", {}):
                 self.models_panel.set_testing(*key, True)
@@ -757,8 +760,8 @@ class ProviderSettingsController(WindowFeatureController):
             cfg = self.context.services.settings.get("providers", {}).get(route["provider"], {})
             local = self.context.services.provider_application_service.provider_kind(route["provider"], cfg) == "local"
             self.context.views.route_provider_lbl.setText(f"{self.context.services.provider_application_service.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
-            if route["provider"] == "ollama" and self.context.state._ollama_models:
-                self.context.views.route_model_edit.set_models(self.context.state._ollama_models)
+            if route["provider"] == "ollama" and self.context.services.provider_application_service.ollama_models:
+                self.context.views.route_model_edit.set_models(self.context.services.provider_application_service.ollama_models)
             self.context.views.route_model_edit.setText(route["model"])
             self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
             lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
@@ -868,7 +871,7 @@ class ProviderSettingsController(WindowFeatureController):
         model = ModelCombo("")
         def fill():
             if prov.currentData() == "ollama":
-                model.set_models(self.context.state._ollama_models)
+                model.set_models(self.context.services.provider_application_service.ollama_models)
         prov.currentIndexChanged.connect(lambda *_: fill())
         form.addRow("Provider", prov)
         form.addRow("Model ID", model)
@@ -1014,7 +1017,7 @@ class ProviderSettingsController(WindowFeatureController):
         if not ok:
             self.context.views.route_status.setText("✕ " + value)
             return
-        self.context.state._ollama_models = list(value)
+        self.context.services.provider_application_service.set_ollama_models(value)
         self.context.views.model.set_models(value)
         added = self.context.services.provider_application_service.add_ollama_models(self.context.services.settings, value)
         self.feature_controller("runtime").save_now()
