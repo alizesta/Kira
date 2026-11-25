@@ -52,10 +52,10 @@ class AttachmentsVisionController(WindowFeatureController):
         )
 
     def _vision_runtime(self):
-        runtime = getattr(self.context.services, "vision_runtime_services", None)
-        if runtime is None:
-            raise RuntimeError("Vision runtime was not composed by the application root")
-        return runtime
+        provider = getattr(self.context.services, "vision_runtime_provider", None)
+        if provider is None:
+            raise RuntimeError("Vision runtime provider was not composed by the application root")
+        return provider.get()
 
     def _frame_codec(self):
         return self._vision_runtime().frame_codec
@@ -443,13 +443,16 @@ class AttachmentsVisionController(WindowFeatureController):
             self._capture_desktop_frame()
 
     def _cancel_vision_worker(self, session=None):
-        """Invalidate frame generations and cancel the worker owned by one session."""
+        """Invalidate an existing runtime's frame generation without creating it."""
         session = session or self.context.session
         if session is None:
             return
-        self._analysis_coordinator().cancel_worker(
-            session, self._vision_session_id(session)
-        )
+        provider = getattr(self.context.services, "vision_runtime_provider", None)
+        runtime = provider.peek() if provider is not None else None
+        if runtime is not None:
+            runtime.analysis_coordinator.cancel_worker(
+                session, self._vision_session_id(session)
+            )
 
     def _cancel_all_vision_workers(self):
         """Cancel every Session because the window-wide capture policy is changing."""
@@ -1004,7 +1007,9 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         if perception_controller is not None and not perception_controller.dispose():
             return False
-        self._vision_runtime().dispose()
+        provider = getattr(self.context.services, "vision_runtime_provider", None)
+        if provider is not None and not provider.dispose():
+            return False
         sessions = tuple(self.context.state.sessions.values())
         return not any(
             (worker := getattr(session, "_vision_worker", None)) is not None

@@ -69,3 +69,35 @@ class VisionRuntimeServices:
         self.live_session_manager.dispose()
         self._disposed = True
         return True
+
+
+class VisionRuntimeProvider:
+    """Thread-safe-by-construction lazy owner for one window's Vision graph."""
+
+    def __init__(self, factory: Callable[[], VisionRuntimeServices]) -> None:
+        if not callable(factory):
+            raise TypeError("Vision runtime factory must be callable")
+        self._factory = factory
+        self._instance: VisionRuntimeServices | None = None
+        self._disposed = False
+
+    def get(self) -> VisionRuntimeServices:
+        if self._disposed:
+            raise RuntimeError("Vision runtime provider is disposed")
+        if self._instance is None:
+            instance = self._factory()
+            if not isinstance(instance, VisionRuntimeServices):
+                raise TypeError("Vision runtime factory returned an invalid service graph")
+            self._instance = instance
+        return self._instance
+
+    def peek(self) -> VisionRuntimeServices | None:
+        return self._instance
+
+    def dispose(self) -> bool:
+        if self._disposed:
+            return True
+        if self._instance is not None and not self._instance.dispose():
+            return False
+        self._disposed = True
+        return True

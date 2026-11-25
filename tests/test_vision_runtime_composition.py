@@ -97,3 +97,27 @@ def test_runtime_requires_complete_composition_dependencies():
             live_transport=FakeTransport(),
             max_frame_bytes_provider=lambda: 1024,
         )
+
+
+def test_runtime_provider_is_lazy_and_reuses_its_single_instance():
+    from kira.app.vision_runtime import VisionRuntimeProvider
+
+    builds = []
+    runtime, _transport = make_runtime()
+    provider = VisionRuntimeProvider(lambda: (builds.append(runtime) or runtime))
+
+    assert builds == []
+    assert provider.peek() is None
+    assert provider.get() is runtime
+    assert provider.get() is runtime
+    assert builds == [runtime]
+
+
+def test_runtime_provider_disposes_without_eager_construction():
+    from kira.app.vision_runtime import VisionRuntimeProvider
+
+    provider = VisionRuntimeProvider(lambda: pytest.fail("must stay lazy"))
+
+    assert provider.dispose() is True
+    with pytest.raises(RuntimeError):
+        provider.get()
