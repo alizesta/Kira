@@ -349,5 +349,87 @@ class StartupImportBoundaryTests(unittest.TestCase):
             self.assertEqual(stale, [], relative)
 
 
+    def test_importing_window_composition_does_not_import_feature_support_graph(self):
+        code = """
+import importlib
+import sys
+importlib.import_module("kira.ui.main_window_composition")
+forbidden = {
+    "kira.ui.main_window_root_support",
+    "kira.game_mode",
+    "kira.desktop_capture",
+    "kira.companion",
+    "kira.emotion.backend_png",
+    "kira.voice",
+}
+loaded = forbidden.intersection(sys.modules)
+assert not loaded, sorted(loaded)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_bootstrap_defers_window_composition_until_after_window_and_modules(self):
+        source = (ROOT / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        run = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_application"
+        )
+        imports = [
+            node for node in ast.walk(run)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").endswith("main_window_composition")
+        ]
+        self.assertEqual(len(imports), 1)
+        window_line = next(
+            node.lineno for node in ast.walk(run)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "MainWindow"
+        )
+        registration_line = next(
+            node.lineno for node in ast.walk(run)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "register_application_modules"
+        )
+        self.assertGreater(imports[0].lineno, window_line)
+        self.assertGreater(imports[0].lineno, registration_line)
+
+    def test_root_window_support_does_not_eagerly_import_game_capture(self):
+        source = (ROOT / "kira" / "ui" / "main_window_root_support.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imports = [
+            node.module for node in tree.body
+            if isinstance(node, ast.ImportFrom)
+        ]
+        self.assertNotIn("..game_mode", imports)
+
+
+
+    def test_monitor_menu_does_not_realize_capture_during_window_composition(self):
+        source = (ROOT / "kira" / "ui" / "main_window_composition.py").read_text(encoding="utf-8")
+        self.assertNotIn(
+            "for monitor in self.adapters.game_mode.capture_service.list_monitors()",
+            source,
+        )
+        self.assertIn(
+            "desktop_vision_monitor_menu.aboutToShow.connect",
+            source,
+        )
+        self.assertIn(
+            "_populate_desktop_monitor_menu",
+            source,
+        )
+
+
+
 if __name__ == "__main__":
     unittest.main()

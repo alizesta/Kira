@@ -187,7 +187,6 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         from ..chat_sessions import ChatSession
         from ..config import DATA_DIR, ROOT, load_settings
         from .main_window import MainWindow
-        from .main_window_composition import initialize_main_window
         from ..app.dependency_container import DependencyContainer
         from ..app.event_bus import EventBus
         from ..app.feature_modules import (
@@ -250,6 +249,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         )
         tool_agent.set_settings(settings)
         window = MainWindow()
+        from .main_window_composition import initialize_main_window
         initialize_main_window(
             window,
             memory_service=container.resolve("memory_service"),

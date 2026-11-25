@@ -5,6 +5,7 @@ import unittest
 from kira.app.dependency_container import DependencyContainer
 from kira.app.event_bus import EventBus
 from kira.app.service_module import ServiceModule
+from kira.core.interfaces.application_module import ActivatableApplicationModule
 
 
 class _Service:
@@ -87,6 +88,77 @@ class LazyServiceModuleTests(unittest.TestCase):
         self.assertEqual(created[0].stopped, 1)
         module.dispose()
         self.assertEqual(created[0].disposed, 1)
+
+
+    def test_service_module_implements_explicit_feature_activation_contract(self):
+        module = ServiceModule("lazy_service", lambda: _Service(), lazy=True)
+        self.assertIsInstance(module, ActivatableApplicationModule)
+        self.assertFalse(module.is_active)
+
+
+
+    def test_inactive_registered_dependents_do_not_block_dependency_deactivation(self):
+        events = []
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+
+        def make_factory(name):
+            class RuntimeService:
+                def start(self):
+                    events.append((name, "start"))
+
+                def stop(self):
+                    events.append((name, "stop"))
+
+                def close(self):
+                    events.append((name, "close"))
+
+            def factory():
+                events.append((name, "create"))
+                return RuntimeService()
+
+            return factory
+
+        manager.register(
+            "shared",
+            lambda: ServiceModule("shared_service", make_factory("shared"), lazy=True),
+            optional=True,
+        )
+        manager.register(
+            "dependent",
+            lambda: ServiceModule("dependent_service", make_factory("dependent"), lazy=True),
+            dependencies=("shared",),
+            optional=True,
+        )
+        manager.start("dependent")
+        self.assertFalse(manager.is_active("shared"))
+        self.assertFalse(manager.is_active("dependent"))
+        self.assertEqual(events, [])
+
+        manager.activate("dependent")
+        self.assertTrue(manager.is_active("shared"))
+        self.assertTrue(manager.is_active("dependent"))
+
+        manager.deactivate("dependent")
+        self.assertFalse(manager.is_active("dependent"))
+        manager.deactivate("shared")
+        self.assertFalse(manager.is_active("shared"))
+
+        self.assertEqual(manager.shutdown(), {})
+        self.assertEqual(
+            events,
+            [
+                ("shared", "create"),
+                ("shared", "start"),
+                ("dependent", "create"),
+                ("dependent", "start"),
+                ("dependent", "stop"),
+                ("shared", "stop"),
+                ("dependent", "close"),
+                ("shared", "close"),
+            ],
+        )
+
 
 
 if __name__ == "__main__":

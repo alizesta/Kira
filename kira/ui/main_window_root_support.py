@@ -13,6 +13,5 @@ from ..ui_widgets import AttachmentTile
 from ..chat_sessions import ChatSession, session_property, front_only_property
 from ..chat.session_manager import SessionManager
 from .. import winfx
-from ..game_mode import GameModeMonitor
 from .controllers import ChatAttachmentController
 from .main_window_support import load_reactions

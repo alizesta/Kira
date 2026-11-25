@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 
 class DependencyRegistry(Protocol):
@@ -71,3 +71,20 @@ class ApplicationModule(Protocol):
     def stop(self) -> None: ...
 
     def dispose(self) -> None: ...
+
+
+@runtime_checkable
+class ActivatableApplicationModule(ApplicationModule, Protocol):
+    """Optional feature lifecycle beyond module registration and startup.
+
+    start makes dependencies available and registers the service. activate
+    realizes feature-owned resources on demand; deactivate releases those
+    resources while preserving registration for later activation.
+    """
+
+    @property
+    def is_active(self) -> bool: ...
+
+    def activate(self) -> Any: ...
+
+    def deactivate(self) -> None: ...

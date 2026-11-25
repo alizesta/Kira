@@ -74,6 +74,19 @@ class _LazyServiceProxy:
             raise
         self._started = True
 
+    @property
+    def is_active(self) -> bool:
+        with self._lock:
+            return self._instance is not None and self._started and not self._disposed
+
+    def activate(self) -> Any:
+        """Explicitly realize and start this service when its feature is selected."""
+        return self._get()
+
+    def deactivate(self) -> None:
+        """Release runtime activity while retaining the lazy service registration."""
+        self.stop()
+
     def _get(self) -> Any:
         with self._lock:
             if self._disposed or self._disposing:
@@ -99,7 +112,8 @@ class _LazyServiceProxy:
         return getattr(self._get(), str(name))
 
     def start(self) -> None:
-        """Restart an already-created service without defeating laziness."""
+        """Allow the registered proxy to be used again without realizing it."""
+
         with self._lock:
             if self._disposed or self._disposing:
                 raise RuntimeError("Lazy service has been disposed")
@@ -183,6 +197,33 @@ class ServiceModule:
             except Exception:
                 pass
 
+    @property
+    def is_active(self) -> bool:
+        if self._instance is None or not self._started:
+            return False
+        if self.lazy:
+            return bool(self._instance.is_active)
+        return True
+
+    def activate(self) -> Any:
+        """Realize the service on demand, preserving one lifecycle owner."""
+        if self._container is None:
+            raise RuntimeError(f"Service module is not registered: {self.service_key}")
+        if self._instance is None or not self._started:
+            self.start()
+        if self.lazy:
+            return self._instance.activate()
+        return self._instance
+
+    def deactivate(self) -> None:
+        """Stop runtime resources but retain the DI registration for reactivation."""
+        if self._instance is None:
+            return
+        if self.lazy:
+            self._instance.deactivate()
+        else:
+            self.stop()
+
     def start(self) -> None:
         if self._container is None:
             raise RuntimeError(f"Service module is not registered: {self.service_key}")
@@ -242,9 +283,12 @@ class ServiceModule:
             raise
 
     def stop(self) -> None:
-        if self._instance is None or not self._started:
+        if self._instance is None:
             return
-        # Keep _started true if stop raises so the manager can retry cleanup.
+        if not self._started and not self.lazy:
+            return
+        # A lazy proxy may have been realized after an earlier stop call through
+        # a retained reference; always forward stop while the module owns it.
         self._call_optional(self._instance, "stop")
         self._started = False
 
@@ -255,7 +299,7 @@ class ServiceModule:
         cleanup_error = None
 
         if instance is not None:
-            if self._started:
+            if self._started or self.lazy:
                 try:
                     self._call_optional(instance, "stop")
                 except Exception as exc:

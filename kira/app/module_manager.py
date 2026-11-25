@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
-from ..core.interfaces.application_module import ApplicationModule
+from ..core.interfaces.application_module import (
+    ActivatableApplicationModule,
+    ApplicationModule,
+)
 
 from .dependency_container import DependencyContainer
 from .event_bus import EventBus
@@ -36,6 +39,7 @@ class _ModuleRecord:
     instance: ApplicationModule | None = None
     registered: bool = False
     started: bool = False
+    active: bool = False
     error: str | None = None
 
 
@@ -89,8 +93,80 @@ class ModuleManager:
     def snapshot(self) -> dict[str, ModuleState]:
         return {key: record.state for key, record in self._modules.items()}
 
+    def is_active(self, module_id: str) -> bool:
+        """Return runtime activation state, distinct from module registration/startup."""
+        record = self._record(module_id)
+        if not record.started or record.instance is None:
+            return False
+        if isinstance(record.instance, ActivatableApplicationModule):
+            record.active = bool(record.instance.is_active)
+        return record.active
+
     def start(self, module_id: str) -> None:
         self._start(str(module_id), ())
+
+    def activate(self, module_id: str) -> None:
+        """Activate a registered feature and its dependencies on first real use."""
+        key = str(module_id)
+        record = self._record(key)
+        if not record.enabled:
+            raise ModuleManagerError(f"Module is disabled: {key}")
+        if record.state == ModuleState.DISPOSED:
+            raise ModuleManagerError(f"Module has been disposed: {key}")
+
+        self.start(key)
+        for dependency in record.dependencies:
+            self.activate(dependency)
+        if self.is_active(key):
+            return
+
+        try:
+            if isinstance(record.instance, ActivatableApplicationModule):
+                record.instance.activate()
+                record.active = bool(record.instance.is_active)
+            else:
+                record.instance.start()
+                record.active = True
+            if not record.active:
+                raise ModuleManagerError(f"Module did not become active: {key}")
+            record.error = None
+        except Exception as exc:
+            record.active = False
+            record.error = f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, ModuleManagerError):
+                raise
+            raise ModuleManagerError(
+                f"Could not activate module '{key}': {record.error}"
+            ) from exc
+
+    def deactivate(self, module_id: str) -> None:
+        """Stop a feature's runtime resources without unregistering its service."""
+        key = str(module_id)
+        record = self._record(key)
+        if not record.started or not self.is_active(key):
+            record.active = False
+            return
+        dependents = self._active_dependents(key)
+        if dependents:
+            raise ModuleManagerError(
+                f"Deactivate dependent modules first: {', '.join(dependents)}"
+            )
+        try:
+            if isinstance(record.instance, ActivatableApplicationModule):
+                record.instance.deactivate()
+                record.active = bool(record.instance.is_active)
+            else:
+                record.instance.stop()
+                record.active = False
+            if record.active:
+                raise ModuleManagerError(f"Module remained active after deactivation: {key}")
+        except Exception as exc:
+            record.error = f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, ModuleManagerError):
+                raise
+            raise ModuleManagerError(
+                f"Could not deactivate module '{key}': {record.error}"
+            ) from exc
 
     def _start(self, module_id: str, stack: tuple[str, ...]) -> None:
         if module_id in stack:
@@ -121,6 +197,10 @@ class ModuleManager:
             start_called = True
             record.instance.start()
             record.started = True
+            if isinstance(record.instance, ActivatableApplicationModule):
+                record.active = bool(record.instance.is_active)
+            else:
+                record.active = True
             record.state = ModuleState.STARTED
             record.error = None
             if module_id not in self._start_order:
@@ -140,6 +220,7 @@ class ModuleManager:
             record.instance = None
             record.registered = False
             record.started = False
+            record.active = False
             if module_id in self._creation_order:
                 self._creation_order.remove(module_id)
             record.state = ModuleState.FAILED
@@ -171,6 +252,7 @@ class ModuleManager:
         try:
             record.instance.stop()
             record.started = False
+            record.active = False
             record.state = ModuleState.STOPPED
             if module_id in self._start_order:
                 self._start_order.remove(module_id)
@@ -201,6 +283,7 @@ class ModuleManager:
                 ) from exc
         record.instance = None
         record.registered = False
+        record.active = False
         if module_id in self._creation_order:
             self._creation_order.remove(module_id)
         record.enabled = False
@@ -261,6 +344,7 @@ class ModuleManager:
             record.instance = None
             record.registered = False
             record.started = False
+            record.active = False
             record.state = ModuleState.DISPOSED
             if module_id in self._start_order:
                 self._start_order.remove(module_id)
@@ -272,7 +356,7 @@ class ModuleManager:
         return [
             key
             for key, record in self._modules.items()
-            if record.started and module_id in record.dependencies
+            if self.is_active(key) and module_id in record.dependencies
         ]
 
     def _enabled_dependents(self, module_id: str) -> list[str]:
@@ -299,3 +383,13 @@ class ModuleManager:
         ]
         if missing:
             raise TypeError(f"Module is missing lifecycle methods: {', '.join(missing)}")
+
+        activation_members = (
+            hasattr(module, "is_active"),
+            callable(getattr(module, "activate", None)),
+            callable(getattr(module, "deactivate", None)),
+        )
+        if any(activation_members) and not all(activation_members):
+            raise TypeError(
+                "Optional feature activation must implement is_active, activate and deactivate together"
+            )

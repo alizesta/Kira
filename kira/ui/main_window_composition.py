@@ -8,42 +8,6 @@ from __future__ import annotations
 import logging
 import sys
 
-from PySide6.QtWidgets import QApplication
-
-from .shortcuts import install_window_shortcuts
-from .motion_manager import MotionManager
-from .console_log import build_console_log_page
-from .main_window_root_support import (
-    AttachmentTile,
-    ChatAttachmentController,
-    CompanionBubble,
-    CompanionWindow,
-    EmotionDirector,
-    EmotionFaceAnimator,
-    GameModeMonitor,
-    LOAD_WARNINGS,
-    QFrame,
-    QHBoxLayout,
-    QMenu,
-    QPushButton,
-    QSize,
-    QTabWidget,
-    QTimer,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-    Qt,
-    Speaker,
-    att,
-    load_reactions,
-    make_icon,
-    winfx,
-)
-from .application_adapters import (
-    create_chat_application_ports,
-    create_voice_application_ports,
-)
-
 
 def initialize_main_window(
     window,
@@ -74,6 +38,41 @@ def initialize_main_window(
     console_log_capture=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
+    from PySide6.QtWidgets import QApplication
+
+    from .shortcuts import install_window_shortcuts
+    from .motion_manager import MotionManager
+    from .console_log import build_console_log_page
+    from .lazy_game_mode_monitor import LazyGameModeMonitor
+    from .main_window_root_support import (
+        AttachmentTile,
+        ChatAttachmentController,
+        CompanionBubble,
+        CompanionWindow,
+        EmotionDirector,
+        EmotionFaceAnimator,
+        LOAD_WARNINGS,
+        QFrame,
+        QHBoxLayout,
+        QMenu,
+        QPushButton,
+        QSize,
+        QTabWidget,
+        QTimer,
+        QToolButton,
+        QVBoxLayout,
+        QWidget,
+        Qt,
+        Speaker,
+        att,
+        load_reactions,
+        make_icon,
+        winfx,
+    )
+    from .application_adapters import (
+        create_chat_application_ports,
+        create_voice_application_ports,
+    )
     self = window.presentation_context
     if desktop_context_application_service is None:
         # Preserve direct composition callers while Bootstrap owns the production lifecycle.
@@ -209,7 +208,10 @@ def initialize_main_window(
     self.state._provider_editing = set()      # providers currently in Edit mode (their unsaved fields are never collected)
     self.state._bench_busy = False
     self.session.client = self.services.provider_application_service.create_router(self.services.settings)
-    self.adapters.game_mode = GameModeMonitor(self.host)
+    self.adapters.game_mode = LazyGameModeMonitor(self.host)
+    app = QApplication.instance()
+    if app is not None:
+        app.aboutToQuit.connect(self.adapters.game_mode.dispose)
     self.state._game_mode_enabled = False
     self.state._game_audio_restart_pending = False
     self.state._game_mode_profile = self.services.game_mode_application_service.normalize_profile(
@@ -552,16 +554,27 @@ def initialize_main_window(
     self.views.desktop_vision_auto_action.triggered.connect(
         lambda checked=False: self.controllers.require("attachments_vision").set_desktop_monitor("")
     )
-    for monitor in self.adapters.game_mode.capture_service.list_monitors():
-        label = monitor.name + (" · اصلی" if monitor.primary else "")
-        action = self.views.desktop_vision_monitor_menu.addAction(label)
-        action.setCheckable(True)
-        action.setChecked(monitor.id == desktop_policy.selected_monitor_id)
-        action.triggered.connect(
-            lambda checked=False, monitor_id=monitor.id:
-                self.controllers.require("attachments_vision").set_desktop_monitor(monitor_id)
-        )
-        self.views.desktop_vision_monitor_actions[monitor.id] = action
+    def _populate_desktop_monitor_menu():
+        """Refresh hardware-dependent choices only when the user opens the menu."""
+        menu = self.views.desktop_vision_monitor_menu
+        for stale_action in tuple(menu.actions())[1:]:
+            menu.removeAction(stale_action)
+            stale_action.deleteLater()
+        self.views.desktop_vision_monitor_actions.clear()
+        for monitor in self.adapters.game_mode.capture_service.list_monitors():
+            label = monitor.name + (" · اصلی" if monitor.primary else "")
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(monitor.id == desktop_policy.selected_monitor_id)
+            action.triggered.connect(
+                lambda checked=False, monitor_id=monitor.id:
+                    self.controllers.require("attachments_vision").set_desktop_monitor(monitor_id)
+            )
+            self.views.desktop_vision_monitor_actions[monitor.id] = action
+
+    self.views.desktop_vision_monitor_menu.aboutToShow.connect(
+        _populate_desktop_monitor_menu
+    )
 
     central = QWidget()
     central_layout = QVBoxLayout(central)
