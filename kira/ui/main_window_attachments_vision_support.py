@@ -7,7 +7,6 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QFrame, QFileDialog, QSystemTrayIcon
 from ..config import save_settings
 from ..chat import attachments as att
-from ..game_audio import GameAudioListener
 from ..ui_widgets import AttachmentTile
 from ..game_mode import CAPTURE_JPEG_QUALITY
 from .workers import TaskWorker, VisionAnalysisWorker
