@@ -75,6 +75,7 @@ def test_runtime_composes_one_shared_capture_boundary_for_all_consumers():
     assert runtime.analysis_coordinator._capture is runtime.capture_service
     assert runtime.live_session_manager._capture is runtime.capture_service
     assert runtime.perception_application_service.capture is runtime.capture_service
+    assert runtime.snapshot_service is not runtime.capture_service
 
 
 def test_runtime_dispose_is_idempotent_and_clears_live_transport():

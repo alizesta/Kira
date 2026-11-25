@@ -8,6 +8,7 @@ from ..vision_runtime_services import (
     LiveSessionManager,
     VisionAnalysisCoordinator,
     VisionCaptureService,
+    VisionSnapshotService,
 )
 
 
@@ -36,6 +37,9 @@ class VisionRuntimeServices:
             raise TypeError("Vision runtime composition requires all dependencies")
         self.frame_codec = frame_codec
         self.capture_service = VisionCaptureService(
+            game_mode_adapter, vision_application_service
+        )
+        self.snapshot_service = VisionSnapshotService(
             game_mode_adapter, vision_application_service
         )
         self.analysis_coordinator = VisionAnalysisCoordinator(

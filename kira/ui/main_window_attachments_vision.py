@@ -217,7 +217,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def capture_screen_attachment(self):
         """Attach an explicitly requested, privacy-approved foreground-window crop."""
-        captured = self._capture_service().capture_explicit_window()
+        captured = self._vision_runtime().snapshot_service.capture_explicit_window()
         if not captured.allowed:
             vision_trace(
                 "capture_blocked",
@@ -953,7 +953,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _live_vision_attachment(self):
         """Attach a privacy-approved frame from Eye Mode's selected monitor."""
-        captured = self._capture_service().capture_desktop_attachment(
+        captured = self._vision_runtime().snapshot_service.capture_desktop_attachment(
             source_enabled=bool(self.context.state._game_mode_enabled)
         )
         if not captured.allowed:
