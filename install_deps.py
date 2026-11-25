@@ -1,14 +1,17 @@
-"""Resolve and install one dependency group without mutating a broken environment.
+"""Resolve and install one dependency group transactionally.
 
-The resolver preflight is read-only: pip must be able to produce a complete
-installation report before the actual installation is attempted. Normal
-installs never upgrade already-satisfied packages; upgrades are explicit.
+The resolver preflight is read-only. Before pip can mutate the active
+environment, the installer's package and script directories are snapshotted.
+Any install or post-install verification failure restores that snapshot.
 """
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from pathlib import Path
 
@@ -73,6 +76,62 @@ def _report_failure(message: str, output: str, out) -> None:
         out("Check VPN, DNS, and access to files.pythonhosted.org, then retry.")
 
 
+def _environment_paths() -> list[Path]:
+    """Return the active environment's import and console-script directories."""
+    candidates = (
+        sysconfig.get_path("purelib"),
+        sysconfig.get_path("platlib"),
+        sysconfig.get_path("scripts"),
+    )
+    paths = []
+    seen = set()
+    for raw_path in candidates:
+        if not raw_path:
+            continue
+        path = Path(raw_path).resolve()
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return paths
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _snapshot_environment(paths: list[Path], backup_root: Path) -> list[tuple[Path, Path | None]]:
+    """Copy all pip-managed import/script locations before the first mutation."""
+    snapshots = []
+    for index, original in enumerate(paths):
+        if not original.exists():
+            snapshots.append((original, None))
+            continue
+        backup = backup_root / str(index)
+        shutil.copytree(original, backup, symlinks=True)
+        snapshots.append((original, backup))
+    return snapshots
+
+
+def _restore_environment(snapshots: list[tuple[Path, Path | None]]) -> None:
+    """Restore the exact pre-install directory contents."""
+    errors = []
+    for original, backup in reversed(snapshots):
+        try:
+            _remove_path(original)
+            if backup is not None:
+                original.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(backup, original, symlinks=True)
+        except OSError as exc:
+            errors.append(f"{original}: {exc}")
+    if errors:
+        raise RuntimeError(
+            "Environment rollback was incomplete: " + "; ".join(errors)
+        )
+
+
 def install(
     path: str | Path,
     runner=None,
@@ -81,11 +140,7 @@ def install(
     constraints: tuple[str | Path, ...] | list[str | Path] = (),
     upgrade: bool = False,
 ) -> int:
-    """Preflight, install, and verify a single dependency group.
-
-    A failed resolver preflight never starts an install. There is deliberately
-    no package-by-package fallback because it bypasses the complete graph.
-    """
+    """Preflight, snapshot, install, verify, and roll back on any failure."""
     requirement_file = Path(path)
     if not requirement_file.is_file():
         out(f"ERROR: dependency file does not exist: {requirement_file}")
@@ -106,7 +161,8 @@ def install(
     common_args = [*upgrade_args, *constraint_args]
 
     with tempfile.TemporaryDirectory(prefix="kira-pip-resolution-") as temp_dir:
-        report_path = Path(temp_dir) / "resolution.json"
+        temp_root = Path(temp_dir)
+        report_path = temp_root / "resolution.json"
         preflight_args = [
             "install",
             "--dry-run",
@@ -126,6 +182,15 @@ def install(
             return code or 1
 
         out(f"Dependency resolution passed for {requirement_file.name}.")
+
+        try:
+            snapshots = _snapshot_environment(
+                _environment_paths(), temp_root / "environment-backup"
+            )
+        except OSError as exc:
+            out(f"ERROR: could not snapshot the Python environment; installation was not attempted: {exc}")
+            return 1
+
         install_args = [
             "install",
             *common_args,
@@ -133,19 +198,31 @@ def install(
             str(requirement_file),
         ]
         code, output = run_pip(install_args, runner)
+        failure = None
         if code:
             _report_failure(
                 f"ERROR: pip could not install dependency group {requirement_file.name}.",
                 output,
                 out,
             )
-            return code or 1
+            failure = f"pip install exited with status {code}"
+        else:
+            code, output = run_pip(["check"], runner)
+            if code:
+                out("ERROR: pip check found an incompatible or missing installed dependency.")
+                if output.strip():
+                    out(output.strip())
+                failure = f"pip check exited with status {code}"
 
-        code, output = run_pip(["check"], runner)
-        if code:
-            out("ERROR: pip check found an incompatible or missing installed dependency.")
-            if output.strip():
-                out(output.strip())
+        if failure:
+            out("Restoring the Python environment to its pre-install state...")
+            try:
+                _restore_environment(snapshots)
+            except (OSError, RuntimeError) as exc:
+                out(f"CRITICAL: {failure}; automatic rollback failed: {exc}")
+                out("Do not launch Kira with this environment. Restore the environment backup or recreate the virtual environment.")
+                return 2
+            out("Rollback completed. The Python environment was restored.")
             return code or 1
 
     out(f"Dependency group {requirement_file.name} installed and verified.")
