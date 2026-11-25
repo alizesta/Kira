@@ -67,6 +67,42 @@ class SqlitePersistenceBoundaryTests(unittest.TestCase):
         self.assertFalse(recovery.healthy(damaged))
         self.assertEqual(recovery.backup_dirs(), [])
 
+    def test_recovery_orchestrates_quarantine_and_backup_without_repository(self):
+        backup_folder = self.root / "backups" / "known-good"
+        backup_folder.mkdir(parents=True)
+        backup_database = backup_folder / "chat.sqlite3"
+        with self.connections.unit_of_work(backup_database) as connection:
+            connection.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, content TEXT)")
+
+        self.database.write_bytes(b"damaged database bytes")
+        restored = []
+        recovery = SqliteRecoveryManager(
+            db_path_provider=lambda: self.database,
+            connection_manager=self.connections,
+            read_rows=lambda path: (
+                [("backup-row",)] if Path(path) == backup_database else [("salvaged-row",)]
+            ),
+            read_conversations=lambda path: (
+                [{"id": "backup-conversation"}] if Path(path) == backup_database else []
+            ),
+            merge_rows=lambda backup, salvaged: [*backup, *salvaged],
+            write_recovery_state=lambda rows, conversations: restored.append((rows, conversations)),
+            db_name="chat.sqlite3",
+            persistence_error=RuntimeError,
+        )
+
+        note = recovery.recover("simulated corruption")
+
+        self.assertIn("known-good", note)
+        self.assertFalse(self.database.exists())
+        self.assertEqual(
+            restored,
+            [([("backup-row",), ("salvaged-row",)], [{"id": "backup-conversation"}])],
+        )
+        self.assertEqual(len(list(self.root.glob("chat.corrupt-*.sqlite3"))), 0)
+        self.assertEqual(len(list(self.root.glob("chat.sqlite3.corrupt-*.sqlite3"))), 0)
+        self.assertEqual(len(list(self.root.glob("kira_memory.corrupt-*.sqlite3"))), 1)
+
     def test_recovery_rewrite_rolls_back_messages_when_metadata_conflicts(self):
         repository = SqliteChatRepository(db_path=self.database)
         self.assertEqual(repository.init_db(), [])
