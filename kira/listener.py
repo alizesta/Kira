@@ -293,14 +293,12 @@ class Listener(QThread):
 
     # ---- local recognition: return the transcript or an empty string ----
     def _transcribe(self, model, audio):
-        """Use Shenava as the sole local speech-recognition engine."""
+        """Delegate hypotheses to the selected ASR adapter."""
         try:
-            from . import local_voice
-            self.via = "local:shenava"
-            return local_voice.transcribe_shenava(
-                audio, RATE,
-                str(self.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID),
-            )
+            return self.asr_manager.transcribe(audio, RATE, self.settings)
+        except ASRError as exc:
+            self.error.emit(f"تشخیص گفتار ناموفق بود [{exc.code}]: {exc}")
+            return ""
         except Exception as exc:
-            self.error.emit(f"تشخیص گفتار با شنوا ناموفق بود: {type(exc).__name__}: {exc}")
+            self.error.emit(f"تشخیص گفتار ناموفق بود [inference_failed]: {type(exc).__name__}: {exc}")
             return ""

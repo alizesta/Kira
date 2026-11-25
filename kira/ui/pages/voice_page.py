@@ -58,7 +58,7 @@ class VoicePage(QScrollArea):
     select_piper_requested = Signal(str)
     test_kitten_requested = Signal(str)
 
-    def __init__(self, settings: dict, translate: Callable[[str], str], parent=None) -> None:
+    def __init__(self, settings: dict, translate: Callable[[str], str], parent=None, asr_catalog=None) -> None:
         super().__init__(parent)
         self._translate = translate
         self._translations: list[tuple[Callable[[str], None], str]] = []
@@ -116,31 +116,36 @@ class VoicePage(QScrollArea):
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
-        settings["local_voice_asr_backend"] = "shenava"
-        self.shenava_variant = QComboBox()
-        self.shenava_variant.addItem(
-            "Shenava INT8 · سبک‌تر · حدود ۱۲۶ مگابایت",
-            "SajjadMajdi/shenava-koochik-fa-int8",
-        )
-        self.shenava_variant.addItem(
-            "Shenava FP32 · نسخه کامل · حدود ۴۵۹ مگابایت",
-            "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
-        )
+        selected_asr_engine = str(settings.get("local_voice_asr_backend") or "shenava").strip().lower()
         selected_asr_model = str(settings.get("local_voice_asr_model") or "")
-        supported_asr_models = {
-            "SajjadMajdi/shenava-koochik-fa-int8",
-            "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
+        self._asr_catalog = {
+            str(item.get("id") or "").strip().lower(): dict(item)
+            for item in (asr_catalog or [])
+            if isinstance(item, dict) and str(item.get("id") or "").strip()
         }
-        if selected_asr_model not in supported_asr_models:
-            selected_asr_model = "SajjadMajdi/shenava-koochik-fa-int8"
-            settings["local_voice_asr_model"] = selected_asr_model
-        variant_index = self.shenava_variant.findData(selected_asr_model)
-        self.shenava_variant.setCurrentIndex(max(0, variant_index))
-        self.local_asr_chk = SwitchCheckBox("استفاده از شنوا برای تشخیص گفتار محلی")
+        self.asr_backend = QComboBox()
+        for engine_id, item in self._asr_catalog.items():
+            self.asr_backend.addItem(str(item.get("label") or item.get("name") or engine_id), engine_id)
+        if selected_asr_engine not in self._asr_catalog:
+            self.asr_backend.addItem(
+                f"موتور ذخیره‌شده پشتیبانی نمی‌شود: {selected_asr_engine or 'unknown'}",
+                selected_asr_engine,
+            )
+        engine_index = self.asr_backend.findData(selected_asr_engine)
+        self.asr_backend.setCurrentIndex(engine_index if engine_index >= 0 else 0)
+        stt_form.addRow("موتور ASR", self.asr_backend)
+
+        self.asr_model = QComboBox()
+        self.shenava_variant = self.asr_model  # compatibility for existing integrations
+        self._populate_asr_models(selected_asr_engine, selected_asr_model)
+        stt_form.addRow("مدل ASR", self.asr_model)
+        self.asr_backend.currentIndexChanged.connect(self._on_asr_engine_changed)
+        self.asr_model.currentIndexChanged.connect(lambda *_: self._update_shenava_download_label())
+
+        self.local_asr_chk = SwitchCheckBox("استفاده از موتور تشخیص گفتار محلی")
         self.local_asr_chk.setChecked(bool(settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(self.local_asr_enabled_requested.emit)
         stt_form.addRow(self.local_asr_chk)
-        stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
         shenava_actions = QGridLayout()
         shenava_actions.setHorizontalSpacing(8)
         shenava_actions.setVerticalSpacing(6)
@@ -148,11 +153,8 @@ class VoicePage(QScrollArea):
         self.shenava_download_btn.clicked.connect(
             lambda checked=False: self.download_shenava_requested.emit()
         )
-        self.shenava_variant.currentIndexChanged.connect(
-            lambda *_: self._update_shenava_download_label()
-        )
         self._update_shenava_download_label()
-        self.shenava_test_btn = QPushButton("تست شنوا با فایل WAV")
+        self.shenava_test_btn = QPushButton("تست ASR با فایل WAV")
         self.shenava_test_btn.clicked.connect(
             lambda checked=False: self.test_shenava_file_requested.emit()
         )
@@ -163,9 +165,10 @@ class VoicePage(QScrollArea):
         )
         stt_form.addRow(shenava_actions)
         self.shenava_result = QLabel(
-            "شنوا پس از نصب به‌صورت آفلاین روی CPU اجرا می‌شود. "
-            "برای تست مستقل، یک فایل WAV انتخاب کن."
+            "وضعیت موتور و مدل انتخاب‌شده از ASR Manager خوانده می‌شود. "
+            "مدل تا زمان تأیید Runtime و فایل‌های واقعی آماده محسوب نمی‌شود."
         )
+        self.asr_result = self.shenava_result
         self.shenava_result.setWordWrap(True)
         self.shenava_result.setTextInteractionFlags(Qt.TextSelectableByMouse)
         stt_form.addRow(self.shenava_result)
@@ -345,7 +348,8 @@ class VoicePage(QScrollArea):
         local_form = QFormLayout(self._local_group)
         local_form.setContentsMargins(0, 0, 0, 0)
         local_form.setVerticalSpacing(6)
-        stt_value = QLabel("شنوا · آفلاین (خودکار)")
+        stt_value = QLabel()
+        self.asr_engine_label = stt_value
         local_form.addRow("ورودی (STT)", stt_value)
         old = lift(tts_form, self.tts_engine)
         local_form.addRow("خروجی (TTS)", self.tts_engine)
@@ -428,6 +432,7 @@ class VoicePage(QScrollArea):
         local = self.voice_engine.currentData() == "local"
         self._realtime_group.setVisible(not local)
         self._local_group.setVisible(local)
+        self._update_asr_engine_label()
 
     def _toggle_advanced(self, on: bool) -> None:
         for box in self._advanced_sections:
@@ -504,15 +509,60 @@ class VoicePage(QScrollArea):
                 self._responsive_action_columns.append(action_columns)
 
 
+    def _populate_asr_models(self, engine_id: str, selected_model: str = "") -> None:
+        """Populate choices from the selected adapter and retain unknown saved model IDs."""
+        entry = self._asr_catalog.get(str(engine_id or "").strip().lower(), {})
+        self.asr_model.blockSignals(True)
+        try:
+            self.asr_model.clear()
+            for item in entry.get("models") or []:
+                if not isinstance(item, dict):
+                    continue
+                model_id = str(item.get("id") or "").strip()
+                if model_id:
+                    self.asr_model.addItem(str(item.get("label") or model_id), model_id)
+            if selected_model and self.asr_model.findData(selected_model) < 0:
+                self.asr_model.addItem(f"مدل ذخیره‌شده در فهرست موتور نیست: {selected_model}", selected_model)
+            if not self.asr_model.count() and selected_model:
+                self.asr_model.addItem(f"مدل انتخاب‌شده: {selected_model}", selected_model)
+            target = selected_model or str(entry.get("default_model") or "")
+            index = self.asr_model.findData(target)
+            if index < 0 and self.asr_model.count():
+                index = 0
+            self.asr_model.setCurrentIndex(index)
+        finally:
+            self.asr_model.blockSignals(False)
+
+    def _on_asr_engine_changed(self, index: int) -> None:
+        if index < 0:
+            return
+        engine_id = str(self.asr_backend.currentData() or "")
+        entry = self._asr_catalog.get(engine_id, {})
+        self._populate_asr_models(engine_id, str(entry.get("default_model") or ""))
+        self._update_shenava_download_label()
+        self._update_asr_engine_label()
+
+    def _update_asr_engine_label(self) -> None:
+        """Reflect the exact selected adapter; unsupported saved IDs stay visibly unsupported."""
+        engine_id = str(self.asr_backend.currentData() or "").strip().lower()
+        if engine_id not in self._asr_catalog:
+            self.asr_engine_label.setText(f"ASR نامعتبر · {engine_id or 'unknown'}")
+            return
+        self.asr_engine_label.setText(f"{self.asr_backend.currentText()} · آفلاین")
+
     def _update_shenava_download_label(self) -> None:
-        """Keep the download action explicit about the selected model size."""
-        is_fp32 = str(self.shenava_variant.currentData() or "").casefold() == (
-            "reza2kn/shenava-koochik-v1.0-sherpa-onnx"
+        """Show model-specific download details provided by the adapter catalogue."""
+        engine_id = str(self.asr_backend.currentData() or "")
+        model_id = str(self.asr_model.currentData() or "")
+        entry = self._asr_catalog.get(engine_id, {})
+        metadata = next(
+            (item for item in (entry.get("models") or []) if str(item.get("id") or "") == model_id),
+            {},
         )
-        self.shenava_download_btn.setText(
-            "دانلود شنوا FP32 · حدود ۴۵۹ مگابایت"
-            if is_fp32 else "دانلود شنوا INT8 · حدود ۱۲۶ مگابایت"
-        )
+        label = str(metadata.get("label") or model_id or "مدل انتخاب نشده")
+        size = metadata.get("size_mb")
+        suffix = f" · حدود {size} مگابایت" if size else ""
+        self.shenava_download_btn.setText(f"دانلود {label}{suffix}")
 
     def _update_live_toggle_text(self, enabled: bool | None = None) -> None:
         active = self.live_toggle.isChecked() if enabled is None else bool(enabled)

@@ -10,6 +10,7 @@ import re
 from typing import Any, Callable
 
 from ..core.interfaces.voice_service import VoiceService
+from ..asr_manager import ASRManager
 from ..core.interfaces.voice_ports import SpeakerPort, VoiceListenerPort
 
 
@@ -46,10 +47,12 @@ class VoiceApplicationService(VoiceService):
         on_finished: Callable[[Any, bool, bool], None],
         on_waiting: Callable[[], None],
         on_partial: Callable[[str], None] | None = None,
+        asr_manager: ASRManager | None = None,
     ) -> None:
         if speaker is None or not callable(listener_factory):
             raise TypeError("speaker and listener_factory are required")
         self.speaker = speaker
+        self.asr_manager = asr_manager if asr_manager is not None else ASRManager()
         self.listener_factory = listener_factory
         self.on_heard = on_heard
         self.on_interrupted = on_interrupted
@@ -84,6 +87,7 @@ class VoiceApplicationService(VoiceService):
         self.listener = None
         self.stopping_listener = None
         self.restart_after_stop = False
+        self.asr_manager.shutdown()
         self._disposed = True
         return True
 

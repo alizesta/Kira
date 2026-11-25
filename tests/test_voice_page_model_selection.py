@@ -13,14 +13,28 @@ class VoicePageModelSelectionTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_shenava_is_the_only_local_asr_engine(self):
-        settings = {"local_voice_asr_backend": "qwen3", "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B"}
+    def test_unsupported_saved_engine_is_preserved_without_page_side_effects(self):
+        settings = {
+            "local_voice_asr_backend": "qwen3",
+            "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
+        }
+        before = dict(settings)
         page = VoicePage(settings, lambda key: key)
-        self.assertEqual(settings["local_voice_asr_backend"], "shenava")
-        self.assertEqual(settings["local_voice_asr_model"], "SajjadMajdi/shenava-koochik-fa-int8")
-        self.assertFalse(hasattr(page, "asr_backend"))
-        self.assertFalse(hasattr(page, "whisper"))
-        self.assertEqual(page.shenava_variant.count(), 2)
+        self.assertEqual(page.asr_backend.currentData(), "qwen3")
+        self.assertIn("پشتیبانی نمی‌شود", page.asr_backend.currentText())
+        self.assertEqual(page.asr_model.currentData(), "Qwen/Qwen3-ASR-0.6B")
+        self.assertEqual(settings, before)
+
+    def test_adapter_catalog_populates_engine_and_supported_models(self):
+        from kira.asr_manager import ASRManager
+        settings = {
+            "local_voice_asr_backend": "shenava",
+            "local_voice_asr_model": "SajjadMajdi/shenava-koochik-fa-int8",
+        }
+        page = VoicePage(settings, lambda key: key, asr_catalog=ASRManager().catalog())
+        self.assertEqual(page.asr_backend.currentData(), "shenava")
+        self.assertEqual(page.asr_model.currentData(), settings["local_voice_asr_model"])
+        self.assertEqual(page.asr_model.count(), 2)
 
     def test_gemini_live_remains_available(self):
         page = VoicePage({}, lambda key: key)

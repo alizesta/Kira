@@ -1,0 +1,106 @@
+"""ASR manager discovery, selection, error and lifecycle regression tests."""
+import unittest
+from kira.asr_manager import ASRError, ASRManager
+
+
+class FakeAdapter:
+    def __init__(self, engine_id="fixture", fail=None):
+        self.engine_id = engine_id
+        self.display_name = f"{engine_id} engine"
+        self.default_model = "fixture-model"
+        self.capabilities = frozenset({"offline", "test"})
+        self.fail = fail
+        self.calls = []
+
+    def catalog_entry(self):
+        return {"id": self.engine_id, "name": self.display_name,
+                "default_model": self.default_model, "models": [],
+                "capabilities": sorted(self.capabilities)}
+    def inspect(self, model_id):
+        return {"engine_id": self.engine_id, "engine_name": self.display_name,
+                "model_id": model_id, "runtime_installed": True,
+                "model_ready": True, "ready": True,
+                "capabilities": sorted(self.capabilities)}
+    def validate(self, model_id):
+        self.calls.append(("validate", model_id))
+        if self.fail == "validation":
+            raise RuntimeError("dependency missing")
+    def initialize(self, model_id):
+        self.calls.append(("initialize", model_id))
+        if self.fail == "initialization":
+            raise RuntimeError("model load failed")
+    def transcribe(self, audio, sample_rate, model_id):
+        self.calls.append(("inference", sample_rate, model_id))
+        if self.fail == "inference":
+            raise RuntimeError("decoder failed")
+        return " transcript "
+    def transcribe_file(self, path, model_id):
+        self.calls.append(("file", path, model_id))
+        return "file transcript"
+    def install(self, model_id, cancel_event=None):
+        self.calls.append(("install", model_id))
+        return "/models/fixture"
+    def shutdown(self):
+        self.calls.append(("shutdown",))
+        if self.fail == "shutdown":
+            raise RuntimeError("release failed")
+
+
+class ASRManagerTests(unittest.TestCase):
+    def test_full_lifecycle_discovery_validation_load_inference_shutdown(self):
+        adapter = FakeAdapter()
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture", "local_voice_asr_model": "fixture-model"}
+        state = manager.initialize(settings)
+        self.assertTrue(state["ready"])
+        self.assertTrue(state["initialized"])
+        self.assertEqual(manager.transcribe([], 16000, settings), "transcript")
+        self.assertEqual(manager.transcribe_file("sample.wav", settings), "file transcript")
+        manager.shutdown()
+        self.assertEqual([call[0] for call in adapter.calls],
+                         ["validate", "initialize", "inference", "file", "shutdown"])
+        self.assertEqual(manager.state, "idle")
+
+    def test_future_adapter_registers_without_listener_changes(self):
+        manager = ASRManager(adapters=[FakeAdapter("first")])
+        second = FakeAdapter("second")
+        manager.register(second)
+        settings = {"local_voice_asr_backend": "second"}
+        self.assertEqual(manager.select(settings), ("second", "fixture-model"))
+        self.assertTrue(manager.discover(settings)["ready"])
+
+    def test_unsupported_saved_choice_has_specific_error_and_no_fallback(self):
+        manager = ASRManager(adapters=[FakeAdapter()])
+        settings = {"local_voice_asr_backend": "qwen3", "local_voice_asr_model": "Qwen/model"}
+        with self.assertRaises(ASRError) as caught:
+            manager.initialize(settings)
+        self.assertEqual(caught.exception.code, "unsupported_engine")
+        self.assertEqual(manager.active_engine_id, "")
+        state = manager.discover(settings)
+        self.assertFalse(state["ready"])
+        self.assertEqual(state["error_code"], "unsupported_engine")
+
+    def test_initialization_and_inference_failures_are_distinct(self):
+        with self.subTest(stage="initialization"):
+            manager = ASRManager(adapters=[FakeAdapter(fail="initialization")])
+            with self.assertRaises(ASRError) as caught:
+                manager.initialize({"local_voice_asr_backend": "fixture"})
+            self.assertEqual(caught.exception.code, "initialization_failed")
+        with self.subTest(stage="inference"):
+            manager = ASRManager(adapters=[FakeAdapter(fail="inference")])
+            with self.assertRaises(ASRError) as caught:
+                manager.transcribe([], 16000, {"local_voice_asr_backend": "fixture"})
+            self.assertEqual(caught.exception.code, "inference_failed")
+
+    def test_engine_switch_shuts_down_old_adapter_before_loading_new(self):
+        first, second = FakeAdapter("first"), FakeAdapter("second")
+        manager = ASRManager(adapters=[first, second])
+        manager.initialize({"local_voice_asr_backend": "first"})
+        manager.initialize({"local_voice_asr_backend": "second"})
+        self.assertEqual([c[0] for c in first.calls], ["validate", "initialize", "shutdown"])
+        self.assertEqual([c[0] for c in second.calls], ["validate", "initialize"])
+        self.assertEqual(manager.active_engine_id, "second")
+
+
+if __name__ == "__main__":
+    unittest.main()

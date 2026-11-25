@@ -69,13 +69,13 @@ DEFAULTS = {
     "output_device": "",                  # "" = Windows default speaker; otherwise the device description
     "mic_device": "",                     # "" = Windows default microphone; otherwise the device name
     "mic_gain": 100,                      # 50-300 %: software gain of the microphone (independent of the speaker volume)
-    "local_voice_asr": True,              # selected offline ASR first; faster-whisper is the only fallback
-    "local_voice_asr_backend": "qwen3",    # qwen3 | shenava
+    "local_voice_asr": True,              # enable the selected offline ASR path
+    "local_voice_asr_backend": "shenava",  # selected local ASR adapter
     "realtime_asr_enabled": True,          # local microphone ASR; file-based offline tests still work when disabled
     "tts_engine": "piper",                # piper = Persian (default) | kitten = English-only KittenTTS 2
     "kitten_model": "mini",               # pico | nano | mini
     "local_voice_tts": True,              # Piper local TTS only; no network or Windows voice fallback
-    "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
+    "local_voice_asr_model": "SajjadMajdi/shenava-koochik-fa-int8",
     "local_voice_tts_model": "",
     "model_filter_mode": "all",
     "appearance": {"background_color": "#0A0A1C", "brightness": 100, "glow": 58, "transparency": 28},

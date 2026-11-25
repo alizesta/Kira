@@ -168,14 +168,17 @@ class VoiceSettingsController(WindowFeatureController):
 
     def build_voice_tab(self):
         """Compose the independent Voice page and connect its intent signals."""
-        self.context.views.voice_page = VoicePage(self.context.services.settings, self.feature_controller("session").t, parent=self.window)
+        asr_manager = self.context.services.voice_application_service.asr_manager
+        self.context.views.voice_page = VoicePage(
+            self.context.services.settings, self.feature_controller("session").t,
+            parent=self.window, asr_catalog=asr_manager.catalog(),
+        )
         self.context.views.voice_page.voice_enabled_requested.connect(self.feature_controller("runtime").set_voice_enabled)
         self.context.views.voice_page.live_requested.connect(self.feature_controller("runtime").set_live_listening)
         self.context.views.voice_page.download_shenava_requested.connect(self.download_local_shenava_model)
         self.context.views.voice_page.test_shenava_file_requested.connect(self.test_shenava_file)
-        self.context.views.voice_page.shenava_variant.currentIndexChanged.connect(
-            self.select_shenava_variant
-        )
+        self.context.views.voice_page.asr_backend.currentIndexChanged.connect(self.select_asr_engine)
+        self.context.views.voice_page.asr_model.currentIndexChanged.connect(self.select_asr_model)
         page = self.context.views.voice_page
         self.context.views.local_voice_status = page.local_voice_status
         self.context.views.local_tts_model_list = page.local_tts_model
@@ -203,25 +206,45 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.refresh_responsive_layout()
         self.refresh_local_voice_status()
 
-    def select_shenava_variant(self, index):
-        """Select the INT8 or FP32 Shenava download and runtime model."""
-        from .. import local_voice
-
+    def select_asr_engine(self, index):
+        """Persist an explicit engine selection without silently substituting another adapter."""
         page = self.context.views.voice_page
-        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
-        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
-            repo_id = local_voice.SHENAVA_INT8_REPO_ID
+        if index < 0:
+            return
+        engine_id = str(page.asr_backend.currentData() or "").strip().lower()
+        if not engine_id:
+            return
         settings = self.context.services.settings
-        settings["local_voice_asr_backend"] = "shenava"
-        settings["local_voice_asr_model"] = repo_id
+        settings["local_voice_asr_backend"] = engine_id
+        model_id = str(page.asr_model.currentData() or "").strip()
+        if model_id:
+            settings["local_voice_asr_model"] = model_id
         runtime = self.feature_controller("runtime")
         if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
             runtime.set_live_listening(False)
         self.stop_local_stt_test(update_ui=False)
-        self.feature_controller("runtime").save_now()
-        if hasattr(self.context.views, "local_voice_status"):
-            self.refresh_local_voice_status()
+        runtime.save_now()
+        self.refresh_local_voice_status()
 
+    def select_asr_model(self, index):
+        """Persist only the model the user explicitly selected."""
+        page = self.context.views.voice_page
+        if index < 0:
+            return
+        model_id = str(page.asr_model.currentData() or "").strip()
+        if not model_id:
+            return
+        self.context.services.settings["local_voice_asr_model"] = model_id
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
+        runtime.save_now()
+        self.refresh_local_voice_status()
+
+    def select_shenava_variant(self, index):
+        """Backward-compatible hook for integrations that used the old Shenava selector."""
+        self.select_asr_model(index)
 
     def set_local_voice_option(self, key, enabled):
         self.context.services.settings[key] = bool(enabled)
@@ -237,112 +260,88 @@ class VoiceSettingsController(WindowFeatureController):
         self.refresh_local_voice_status()
 
     def download_local_shenava_model(self):
-        """Install sherpa-onnx and download the currently selected Shenava variant."""
-        from .. import local_voice
-
+        """Install the model selected through the central ASR Manager."""
+        manager = self.context.services.voice_application_service.asr_manager
+        settings = self.context.services.settings
         page = self.context.views.voice_page
-        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
-        size_mb = local_voice.SHENAVA_MODEL_SIZES_MB.get(repo_id, 126)
-        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
+        try:
+            _engine_id, model_id = manager.select(settings)
+        except Exception as exc:
+            page.shenava_result.setText(f"مدل ASR قابل دانلود نیست: {type(exc).__name__}: {exc}")
+            return
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
         page.shenava_result.setText(
-            f"در حال نصب sherpa-onnx و دانلود شنوا {precision} (حدود {size_mb} مگابایت)…"
+            f"در حال نصب Runtime و دانلود {manager.selected_engine_label(settings)} · {model_id}…"
         )
         self._run_local_voice_task(
-            lambda cancel: local_voice.install_and_download_shenava_asr(
-                repo_id, cancel_event=cancel
-            ),
+            lambda cancel: manager.install_selected(settings, cancel_event=cancel),
             page.shenava_download_btn,
-            lambda result: self._on_local_shenava_downloaded(result, repo_id),
+            lambda result: self._on_local_shenava_downloaded(result, model_id),
             cancellable=True,
         )
 
-
-    def _on_local_shenava_downloaded(self, result, repo_id=None):
+    def _on_local_shenava_downloaded(self, result, model_id=None):
         ok, value = result
         page = self.context.views.voice_page
         if not ok:
-            page.shenava_result.setText(
-                f"نصب یا دانلود شنوا ناموفق بود: {value}"
-            )
+            page.shenava_result.setText(f"نصب یا دانلود ASR ناموفق بود: {value}")
+            self.refresh_local_voice_status()
             return
-        from .. import local_voice
-
-        repo_id = str(repo_id or page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
-        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
-            repo_id = local_voice.SHENAVA_INT8_REPO_ID
-        self.context.services.settings["local_voice_asr_backend"] = "shenava"
-        self.context.services.settings["local_voice_asr_model"] = repo_id
-        page.shenava_variant.blockSignals(True)
-        page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
-        page.shenava_variant.blockSignals(False)
-        page._update_shenava_download_label()
+        settings = self.context.services.settings
+        selected_model = str(model_id or settings.get("local_voice_asr_model") or "")
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
-        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
+        state = self.context.services.voice_application_service.asr_manager.discover(settings)
+        if not state.get("ready"):
+            page.shenava_result.setText(
+                f"دانلود انجام شد، اما مدل هنوز Ready نیست [{state.get('error_code')}]: {state.get('error_message')}"
+            )
+            return
         page.shenava_result.setText(
-            f"✓ شنوا {precision} دانلود و انتخاب شد. موتور sherpa-onnx آماده است؛ "
-            "برای سنجش دقت، یک فایل WAV انتخاب کن.\n"
-            f"مسیر مدل: {value}"
+            f"✓ فایل‌های مدل ASR اعتبارسنجی شدند.\nمدل: {selected_model}\nمسیر: {value}"
         )
 
-
     def test_shenava_file(self):
-        """Run a one-shot offline test against the selected Shenava model; no microphone is opened."""
+        """Run WAV inference through the same adapter and manager used by microphone input."""
         page = self.context.views.voice_page
         path, _ = QFileDialog.getOpenFileName(
-            self.window,
-            "انتخاب فایل صوتی برای آزمایش شنوا",
-            str(Path.home()),
-            "WAV صوتی (*.wav)",
+            self.window, "انتخاب فایل صوتی برای آزمایش ASR",
+            str(Path.home()), "WAV صوتی (*.wav)",
         )
         if not path:
             return
         runtime = self.feature_controller("runtime")
-        # A file-based benchmark must not run beside either local mic capture or Gemini Live.
         runtime.set_live_listening(False)
         self.stop_local_stt_test(update_ui=False)
-        from .. import local_voice
-
-        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
-        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
+        manager = self.context.services.voice_application_service.asr_manager
+        settings = self.context.services.settings
+        try:
+            _engine_id, model_id = manager.select(settings)
+        except Exception as exc:
+            page.shenava_result.setText(f"انتخاب ASR معتبر نیست: {type(exc).__name__}: {exc}")
+            return
         page.shenava_result.setText(
-            f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا {precision}؛ میکروفن استفاده نمی‌شود…"
+            f"در حال تبدیل «{Path(path).name}» با {manager.selected_engine_label(settings)}؛ میکروفن استفاده نمی‌شود…"
         )
         self._run_local_voice_task(
-            lambda: local_voice.transcribe_shenava_file(
-                path, model_path=repo_id
-            ),
+            lambda: manager.transcribe_file(path, settings),
             page.shenava_test_btn,
-            lambda result: self._on_local_shenava_file_tested(result, path, repo_id),
+            lambda result: self._on_local_shenava_file_tested(result, path, model_id),
         )
 
-
-    def _on_local_shenava_file_tested(self, result, path, repo_id=None):
+    def _on_local_shenava_file_tested(self, result, path, model_id=None):
         ok, value = result
         page = self.context.views.voice_page
         if not ok:
-            page.shenava_result.setText(
-                f"✕ تست شنوا ناموفق بود: {value}"
-            )
+            page.shenava_result.setText(f"✕ تست ASR ناموفق بود: {value}")
+            self.refresh_local_voice_status()
             return
-        transcript = str(value or "").strip()
-        if not transcript:
-            transcript = "متنی تشخیص داده نشد."
-        page.shenava_result.setText(
-            f"فایل: {Path(path).name}\nنتیجه‌ی شنوا:\n{transcript}"
-        )
-        from .. import local_voice
-
-        repo_id = str(repo_id or page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
-        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
-            repo_id = local_voice.SHENAVA_INT8_REPO_ID
-        self.context.services.settings["local_voice_asr_backend"] = "shenava"
-        self.context.services.settings["local_voice_asr_model"] = repo_id
-        page.shenava_variant.blockSignals(True)
-        page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
-        page.shenava_variant.blockSignals(False)
-        self.feature_controller("runtime").save_now()
-
+        transcript = str(value or "").strip() or "متنی تشخیص داده نشد."
+        page.shenava_result.setText(f"فایل: {Path(path).name}\nنتیجهٔ ASR:\n{transcript}")
+        self.refresh_local_voice_status()
 
     def download_local_tts_model(self):
         repo_id, accepted = QInputDialog.getText(
@@ -572,13 +571,23 @@ class VoiceSettingsController(WindowFeatureController):
             return
         try:
             from .. import local_voice
-            asr_model = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
-            tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
+            settings = self.context.services.settings
+            manager = self.context.services.voice_application_service.asr_manager
+            asr_state = manager.discover(settings)
+            asr_model = str(asr_state.get("model_id") or settings.get("local_voice_asr_model") or "")
+            tts_model = str(settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
-            page.shenava_variant.blockSignals(True)
-            page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(asr_model)))
-            page.shenava_variant.blockSignals(False)
+            page.asr_backend.blockSignals(True)
+            engine_index = page.asr_backend.findData(str(settings.get("local_voice_asr_backend") or "shenava"))
+            if engine_index >= 0:
+                page.asr_backend.setCurrentIndex(engine_index)
+            page.asr_backend.blockSignals(False)
+            page.asr_model.blockSignals(True)
+            model_index = page.asr_model.findData(asr_model)
+            if model_index >= 0:
+                page.asr_model.setCurrentIndex(model_index)
+            page.asr_model.blockSignals(False)
 
             tts_combo = getattr(self.context.views, "local_tts_model_list", None)
             if tts_combo is not None:
@@ -593,20 +602,18 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            asr_loaded = bool(state.get("shenava_loaded"))
-            asr_installed = bool(state.get("shenava_installed"))
-            asr_error = state.get("shenava_error")
-            asr_label = "Shenava · sherpa-onnx"
+            asr_name = str(asr_state.get("engine_name") or asr_state.get("engine_id") or "ASR")
+            if asr_state.get("ready"):
+                asr = f"{asr_name} آماده است؛ Runtime و فایل مدل اعتبارسنجی شدند."
+            else:
+                asr = (f"{asr_name} آماده نیست [{asr_state.get('error_code') or 'unavailable'}]: "
+                       f"{asr_state.get('error_message') or 'وضعیت موتور نامشخص است.'}")
+            if asr_state.get("initialized"):
+                asr += " · مدل در حافظه بارگذاری شده است"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
             ))
-            asr_cached = any(item.get("id") == asr_model for item in discovered.get("asr", []))
-            asr = f"{asr_label} نصب است" if asr_installed else f"{asr_label} نصب نیست"
-            asr += " · فایل‌های مدل در کش موجود است" if asr_cached else " · فایل‌های مدل هنوز دانلود نشده"
-            asr += " · همین مدل در حافظه است" if asr_loaded else " · مدل هنوز بارگذاری نشده"
-            if asr_error:
-                asr += " · " + str(asr_error)
             tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
@@ -624,14 +631,15 @@ class VoiceSettingsController(WindowFeatureController):
                 ezafe_text += f" · تلاش دوباره پس از {ezafe['retry_in_seconds']} ثانیه"
             selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.context.views.local_voice_status.setText(
-                f"STT · {asr_label}: {asr}\nمدل STT: {asr_model}\n"
-                f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
-                f"{ezafe_text}\n"
+                f"STT · {asr_name}: {asr}\nمدل STT: {asr_model or 'انتخاب نشده'}\n"
+                f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n{ezafe_text}\n"
                 f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
                 f"کش مدل‌ها: {local_voice.cache_directory()}"
             )
         except Exception as exc:
-            self.context.views.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
+            self.context.views.local_voice_status.setText(
+                f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}"
+            )
 
     def _run_local_voice_task(self, fn, button, callback, *, cancellable=False):
         if (
@@ -689,10 +697,13 @@ class VoiceSettingsController(WindowFeatureController):
             QTimer.singleShot(0, self.window.close)
 
     def load_local_asr(self):
-        from .. import local_voice
-        model_name = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
-        self.context.services.settings["local_voice_asr_backend"] = "shenava"
-        self._run_local_voice_task(lambda: local_voice.load_shenava(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
+        manager = self.context.services.voice_application_service.asr_manager
+        settings = self.context.services.settings
+        self._run_local_voice_task(
+            lambda: manager.initialize(settings),
+            self.context.views.local_asr_load_btn,
+            self._on_local_asr_loaded,
+        )
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
@@ -765,6 +776,7 @@ class VoiceSettingsController(WindowFeatureController):
             model_name, language, self,
             sensitivity=int(self.context.services.settings.get("mic_sensitivity", 100)),
             barge_in=False, settings=self.context.services.settings,
+            asr_manager=self.context.services.voice_application_service.asr_manager,
         )
         self.context.state._local_stt_test_listener = listener
         # QObject-bound slots ensure worker-thread signals are marshalled back
@@ -937,12 +949,22 @@ class VoiceSettingsController(WindowFeatureController):
         """Refresh Google credentials and describe the actual Gemini-primary/local-fallback pipeline."""
         page = self.context.views.voice_page
         page.refresh_gemini_providers(self.context.services.settings)
+        from ..voice_caps import chain
+        capabilities = chain(
+            self.context.services.settings,
+            manager=self.context.services.voice_application_service.asr_manager,
+        )
+        labels = "، ".join(name for name, _caps in capabilities) or "هیچ موتور محلی Ready نیست"
         page.voice_caps_note.setText(
-            "Gemini Live ورودی و خروجی صوتی مستقیم دارد؛ STT/TTS محلی فقط در حالت محلی یا هنگام قطع Live استفاده می‌شود."
+            "Gemini Live ورودی و خروجی صوتی مستقیم دارد؛ STT/TTS محلی فقط در حالت محلی یا هنگام قطع Live استفاده می‌شود. "
+            f"قابلیت‌های محلی تأییدشده: {labels}."
+        )
+        local_engine = self.context.services.voice_application_service.asr_manager.selected_engine_label(
+            self.context.services.settings
         )
         page.live_config_note.setText(
             "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
-            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی شنوا + مدل چت + Piper فعال می‌شود."
+            f"صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی {local_engine} + مدل چت + Piper فعال می‌شود."
         )
 
     def collect_voice_settings(self):
@@ -964,7 +986,8 @@ class VoiceSettingsController(WindowFeatureController):
             "gemini_live_provider": page.gemini_provider.currentData() or "",
             "gemini_live_model": page.gemini_model.currentText().strip() or "gemini-3.8-live",
             "voice_local_fallback": page.local_fallback_chk.isChecked(),
-            "local_voice_asr_backend": "shenava",
+            "local_voice_asr_backend": page.asr_backend.currentData() or "",
+            "local_voice_asr_model": page.asr_model.currentData() or "",
             "realtime_asr_enabled": page.real_time_asr_chk.isChecked(),
         })
 

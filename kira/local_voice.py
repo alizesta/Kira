@@ -288,6 +288,23 @@ def _resample_mono_float32(audio, sample_rate, target_rate=SHENAVA_SAMPLE_RATE):
     return np.clip(samples, -1.0, 1.0)
 
 
+def unload_shenava():
+    """Release the active recognizer and clear its model identity."""
+    global _shenava_recognizer, _shenava_model_path, _shenava_error
+    with _asr_lock:
+        previous, _shenava_recognizer = _shenava_recognizer, None
+        _shenava_model_path = ""
+        _shenava_error = None
+        if previous is not None:
+            try:
+                close = getattr(previous, "close", None)
+                if callable(close):
+                    close()
+            finally:
+                del previous
+                gc.collect()
+
+
 def transcribe_shenava(audio, sample_rate=SHENAVA_SAMPLE_RATE, model_path=""):
     """Transcribe one mono audio segment locally with the selected Shenava model."""
     import numpy as np

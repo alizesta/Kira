@@ -39,25 +39,52 @@ def kinds(events):
     return [e[0] for e in events]
 
 
-class ShenavaOnlyTests(unittest.TestCase):
-    def test_listener_transcribes_only_through_shenava(self):
+class ASRManagerListenerTests(unittest.TestCase):
+    def test_listener_delegates_recognition_to_the_injected_adapter(self):
         from kira.listener import Listener
-        from kira import local_voice
-        listener = Listener(settings={})
-        audio = np.zeros(RATE, dtype=np.float32)
-        with mock.patch.object(local_voice, "transcribe_shenava", return_value="سلام") as transcribe:
-            self.assertEqual(listener._transcribe(None, audio), "سلام")
-        transcribe.assert_called_once()
-        self.assertEqual(listener.via, "local:shenava")
+        from kira.asr_manager import ASRManager
 
+        class Adapter:
+            engine_id = "fixture"
+            display_name = "Fixture ASR"
+            default_model = "fixture-model"
+            capabilities = frozenset({"offline", "persian"})
+            def catalog_entry(self):
+                return {"id": self.engine_id, "name": self.display_name,
+                        "default_model": self.default_model, "models": [],
+                        "capabilities": sorted(self.capabilities)}
+            def inspect(self, model_id):
+                return {"engine_id": self.engine_id, "engine_name": self.display_name,
+                        "model_id": model_id, "runtime_installed": True,
+                        "model_ready": True, "ready": True,
+                        "capabilities": sorted(self.capabilities)}
+            def validate(self, model_id):
+                self.validated = model_id
+            def initialize(self, model_id):
+                self.initialized = model_id
+            def transcribe(self, audio, sample_rate, model_id):
+                return "سلام"
+            def transcribe_file(self, path, model_id):
+                return "فایل"
+            def install(self, model_id, cancel_event=None):
+                return "/models/fixture"
+            def shutdown(self):
+                self.closed = True
 
-class LocalASRFallbackTests(unittest.TestCase):
-    def test_listener_defaults_to_shenava_as_sole_local_asr(self):
+        manager = ASRManager(adapters=[Adapter()])
+        listener = Listener(settings={"local_voice_asr_backend": "fixture"}, asr_manager=manager)
+        self.assertEqual(listener._transcribe(None, np.zeros(RATE, dtype=np.float32)), "سلام")
+        self.assertEqual(listener.via, "local:fixture")
+        self.assertEqual(listener.engine_name, "Fixture ASR")
+
+    def test_unsupported_saved_engine_is_not_replaced_by_an_implicit_fallback(self):
         from kira.listener import Listener
-        listener = Listener(settings={})
-        self.assertEqual(listener.settings.get("local_voice_asr_backend", "shenava"), "shenava")
-        self.assertTrue(callable(listener._transcribe))
-
+        listener = Listener(settings={"local_voice_asr_backend": "qwen3"})
+        emitted = []
+        listener.error.connect(emitted.append)
+        self.assertEqual(listener._transcribe(None, np.zeros(RATE, dtype=np.float32)), "")
+        self.assertEqual(listener.via, "")
+        self.assertTrue(any("unsupported_engine" in message for message in emitted))
 
 
 class LivePartialRecognitionTests(unittest.TestCase):

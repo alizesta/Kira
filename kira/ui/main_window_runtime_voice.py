@@ -99,11 +99,10 @@ class RuntimeVoiceMixin:
                 text = "در حال آماده‌سازی STT محلی…"
             else:
                 text = "در حال گوش‌دادن · STT محلی"
-            local_asr_name = (
-                "Shenava" if str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3") == "shenava"
-                else "Qwen3-ASR"
+            local_asr_name = self.context.services.voice_application_service.asr_manager.selected_engine_label(
+                self.context.services.settings
             )
-            tip = (f"اتصال Gemini Live قطع شد؛ مسیر محلی {local_asr_name}/Whisper → مدل چت → Piper فعال است."
+            tip = (f"اتصال Gemini Live قطع شد؛ مسیر محلی {local_asr_name} → مدل چت → Piper فعال است."
                    if mode == "local_fallback" else
                    f"میکروفن → {local_asr_name}/Whisper → مدل چت → Piper.")
         elif mode == "local_stt":
