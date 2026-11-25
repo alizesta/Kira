@@ -65,9 +65,13 @@ class ConfigTests(unittest.TestCase):
                 {"id": "groq", "provider": "groq", "model": "llama-3.3-70b-versatile", "enabled": True},
                 {"id": "other", "provider": "custom-other", "model": "llama-3.3-70b-versatile", "enabled": True},
             ],
+            "role_provider_allowlist": {
+                "deep": ["groq"],
+                "surface": ["ollama"],
+            },
             "role_route_models": {
                 "deep": ["llama-3.3-70b-versatile", "user-model"],
-                "surface": ["user-selected-local-model"],
+                "surface": ["llama-3.1-8b-instant", "user-selected-local-model"],
             },
             "manual_route_id": "groq",
             "user_extension": {"keep": True},
@@ -83,7 +87,10 @@ class ConfigTests(unittest.TestCase):
         # A route under another provider is not rewritten by this provider migration.
         self.assertEqual(migrated["routes"][1]["model"], "llama-3.3-70b-versatile")
         self.assertEqual(migrated["role_route_models"]["deep"], [replacement, "user-model"])
-        self.assertEqual(migrated["role_route_models"]["surface"], ["user-selected-local-model"])
+        self.assertEqual(
+            migrated["role_route_models"]["surface"],
+            ["llama-3.1-8b-instant", "user-selected-local-model"],
+        )
         self.assertEqual(migrated["manual_route_id"], "groq")
         self.assertEqual(migrated["user_extension"], {"keep": True})
         self.assertTrue(any("تمام ارجاع‌ها" in warning for warning in warnings))

@@ -129,9 +129,17 @@ def _migrate_v1_to_v2(data, warnings=None):
     # Role model allowlists are exact model-ID filters. Keep their structure and
     # order while replacing only the provider IDs that are known to be retired.
     model_allowlist = data.get("role_route_models")
+    role_providers = data.get("role_provider_allowlist")
     if isinstance(model_allowlist, dict):
         for role, models in list(model_allowlist.items()):
             if not isinstance(models, (list, tuple)):
+                continue
+            allowed = (
+                role_providers.get(role)
+                if isinstance(role_providers, dict)
+                else DEFAULTS["role_provider_allowlist"].get(role, ())
+            )
+            if not isinstance(allowed, (list, tuple)) or "groq" not in allowed:
                 continue
             updated = [
                 RETIRED_GROQ_MODELS.get(model, model)
