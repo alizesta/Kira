@@ -292,7 +292,6 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         initialize_main_window(
             window,
             vision_runtime_provider=vision_runtime_provider,
-            window,
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),

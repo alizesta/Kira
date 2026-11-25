@@ -75,10 +75,6 @@ def initialize_main_window(
         create_voice_application_ports,
     )
     self = window.presentation_context
-    if desktop_context_application_service is None:
-        # Preserve direct composition callers while Bootstrap owns the production lifecycle.
-        from ..app.desktop_context import DesktopContext
-        desktop_context_application_service = DesktopContext()
     # Application services are constructed and lifecycle-managed by the outer UI Composition Root.
     # This module is only the outer Qt/UI adapter composition boundary.
     required = {
