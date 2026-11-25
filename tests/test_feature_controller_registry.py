@@ -161,7 +161,16 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                     f"{feature}.{namespace} contains fields outside the root contract",
                 )
 
-    def test_runtime_shutdown_resources_are_all_declared_capabilities(self):
+
+    def test_runtime_shutdown_can_clear_desktop_context_service(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, SERVICE_FIELDS
+
+        self.assertIn("desktop_context_application_service", SERVICE_FIELDS)
+        self.assertIn(
+            "desktop_context_application_service",
+            CONTROLLER_ACCESS["runtime"]["services"],
+        )
+\n    def test_runtime_shutdown_resources_are_all_declared_capabilities(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS
         shutdown_resources = {
             "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",
