@@ -1,8 +1,10 @@
 # Direct dependency compatibility pins for the supported Windows / Python 3.11-3.12 runtime.
+# NumPy 2.5.x requires Python 3.12; keep Python 3.11 on the supported 2.3.x line.
 # Generate and review a platform-specific transitive lock before claiming byte-for-byte reproducibility.
 PySide6==6.12.0
 requests==2.32.5
-numpy==2.5.5
+numpy==2.3.5; python_version < "3.12"
+numpy==2.5.5; python_version >= "3.12"
 google-genai==2.34.0
 Pillow==12.3.0
 pytesseract==0.3.13

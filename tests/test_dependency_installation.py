@@ -44,6 +44,76 @@ class DependencyInstallationTests(unittest.TestCase):
 
         return calls, runner
 
+
+    def test_generated_lock_is_preferred_and_hashes_are_enforced(self):
+        project_root = self.root / "project"
+        lock_file = (
+            project_root / "dependency-locks" / "windows-x86_64" / "python312" / "core.txt"
+        )
+        lock_file.parent.mkdir(parents=True)
+        lock_file.write_text(
+            "alpha==1.2 --hash=sha256:0123456789abcdef\\n"
+            "beta==2.0 --hash=sha256:abcdef0123456789\\n",
+            encoding="utf-8",
+        )
+        calls, runner = self.make_runner()
+        output = []
+        with self.patched_environment(), mock.patch(
+            "install_deps._find_dependency_lock", return_value=lock_file
+        ):
+            result = install_deps.install(
+                self.requirements,
+                runner=runner,
+                out=output.append,
+                constraints=[self.constraints],
+                project_root=project_root,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(len(calls), 3)
+        self.assertIn("--require-hashes", calls[0])
+        self.assertIn("--require-hashes", calls[1])
+        self.assertIn(str(lock_file), calls[0])
+        self.assertIn(str(lock_file), calls[1])
+        self.assertNotIn("--constraint", calls[0])
+        self.assertTrue(any("hash-locked" in line for line in output))
+
+    def test_lock_selection_is_limited_to_supported_windows_targets(self):
+        project_root = self.root / "project"
+        requirements = self.root / "requirements.txt"
+        requirements.write_text("alpha>=1\\n", encoding="utf-8")
+        expected = (
+            project_root / "dependency-locks" / "windows-x86_64" / "python311" / "core.txt"
+        )
+        expected.parent.mkdir(parents=True)
+        expected.write_text("alpha==1.2\\n", encoding="utf-8")
+
+        selected = install_deps._find_dependency_lock(
+            requirements,
+            root=project_root,
+            python_version=(3, 11),
+            platform_name="Windows",
+            machine="AMD64",
+        )
+        unsupported_platform = install_deps._find_dependency_lock(
+            requirements,
+            root=project_root,
+            python_version=(3, 11),
+            platform_name="Linux",
+            machine="x86_64",
+        )
+        unsupported_python = install_deps._find_dependency_lock(
+            requirements,
+            root=project_root,
+            python_version=(3, 10),
+            platform_name="Windows",
+            machine="AMD64",
+        )
+
+        self.assertEqual(selected, expected)
+        self.assertIsNone(unsupported_platform)
+        self.assertIsNone(unsupported_python)
+
     def test_preflight_install_and_pip_check_share_the_same_constraints(self):
         calls, runner = self.make_runner()
         output = []

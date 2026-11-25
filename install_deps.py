@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,16 @@ import tempfile
 from pathlib import Path
 
 PIP = [sys.executable, "-m", "pip"]
+LOCK_GROUPS = {
+    "requirements.txt": "core",
+    "requirements-system-optional.txt": "system-optional",
+    "requirements-ocr.txt": "ocr",
+    "requirements-audio.txt": "audio",
+    "requirements-dev.txt": "dev",
+    "requirements-voice-local.txt": "voice-local",
+    "requirements-voice-kitten.txt": "voice-kitten",
+    "requirements-voice-kitten-engine.txt": "voice-kitten-engine",
+}
 DNS_MARKERS = (
     "failed to resolve",
     "nameresolutionerror",
@@ -35,6 +46,37 @@ def read_requirements(path: str | Path) -> list[str]:
             if line:
                 items.append(line)
     return items
+
+
+def _find_dependency_lock(
+    requirement_file: str | Path,
+    root: str | Path | None = None,
+    *,
+    python_version: tuple[int, int] | None = None,
+    platform_name: str | None = None,
+    machine: str | None = None,
+) -> Path | None:
+    """Return a generated lock for the current supported Windows target, if present."""
+    group = LOCK_GROUPS.get(Path(requirement_file).name)
+    if group is None:
+        return None
+    python_version = python_version or sys.version_info[:2]
+    platform_name = platform_name or platform.system()
+    machine = machine or platform.machine()
+    if platform_name.casefold() != "windows" or machine.casefold() not in {"amd64", "x86_64"}:
+        return None
+    if python_version not in {(3, 11), (3, 12)}:
+        return None
+    project_root = Path(root) if root is not None else Path(__file__).resolve().parent
+    version_name = f"python{python_version[0]}{python_version[1]}"
+    candidate = (
+        project_root
+        / "dependency-locks"
+        / "windows-x86_64"
+        / version_name
+        / f"{group}.txt"
+    )
+    return candidate if candidate.is_file() else None
 
 
 def run_pip(args: list[str], runner=None) -> tuple[int, str]:
@@ -139,6 +181,7 @@ def install(
     *,
     constraints: tuple[str | Path, ...] | list[str | Path] = (),
     upgrade: bool = False,
+    project_root: str | Path | None = None,
 ) -> int:
     """Preflight, snapshot, install, verify, and roll back on any failure."""
     requirement_file = Path(path)
@@ -151,14 +194,26 @@ def install(
         out(f"ERROR: no packages found in {requirement_file}")
         return 1
 
+    lock_file = _find_dependency_lock(requirement_file, root=project_root)
+    if lock_file and upgrade:
+        out("ERROR: --upgrade cannot be used with a hash-locked dependency group; regenerate its lock instead.")
+        return 1
+
     try:
-        constraint_args = _constraint_args(list(constraints))
+        constraint_args = [] if lock_file else _constraint_args(list(constraints))
     except FileNotFoundError as exc:
         out(f"ERROR: {exc}")
         return 1
 
     upgrade_args = ["--upgrade"] if upgrade else []
-    common_args = [*upgrade_args, *constraint_args]
+    hash_args = ["--require-hashes"] if lock_file else []
+    common_args = [*upgrade_args, *constraint_args, *hash_args]
+    install_source = lock_file or requirement_file
+    source_description = (
+        f"{requirement_file.name} (hash-locked: {lock_file.name})"
+        if lock_file
+        else requirement_file.name
+    )
 
     with tempfile.TemporaryDirectory(prefix="kira-pip-resolution-") as temp_dir:
         temp_root = Path(temp_dir)
@@ -170,7 +225,7 @@ def install(
             str(report_path),
             *common_args,
             "-r",
-            str(requirement_file),
+            str(install_source),
         ]
         code, output = run_pip(preflight_args, runner)
         if code:
@@ -181,7 +236,7 @@ def install(
             )
             return code or 1
 
-        out(f"Dependency resolution passed for {requirement_file.name}.")
+        out(f"Dependency resolution passed for {source_description}.")
 
         try:
             snapshots = _snapshot_environment(
@@ -195,7 +250,7 @@ def install(
             "install",
             *common_args,
             "-r",
-            str(requirement_file),
+            str(install_source),
         ]
         code, output = run_pip(install_args, runner)
         failure = None
@@ -225,7 +280,7 @@ def install(
             out("Rollback completed. The Python environment was restored.")
             return code or 1
 
-    out(f"Dependency group {requirement_file.name} installed and verified.")
+    out(f"Dependency group {source_description} installed and verified.")
     return 0
 
 
