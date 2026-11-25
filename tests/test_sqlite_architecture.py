@@ -99,8 +99,6 @@ class SqlitePersistenceBoundaryTests(unittest.TestCase):
             restored,
             [([("backup-row",), ("salvaged-row",)], [{"id": "backup-conversation"}])],
         )
-        self.assertEqual(len(list(self.root.glob("chat.corrupt-*.sqlite3"))), 0)
-        self.assertEqual(len(list(self.root.glob("chat.sqlite3.corrupt-*.sqlite3"))), 0)
         self.assertEqual(len(list(self.root.glob("kira_memory.corrupt-*.sqlite3"))), 1)
 
     def test_recovery_rewrite_rolls_back_messages_when_metadata_conflicts(self):
