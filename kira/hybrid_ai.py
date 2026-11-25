@@ -709,8 +709,11 @@ class HybridRouter:
                             }
                             if normalize_network_policy(self.settings.get("network_policy")) != "cloud_permitted":
                                 failures.append(
-                                    "Provider ابری پیکربندی شده است، اما سیاست حریم خصوصی روی «فقط محلی» است؛ "
-                                    "برای استفاده از Cloud، Network Policy را صریحاً روی cloud_permitted بگذار."
+                                    "Provider ابری پیکربندی شده است، اما دو محدودیت مانع استفاده‌اند: "
+                                    "Network Policy روی local_only است و allowlist نقش surface فقط Ollama را مجاز می‌داند. "
+                                    "برای فعال‌کردن آگاهانهٔ Cloud، Network Policy را روی cloud_permitted بگذار "
+                                    "و Provider موردنظر را به role_provider_allowlist['surface'] اضافه کن؛ "
+                                    "این کار مرز حریم خصوصی مکالمه را تغییر می‌دهد."
                                 )
                             elif cloud_block_reasons == {"blocked_by_role_provider_allowlist"}:
                                 failures.append(
