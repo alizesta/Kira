@@ -78,6 +78,40 @@ class DependencyInstallationTests(unittest.TestCase):
         self.assertNotIn("--constraint", calls[0])
         self.assertTrue(any("hash-locked" in line for line in output))
 
+
+    def test_kitten_engine_lock_keeps_no_deps_install_contract(self):
+        project_root = self.root / "project"
+        engine_requirements = self.root / "requirements-voice-kitten-engine.txt"
+        engine_requirements.write_text("kittenml>=0.9.8,<1\\n", encoding="utf-8")
+        lock_file = (
+            project_root
+            / "dependency-locks"
+            / "windows-x86_64"
+            / "python312"
+            / "voice-kitten-engine.txt"
+        )
+        lock_file.parent.mkdir(parents=True)
+        lock_file.write_text(
+            "kittenml==0.9.8 --hash=sha256:0123456789abcdef\\n",
+            encoding="utf-8",
+        )
+        calls, runner = self.make_runner()
+        with self.patched_environment(), mock.patch(
+            "install_deps._find_dependency_lock", return_value=lock_file
+        ):
+            result = install_deps.install(
+                engine_requirements,
+                runner=runner,
+                out=lambda _message: None,
+                project_root=project_root,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertIn("--no-deps", calls[0])
+        self.assertIn("--no-deps", calls[1])
+        self.assertIn("--require-hashes", calls[0])
+        self.assertIn("--require-hashes", calls[1])
+
     def test_lock_selection_is_limited_to_supported_windows_targets(self):
         project_root = self.root / "project"
         requirements = self.root / "requirements.txt"

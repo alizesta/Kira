@@ -27,6 +27,7 @@ LOCK_GROUPS = {
     "requirements-voice-kitten.txt": "voice-kitten",
     "requirements-voice-kitten-engine.txt": "voice-kitten-engine",
 }
+LOCK_NO_DEPS = {"requirements-voice-kitten-engine.txt"}
 DNS_MARKERS = (
     "failed to resolve",
     "nameresolutionerror",
@@ -206,8 +207,9 @@ def install(
         return 1
 
     upgrade_args = ["--upgrade"] if upgrade else []
+    no_deps_args = ["--no-deps"] if lock_file and requirement_file.name in LOCK_NO_DEPS else []
     hash_args = ["--require-hashes"] if lock_file else []
-    common_args = [*upgrade_args, *constraint_args, *hash_args]
+    common_args = [*upgrade_args, *constraint_args, *no_deps_args, *hash_args]
     install_source = lock_file or requirement_file
     source_description = (
         f"{requirement_file.name} (hash-locked: {lock_file.name})"
