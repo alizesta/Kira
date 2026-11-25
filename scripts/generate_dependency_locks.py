@@ -148,7 +148,7 @@ def _group_inputs(root: Path, group: DependencyGroup) -> list[str]:
     return [name for name in (group.requirements, *group.constraints) if not (root / name).is_file()]
 
 
-def _input_fingerprint(root: Path, python_versions: Sequence[str], python_platform: str, snapshot_cutoff: str) -> str:
+def _input_fingerprint(root: Path, python_versions: Sequence[str], python_platform: str, snapshot_cutoff: str, index_url: str | None = None) -> str:
     """Fingerprint all resolver inputs and generator semantics for lock reuse."""
     digest = hashlib.sha256()
     digest.update(Path(__file__).read_bytes())
@@ -156,6 +156,7 @@ def _input_fingerprint(root: Path, python_versions: Sequence[str], python_platfo
         "python_versions": list(python_versions),
         "python_platform": python_platform,
         "snapshot_cutoff": snapshot_cutoff,
+        "index_identity": hashlib.sha256((index_url or "https://pypi.org/simple").encode("utf-8")).hexdigest(),
     }, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     for group in GROUPS:
         for name in (group.requirements, *group.constraints):
@@ -269,7 +270,7 @@ def generate_locks(
     if selected_index:
         env["UV_DEFAULT_INDEX"] = selected_index
 
-    fingerprint = _input_fingerprint(root, python_versions, python_platform, snapshot_cutoff)
+    fingerprint = _input_fingerprint(root, python_versions, python_platform, snapshot_cutoff, selected_index)
     if not refresh and _reusable_locks(output_dir, fingerprint, python_versions):
         out("Dependency locks are current; reusing the existing hash-locked environment.")
         return 0

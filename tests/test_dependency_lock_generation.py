@@ -43,6 +43,19 @@ class DependencyLockGenerationTests(unittest.TestCase):
         self.assertIn("--no-deps", command)
         self.assertEqual(command.count("--constraint"), 1)
 
+    def test_lock_fingerprint_changes_when_package_index_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = self.make_root(Path(temp) / "repo")
+            default = generator._input_fingerprint(
+                root, ("3.11",), generator.DEFAULT_PLATFORM,
+                generator.DEFAULT_SNAPSHOT_CUTOFF,
+            )
+            mirror = generator._input_fingerprint(
+                root, ("3.11",), generator.DEFAULT_PLATFORM,
+                generator.DEFAULT_SNAPSHOT_CUTOFF, "https://mirror.example/simple",
+            )
+            self.assertNotEqual(default, mirror)
+
     def test_core_hash_lock_is_converted_to_plain_constraints(self):
         with tempfile.TemporaryDirectory() as temp:
             core_lock = Path(temp) / "core.txt"
