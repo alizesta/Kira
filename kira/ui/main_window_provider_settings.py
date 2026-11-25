@@ -188,6 +188,7 @@ class ProviderSettingsController(WindowFeatureController):
         """Persist the single local-first Cloud fallback permission."""
         settings = self.context.services.settings
         previous = str(settings.get("network_policy") or "local_only").strip().lower()
+        previous_allowlist = copy.deepcopy(settings.get("role_provider_allowlist"))
         settings["network_policy"] = "cloud_permitted" if enabled else "local_only"
 
         if enabled:
@@ -215,6 +216,10 @@ class ProviderSettingsController(WindowFeatureController):
         runtime = self.feature_controller("runtime")
         if not runtime.save_now():
             settings["network_policy"] = previous if previous in ("local_only", "cloud_permitted") else "local_only"
+            if previous_allowlist is None:
+                settings.pop("role_provider_allowlist", None)
+            else:
+                settings["role_provider_allowlist"] = previous_allowlist
             self.cloud_fallback_check.blockSignals(True)
             self.cloud_fallback_check.setChecked(settings["network_policy"] == "cloud_permitted")
             self.cloud_fallback_check.blockSignals(False)
