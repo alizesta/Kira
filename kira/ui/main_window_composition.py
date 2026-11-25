@@ -45,6 +45,7 @@ def initialize_main_window(
     from .motion_manager import MotionManager
     from .console_log import build_console_log_page
     from .lazy_game_mode_monitor import LazyGameModeMonitor
+    from .lazy_speaker import LazySpeaker
     from .main_window_root_support import (
         AttachmentTile,
         ChatAttachmentController,
@@ -64,7 +65,6 @@ def initialize_main_window(
         QVBoxLayout,
         QWidget,
         Qt,
-        Speaker,
         att,
         load_reactions,
         make_icon,
@@ -276,7 +276,11 @@ def initialize_main_window(
     self.adapters.bubble.set_image_search(bool(self.services.settings.get("image_search", False)))
     self.adapters.companion.geometry_changed.connect(self.controllers.require("lifecycle").update_bubble)
     self.adapters.companion.visibility.connect(lambda _=None: self.controllers.require("lifecycle").update_bubble())
-    self.adapters.speaker = Speaker(self.services.settings, self.host)
+    def create_speaker():
+        from ..voice import Speaker
+        return Speaker(self.services.settings, self.host)
+
+    self.adapters.speaker = LazySpeaker(create_speaker, settings=self.services.settings, parent=self.host)
     self.host.voice_listener_finished.connect(self.controllers.require("runtime")._on_voice_listener_finished)
     if not callable(voice_application_service_factory):
         raise TypeError("voice_application_service_factory must be callable")
