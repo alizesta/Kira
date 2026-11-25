@@ -968,8 +968,9 @@ def _bare_model_id(value):
 def probe_provider(name, config, provider_cls=None, *, timeout=None):
     """Real connection test used by the Route panel. Returns (ok, message).
 
-    When timeout is supplied, it is an overall budget shared by model discovery
-    and the tiny generation request, not a fresh timeout for each HTTP call.
+    When timeout is supplied, it is the overall probe budget. Native Gemini
+    skips the compatibility-only model catalogue request and uses this budget
+    for its native generation request.
     """
     config = dict(config or {})
     cls = provider_cls or provider_class(name, config)
@@ -998,8 +999,15 @@ def probe_provider(name, config, provider_cls=None, *, timeout=None):
         if callable(probe):
             return probe()
 
+    # The /models catalogue is served by Google's OpenAI-compat endpoint, not
+    # the native generateContent transport. For native Gemini models it can fail
+    # independently and waste the timeout that should be spent testing the real route.
+    native_gemini = (
+        isinstance(provider, OpenAICompatibleProvider) and provider._native_enabled()
+    )
+
     try:
-        if cls is not CloudflareProvider and cls is not OpenRouterProvider:
+        if cls is not CloudflareProvider and cls is not OpenRouterProvider and not native_gemini:
             base = provider._base()
             headers = {"Authorization": "Bearer " + provider.secret} if provider.secret else {}
             get_timeout = remaining(15)

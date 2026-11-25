@@ -277,11 +277,14 @@ class RouterRouteTests(unittest.TestCase):
             ok, message, _ms = router.test_route(route["id"])
 
         self.assertTrue(ok, message)
-        # Model discovery remains bounded, but generation gets the real chat budget.
-        self.assertEqual(router._make_provider(route).timeout, routes.CLOUD_TIMEOUT[1])
-        self.assertLessEqual(get.call_args.kwargs["timeout"], 15)
-        self.assertGreater(post.calls[0]["timeout"], 15)
-        self.assertLessEqual(post.calls[0]["timeout"], routes.CLOUD_TIMEOUT[1])
+        # Native Gemini bypasses the degraded compat /models endpoint and spends
+        # the full configured chat budget on generateContent.
+        expected_timeout = router._make_provider(route).timeout
+        self.assertEqual(expected_timeout, routes.CLOUD_TIMEOUT[1])
+        get.assert_not_called()
+        self.assertTrue(post.calls[0]["url"].endswith(":generateContent"))
+        self.assertGreater(post.calls[0]["timeout"], expected_timeout - 1)
+        self.assertLessEqual(post.calls[0]["timeout"], expected_timeout)
 
     def test_google_gemini_explicit_extended_timeout_is_preserved(self):
         s = helpers.fresh_settings()
