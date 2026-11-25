@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from .sqlite_snapshot import SqliteSnapshotManager
 
 
 class SqliteRecoveryManager:
@@ -22,7 +21,6 @@ class SqliteRecoveryManager:
         *,
         db_path_provider: Callable[[], Path],
         connection_manager,
-        snapshot_manager: SqliteSnapshotManager,
         read_rows: Callable[[Path], list[tuple]],
         read_conversations: Callable[[Path], list[dict]],
         merge_rows: Callable[..., list[tuple]],
@@ -33,7 +31,6 @@ class SqliteRecoveryManager:
     ):
         self._db_path = db_path_provider
         self._connections = connection_manager
-        self._snapshots = snapshot_manager
         self._read_rows = read_rows
         self._read_conversations = read_conversations
         self._merge_rows = merge_rows
