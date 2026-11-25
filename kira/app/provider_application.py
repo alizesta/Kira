@@ -197,9 +197,10 @@ class ProviderApplicationService:
     def set_api_enabled(settings: dict[str, Any], provider_id: str, enabled: bool) -> None:
         api_manager.set_api_enabled(settings, provider_id, enabled)
 
-    @staticmethod
-    def set_model_enabled(settings: dict[str, Any], provider_id: str, model_id: str, enabled: bool) -> None:
-        api_manager.set_model_enabled(settings, provider_id, model_id, enabled)
+    def set_model_enabled(self, settings: dict[str, Any], provider_id: str, model_id: str, enabled: bool) -> None:
+        api_manager.set_model_enabled(
+            settings, provider_id, model_id, enabled, capabilities=self.detected_capabilities
+        )
 
     def delete_api(self, settings: dict[str, Any], provider_id: str) -> None:
         api_manager.delete_api(settings, provider_id, capabilities=self.detected_capabilities)

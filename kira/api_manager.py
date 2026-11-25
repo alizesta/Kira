@@ -365,7 +365,7 @@ def register(settings, detection, key, now=None, *, capabilities: DetectedCapabi
         else:
             pid = route_model.add_provider(settings, label, SERVICES[service]["base_url"], key, False, True)
             providers[pid]["service"] = service
-    route_model.ensure_routes(settings)
+    route_model.ensure_routes(settings, capabilities=capabilities)
     apply_models(settings, pid, detection.models, detection.rate_limit, now, capabilities=capabilities)
     start = pick_default_model(service, detection.models)
     has_route = any(r["provider"] == pid for r in route_model.get_routes(settings))
@@ -374,7 +374,7 @@ def register(settings, detection, key, now=None, *, capabilities: DetectedCapabi
     elif start and has_route:
         for r in route_model.get_routes(settings):                              # reused built-in: its default route is switched on
             if r["provider"] == pid and r["model"] == start:
-                route_model.update_route(settings, r["id"], enabled=True)
+                route_model.update_route(settings, r["id"], enabled=True, capabilities=capabilities)
 
     # Google is the explicitly preferred Chat provider: newly registered Gemini
     # routes must not be appended behind Cloudflare/Groq and silently lose to
@@ -396,14 +396,14 @@ def set_api_enabled(settings, pid, enabled):
     settings["providers"][pid]["enabled"] = bool(enabled)
 
 
-def set_model_enabled(settings, pid, model, enabled):
+def set_model_enabled(settings, pid, model, enabled, *, capabilities: DetectedCapabilities):
     """Switch one model on/off. Turning on a listed model that has no route yet creates it (at the end of the priority list)."""
     model = str(model or "").strip()
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     for r in route_model.get_routes(settings):
         if r["provider"] == pid and str(r.get("model") or "").strip().casefold() == model.casefold():
-            route_model.update_route(settings, r["id"], enabled=bool(enabled))
+            route_model.update_route(settings, r["id"], enabled=bool(enabled), capabilities=capabilities)
             return r["id"]
     if enabled:
         return route_model.add_route(settings, pid, model, enabled=True)["id"]
@@ -426,7 +426,8 @@ def delete_api(settings, pid, *, capabilities: DetectedCapabilities):
         for r in route_model.get_routes(settings):
             if r["provider"] == pid:
                 removed_route_ids.append(r["id"])
-                route_model.update_route(settings, r["id"], enabled=False)
+                route_model.update_route(settings, r["id"], enabled=False, capabilities=capabilities)
+        capabilities.mapping_remove_keys("route_notes", removed_route_ids)
         if settings.get("manual_route_id") and (route_model.find_route(settings, settings["manual_route_id"]) or {}).get("provider") == pid:
             settings["manual_route_id"] = ""
         if settings.get("default_route_id") in removed_route_ids:

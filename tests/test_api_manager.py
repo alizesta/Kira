@@ -21,7 +21,7 @@ class _APIManagerTestFacade:
     """Inject an explicit per-test capability owner into the production API contract."""
     _CAPABILITY_METHODS = {
         "registry", "ensure_registry", "apply_models", "apply_failure", "register",
-        "delete_api", "unique_models", "api_row", "api_rows", "api_details",
+        "delete_api", "set_model_enabled", "unique_models", "api_row", "api_rows", "api_details",
     }
 
     def __getattr__(self, name):
