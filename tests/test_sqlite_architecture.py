@@ -1,7 +1,6 @@
 """Architecture regression tests for independent SQLite persistence services."""
 from __future__ import annotations
 
-import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,11 +35,14 @@ class SqlitePersistenceBoundaryTests(unittest.TestCase):
 
         self.assertTrue((second / "chat.sqlite3").is_file())
         self.assertEqual(len(snapshots.list("cleared")), 1)
-        with self.connections.connect_readonly(second / "chat.sqlite3") as connection:
+        connection = self.connections.connect_readonly(second / "chat.sqlite3")
+        try:
             self.assertEqual(
                 connection.execute("SELECT content FROM messages").fetchone()[0],
                 "durable",
             )
+        finally:
+            connection.close()
         self.assertFalse(first.exists())
 
     def test_recovery_health_check_uses_ports_not_repository_internals(self):
