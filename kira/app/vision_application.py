@@ -140,6 +140,9 @@ class VisionApplicationService:
     def release_frame_budget(self, context) -> bool:
         return self.frame_orchestrator.release(context)
 
+    def discard_frame(self, context) -> bool:
+        return self.frame_orchestrator.discard(context)
+
     def commit_frame_budget(self, context) -> bool:
         return self.frame_orchestrator.commit(context)
 

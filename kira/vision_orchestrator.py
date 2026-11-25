@@ -216,6 +216,15 @@ class VisionFrameOrchestrator:
         with self._lock:
             return self._release_budget(context.frame_id)
 
+    def discard(self, context: FrameContext) -> bool:
+        """Remove a pending frame and return its reservation after a failed dispatch."""
+        with self._lock:
+            kept = deque(job for job in self._pending if job.context.frame_id != context.frame_id)
+            removed = len(self._pending) - len(kept)
+            self._pending = kept
+            self.cancelled_frames += removed
+            return self._release_budget(context.frame_id)
+
     def commit(self, context: FrameContext) -> bool:
         """Finalize a dispatched frame while retaining its consumed quota timestamp."""
         with self._lock:

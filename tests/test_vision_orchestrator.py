@@ -136,6 +136,16 @@ class VisionOrchestratorTests(unittest.TestCase):
         next_context = orchestrator.create_context("s", "desktop")
         self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
 
+    def test_discard_removes_pending_frame_and_returns_its_quota(self):
+        orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)
+        context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(context, live_ready=False).route, "analysis")
+        self.assertTrue(orchestrator.enqueue(FrameJob(context, b"payload")))
+        self.assertTrue(orchestrator.discard(context))
+        self.assertIsNone(orchestrator.take_next("s"))
+        next_context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
+
     def test_committing_dispatched_frame_retains_quota_without_reservation_leak(self):
         orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)
         context = orchestrator.create_context("s", "desktop")

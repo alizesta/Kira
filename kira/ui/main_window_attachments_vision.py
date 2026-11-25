@@ -1355,6 +1355,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 return frame_context, decision
             self._dispatch_next_vision_job()
         except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
+            service.discard_frame(frame_context)
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
             vision_trace("analysis_error", source=source, error=f"{type(exc).__name__}: {exc}")

@@ -224,6 +224,7 @@ def test_frame_budget_reservations_are_finalized_after_dispatch():
     assert "def commit(self, context: FrameContext) -> bool" in orchestrator
     assert "def commit_frame_budget(self, context) -> bool" in service
     assert "service.commit_frame_budget(frame_context)" in controller
+    assert "service.discard_frame(frame_context)" in controller
     assert "self.context.services.vision_application_service.commit_frame_budget(frame_context)" in controller
 
 
