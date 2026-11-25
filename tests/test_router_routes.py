@@ -16,6 +16,9 @@ SYS = "persona"
 
 def make(*names, ollama=True):
     s = helpers.enable(helpers.fresh_settings(), *names)
+    # Router behavior tests configure Cloud credentials intentionally; grant the
+    # separate network permission explicitly rather than relying on API keys.
+    s["network_policy"] = "cloud_permitted"
     s["providers"]["ollama"]["enabled"] = ollama
     routes.ensure_routes(s)
     return s, HybridRouter(s)
@@ -80,6 +83,7 @@ class RouterRouteTests(unittest.TestCase):
 
     def test_surface_never_uses_cloud_when_network_policy_is_local_only(self):
         s, r = make("groq", ollama=False)
+        s["network_policy"] = "local_only"
         self.assertEqual(s["network_policy"], "local_only")
         f = dispatch({"groq": AssertionError("local_only must never send a request to cloud")})
         with r.role_scope("surface"):
