@@ -852,7 +852,17 @@ class AttachmentsVisionController(WindowFeatureController):
             self._capture_desktop_frame()
 
     def _cancel_vision_worker(self):
-        worker = getattr(self.context.session, "_vision_worker", None)
+        session = self.context.session
+        session_id = (
+            getattr(session, "session_id", None)
+            or getattr(session, "cid", None)
+            or "default"
+        )
+        service = getattr(self.context.services, "vision_application_service", None)
+        if service is not None:
+            service.frame_orchestrator.cancel_session(session_id)
+        session._vision_frame_context = None
+        worker = getattr(session, "_vision_worker", None)
         if worker is not None and worker.isRunning():
             worker.cancel_request()
 
@@ -1334,6 +1344,7 @@ class AttachmentsVisionController(WindowFeatureController):
                     if source == "game" else False
                 ),
             )
+            self.context.session._vision_frame_context = frame_context
             _FRAME_SOURCE["value"] = source
             _FRAME_WINDOW_INFO["value"] = dict(window_info or {})
             vision_trace(
@@ -1365,6 +1376,18 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         service = self.context.services.vision_application_service
+        frame_context = getattr(self.context.session, "_vision_frame_context", None)
+        if frame_context is not None and not service.frame_orchestrator.is_current(frame_context):
+            vision_trace(
+                "analysis_discarded",
+                frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id,
+                source=frame_context.source,
+                reason="stale_session_generation",
+            )
+            self.context.session._vision_frame_context = None
+            return
+        self.context.session._vision_frame_context = None
         source = _FRAME_SOURCE.get("value") or "game"
         captured = _FRAME_WINDOW_INFO.get("value") or {}
         current = self.context.adapters.game_mode.capture_service.foreground_window_info(
