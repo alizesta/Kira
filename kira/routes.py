@@ -431,7 +431,7 @@ def set_provider_enabled(settings, provider, enabled):
     return cfg["enabled"]
 
 
-def update_route(settings, route_id, **changes):
+def update_route(settings, route_id, *, capabilities=None, **changes):
     route = next((r for r in _mutable(settings) if r["id"] == route_id), None)
     if route is None:
         raise KeyError(route_id)
@@ -448,6 +448,9 @@ def update_route(settings, route_id, **changes):
         # Provider online as part of the same settings mutation.
         if route["provider"] == "ollama" and route["enabled"]:
             settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = True
+        if route["enabled"] and capabilities is not None:
+            # An explicit user re-enable supersedes the automatic disable explanation.
+            capabilities.mapping_pop("route_notes", route_id, None)
     if "timeout" in changes:
         route["timeout"] = clamp_timeout(changes["timeout"], kind)
     if "cooldown" in changes:
@@ -481,8 +484,8 @@ def remove_route(settings, route_id, *, capabilities=None):
     sync_legacy(settings)
 
 
-def set_enabled(settings, route_id, enabled):
-    return update_route(settings, route_id, enabled=enabled)
+def set_enabled(settings, route_id, enabled, *, capabilities=None):
+    return update_route(settings, route_id, enabled=enabled, capabilities=capabilities)
 
 
 def move_route(settings, route_id, new_index):

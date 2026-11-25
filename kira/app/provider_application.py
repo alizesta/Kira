@@ -120,9 +120,10 @@ class ProviderApplicationService:
     def add_route(settings: dict[str, Any], provider: str, model: str, enabled: bool = True):
         return route_model.add_route(settings, provider, model, enabled=enabled)
 
-    @staticmethod
-    def update_route(settings: dict[str, Any], route_id: str, **changes):
-        return route_model.update_route(settings, route_id, **changes)
+    def update_route(self, settings: dict[str, Any], route_id: str, **changes):
+        return route_model.update_route(
+            settings, route_id, capabilities=self.detected_capabilities, **changes
+        )
 
     def remove_route(self, settings: dict[str, Any], route_id: str) -> None:
         route_model.remove_route(settings, route_id, capabilities=self.detected_capabilities)

@@ -28,7 +28,7 @@ class DisableRouteTests(unittest.TestCase):
         self.assertTrue(routes.disable_route(s, rid, "dead", capabilities=self.capabilities))
         self.assertFalse(routes.find_route(s, rid)["enabled"])
         self.assertEqual(routes.route_note(s, rid, capabilities=self.capabilities), "dead")
-        routes.set_enabled(s, rid, True)
+        routes.set_enabled(s, rid, True, capabilities=self.capabilities)
         self.assertEqual(routes.route_note(s, rid, capabilities=self.capabilities), "")          # the note disappears once the user re-enables it
 
     def test_never_disables_the_last_enabled_route(self):
@@ -117,7 +117,7 @@ class RouterAutoDisableTests(unittest.TestCase):
 
     def test_a_success_or_other_error_in_between_resets_the_count(self):
         s = settings_with(("groq", "flaky"), ("mistral", "ok"), capabilities=self.capabilities)
-        router = hybrid_ai.HybridRouter(s)
+        router = hybrid_ai.HybridRouter(s, detected_capabilities=self.capabilities)
         route = routes.get_routes(s)[0]
         self.failure(router, route, "model")
         self.failure(router, route, "server")
