@@ -85,7 +85,6 @@ class SqliteChatRepository:
         self._recovery = SqliteRecoveryManager(
             db_path_provider=self._db_path,
             connection_manager=self._connections,
-            snapshot_manager=self._snapshots,
             read_rows=self._read_rows_full,
             read_conversations=self._read_conversations,
             merge_rows=self._merge,
