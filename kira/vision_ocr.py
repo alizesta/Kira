@@ -6,6 +6,11 @@ import base64
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import os
+import shutil
+import subprocess
+import urllib.request
+from pathlib import Path
 from typing import Protocol
 
 
@@ -290,10 +295,103 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
+def setup_native_tesseract(*, input_fn=input, output_fn=print, runner=subprocess.run):
+    """Offer explicit Windows installation and separate consent for fas/eng language data."""
+    from .vision_ocr_runtime import TesseractRuntime
+
+    runtime = TesseractRuntime(required_languages=("fas", "eng"))
+    status = runtime.discover(refresh=True)
+    if not status.get("native_engine_installed"):
+        if os.name != "nt":
+            output_fn("Automatic Tesseract setup is available only on Windows.")
+            return 1
+        winget = shutil.which("winget")
+        if not winget:
+            output_fn("winget was not found. Install Tesseract with the UB Mannheim Windows installer, then rerun setup.")
+            return 1
+        answer = input_fn("Tesseract is not installed. Install UB Mannheim Tesseract using winget? [y/N]: ")
+        if str(answer or "").strip().lower() not in ("y", "yes"):
+            output_fn("Tesseract installation skipped. OCR remains unavailable; other Vision features are unaffected.")
+            return 1
+        try:
+            result = runner(
+                [winget, "install", "--id", "UB-Mannheim.TesseractOCR", "--exact",
+                 "--interactive", "--accept-package-agreements", "--accept-source-agreements"],
+                capture_output=True, text=True, timeout=900, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            output_fn(f"Tesseract installation failed: {type(exc).__name__}: {exc}")
+            return 1
+        if int(getattr(result, "returncode", 1)) != 0:
+            details = (getattr(result, "stderr", "") or getattr(result, "stdout", "") or "").strip()
+            output_fn("Tesseract installation failed." + (f" {details[:500]}" if details else ""))
+            return 1
+        status = runtime.discover(refresh=True)
+        if not status.get("native_engine_installed"):
+            output_fn("winget finished, but tesseract.exe was not found. Restart setup or set KIRA_TESSERACT_CMD.")
+            return 1
+
+    executable = str(status.get("executable") or "")
+    tessdata = str(status.get("tessdata_dir") or "")
+    if not tessdata and executable:
+        tessdata = str(Path(executable).resolve().parent / "tessdata")
+    if not tessdata:
+        output_fn("Tesseract is installed, but its tessdata directory could not be located. Set KIRA_TESSDATA_DIR.")
+        return 1
+
+    missing = list(status.get("missing_languages") or ())
+    if missing:
+        output_fn("Missing Tesseract language data: " + ", ".join(missing))
+        answer = input_fn("Download the missing official tessdata_fast language files (fas/eng)? [y/N]: ")
+        if str(answer or "").strip().lower() not in ("y", "yes"):
+            output_fn("Language-data download skipped. Install the missing .traineddata files and rerun --status.")
+            return 1
+        directory = Path(tessdata)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            for language in missing:
+                if language not in ("fas", "eng"):
+                    raise ValueError(f"Unsupported language requested by this setup: {language}")
+                url = f"https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/{language}.traineddata"
+                request = urllib.request.Request(url, headers={"User-Agent": "Project-Kira-OCR-Setup"})
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    payload = response.read(40 * 1024 * 1024 + 1)
+                if len(payload) < 1024 or len(payload) > 40 * 1024 * 1024:
+                    raise RuntimeError(f"Downloaded {language}.traineddata has an invalid size")
+                target = directory / f"{language}.traineddata"
+                temporary = directory / f".{language}.traineddata.download"
+                temporary.write_bytes(payload)
+                os.replace(temporary, target)
+        except Exception as exc:
+            try:
+                for temporary in directory.glob(".*.traineddata.download"):
+                    temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            output_fn(f"Language-data setup failed: {type(exc).__name__}: {exc}")
+            return 1
+        status = runtime.discover(refresh=True)
+
+    if status.get("missing_languages"):
+        output_fn("OCR is still missing required language data: " + ", ".join(status["missing_languages"]))
+        return 1
+    output_fn("Tesseract engine and required language data are installed.")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--status", action="store_true", help="validate and initialize OCR, then print diagnostics")
-    parser.parse_args(argv)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--status", action="store_true", help="validate OCR without installing anything")
+    mode.add_argument("--setup", action="store_true", help="offer consent-based Tesseract and fas/eng setup")
+    args = parser.parse_args(argv)
+    if args.setup and setup_native_tesseract() != 0:
+        service = OcrService()
+        try:
+            print(json.dumps(service.diagnostics(), ensure_ascii=False, indent=2))
+        finally:
+            service.shutdown()
+        return 1
     service = OcrService()
     try:
         service.initialize()
