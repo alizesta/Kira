@@ -1,4 +1,4 @@
-"""Microphone listener: local-only Shenava speech recognition plus speech segmentation (kira/vad.py).
+"""Microphone listener: adapter-backed local ASR plus speech segmentation (kira/vad.py).
 
 Behaviour (see vad.py / speech_text.py for the details):
   * less sensitive to room noise: speech-band level, measured noise floor, onset check, hysteresis;
@@ -64,7 +64,7 @@ class Listener(QThread):
         self._partial_last_samples = 0
         self._partial_last_text = ""
         self._segment_partial_text = ""
-        self._partial_decode_count = 0  # Shenava is offline: every preview decodes the full utterance again.
+        self._partial_decode_count = 0  # The selected local ASR is offline: every preview decodes the full utterance again.
 
     # ---- called by the window ----
     def begin_kira_speech(self):

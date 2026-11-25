@@ -56,7 +56,7 @@ DEFAULTS = {
     "desktop_vision_blocklist": {},           # custom privacy rules merged with defaults
     "desktop_vision_ocr_enabled": True,       # local OCR on changed desktop content when Tesseract already exists
     "vision_ocr_in_game_mode": False,         # OCR stays off during gameplay unless explicitly enabled
-    "voice_engine": "gemini_live",       # gemini_live = primary bidirectional voice; local = existing Qwen/Whisper + Piper
+    "voice_engine": "gemini_live",       # gemini_live = bidirectional cloud voice; local = selected offline ASR adapter + Piper
     "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
     "gemini_live_model": "gemini-3.8-live",
