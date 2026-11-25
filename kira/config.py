@@ -152,6 +152,13 @@ def _migrate_v4_to_v5(data, warnings=None):
     return data
 
 
+def _migrate_v5_to_v6(data, warnings=None):
+    """Remove obsolete appearance migration flags without changing the user's appearance."""
+    data.pop("appearance_glow_adjusted", None)
+    data.pop("appearance_neon_shooter_v1", None)
+    return data
+
+
 def _migrate_settings(saved, *, warnings=None):
     """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
@@ -174,6 +181,7 @@ def _migrate_settings(saved, *, warnings=None):
         2: lambda value: _migrate_v2_to_v3(value, warnings=warnings),
         3: lambda value: _migrate_v3_to_v4(value, warnings=warnings),
         4: lambda value: _migrate_v4_to_v5(value, warnings=warnings),
+        5: lambda value: _migrate_v5_to_v6(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)

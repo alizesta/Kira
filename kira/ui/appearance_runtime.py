@@ -8,6 +8,7 @@ from .. import winfx
 from ..config import ROOT, save_settings
 from ..theme import build_style
 from ..ui_icons import make_icon, set_glow_intensity
+from ..settings_schema import DEFAULTS as SETTINGS_DEFAULTS
 
 
 class AppearanceRuntime:
@@ -49,42 +50,27 @@ class AppearanceRuntime:
         color = (
             (page.background_color if page is not None else "")
             or stored.get("background_color")
-            or "#0A0A1C"
+            or SETTINGS_DEFAULTS["appearance"]["background_color"]
         )
         appearance = {
             "background_color": color,
             "brightness": (
                 page.appearance_brightness.value() if page is not None
-                else int(stored.get("brightness", 100))
+                else int(stored.get("brightness", SETTINGS_DEFAULTS["appearance"]["brightness"]))
             ),
             "glow": (
                 page.appearance_glow.value() if page is not None
-                else int(stored.get("glow", 58))
+                else int(stored.get("glow", SETTINGS_DEFAULTS["appearance"]["glow"]))
             ),
             "transparency": (
                 page.appearance_transparency.value() if page is not None
-                else int(stored.get("transparency", 28))
+                else int(stored.get("transparency", SETTINGS_DEFAULTS["appearance"]["transparency"]))
             ),
         }
-        if not settings.get("appearance_glow_adjusted"):
-            appearance["glow"] = min(int(appearance["glow"]), 18)
-            if page is not None:
-                page.appearance_glow.blockSignals(True)
-                page.appearance_glow.setValue(appearance["glow"])
-                page.appearance_glow.blockSignals(False)
-            settings["appearance_glow_adjusted"] = True
-        if not settings.get("appearance_neon_shooter_v1"):
-            if int(appearance["glow"]) < 42:
-                appearance["glow"] = 58
-            if page is not None:
-                page.appearance_glow.blockSignals(True)
-                page.appearance_glow.setValue(int(appearance["glow"]))
-                page.appearance_glow.blockSignals(False)
-            settings["appearance_neon_shooter_v1"] = True
         settings["appearance"] = appearance
         wanted = (
             page.window_effect.currentData() if page is not None
-            else settings.get("window_effect", "acrylic")
+            else settings.get("window_effect", SETTINGS_DEFAULTS["window_effect"])
         ) or "acrylic"
         current = winfx.active_effect(wanted)
         self.context.state._effect = current
@@ -114,7 +100,7 @@ class AppearanceRuntime:
     def _apply_neon_glow_effects(self, appearance=None):
         settings = self.context.services.settings
         appearance = appearance if isinstance(appearance, dict) else (settings.get("appearance") or {})
-        intensity = max(0, min(100, int(appearance.get("glow", 58))))
+        intensity = max(0, min(100, int(appearance.get("glow", SETTINGS_DEFAULTS["appearance"]["glow"]))))
         character_id = self.context.services.character_service.active_id(settings)
         profiles = self.context.services.character_service.all_profiles(settings)
         palette = self._session().theme_for_character(

@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from kira.ui.pages._all_pages_fluid_finalizers import finalize_appearance_page
+from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
 
 from PySide6.QtWidgets import (
     QComboBox,
@@ -27,12 +28,7 @@ class AppearancePage(QScrollArea):
     choose_color_requested = Signal()
     reset_requested = Signal()
 
-    DEFAULTS = {
-        "background_color": "#0A0A1C",
-        "brightness": 100,
-        "glow": 58,
-        "transparency": 28,
-    }
+    DEFAULTS = SETTINGS_DEFAULTS["appearance"]
 
     def __init__(
         self,
@@ -68,7 +64,7 @@ class AppearancePage(QScrollArea):
         ):
             self.window_effect.addItem(label, value)
         self.window_effect.setCurrentIndex(
-            max(0, self.window_effect.findData(settings.get("window_effect", "acrylic")))
+            max(0, self.window_effect.findData(settings.get("window_effect", SETTINGS_DEFAULTS["window_effect"])))
         )
         if not glass_supported:
             self.window_effect.setEnabled(False)

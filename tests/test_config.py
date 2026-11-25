@@ -187,6 +187,41 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("voice_engine_migrated", migrated)
         self.assertIn("voice_engine_migrated", source)
 
+    def test_v5_migration_removes_appearance_flags_without_changing_user_values(self):
+        appearance = {
+            "background_color": "#112233",
+            "brightness": 73,
+            "glow": 24,
+            "transparency": 41,
+        }
+        source = {
+            "settings_version": 5,
+            "appearance": dict(appearance),
+            "appearance_glow_adjusted": False,
+            "appearance_neon_shooter_v1": False,
+            "user_extension": {"preserve": True},
+        }
+        migrated = config._migrate_settings(source)
+
+        self.assertEqual(migrated["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertEqual(migrated["appearance"], appearance)
+        self.assertEqual(migrated["user_extension"], {"preserve": True})
+        self.assertNotIn("appearance_glow_adjusted", migrated)
+        self.assertNotIn("appearance_neon_shooter_v1", migrated)
+        self.assertIn("appearance_glow_adjusted", source)
+        self.assertIn("appearance_neon_shooter_v1", source)
+
+    def test_appearance_defaults_are_shared_by_schema_page_and_runtime(self):
+        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS
+        from kira.ui.appearance_runtime import SETTINGS_DEFAULTS as RUNTIME_DEFAULTS
+        from kira.ui.pages.appearance_page import AppearancePage, SETTINGS_DEFAULTS as PAGE_DEFAULTS
+
+        self.assertIs(RUNTIME_DEFAULTS, SCHEMA_DEFAULTS)
+        self.assertIs(PAGE_DEFAULTS, SCHEMA_DEFAULTS)
+        self.assertIs(AppearancePage.DEFAULTS, SCHEMA_DEFAULTS["appearance"])
+        self.assertNotIn("appearance_glow_adjusted", SCHEMA_DEFAULTS)
+        self.assertNotIn("appearance_neon_shooter_v1", SCHEMA_DEFAULTS)
+
     def test_migration_warnings_are_explicit_and_idempotent(self):
         source = {
             "providers": {"groq": {"model": "llama-3.3-70b-versatile"}},

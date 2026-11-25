@@ -8,7 +8,7 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
-SETTINGS_SCHEMA_VERSION = 5
+SETTINGS_SCHEMA_VERSION = 6
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,
@@ -65,8 +65,6 @@ DEFAULTS = {
     "local_voice_tts_model": "",
     "model_filter_mode": "all",
     "appearance": {"background_color": "#0A0A1C", "brightness": 100, "glow": 58, "transparency": 28},
-    "appearance_glow_adjusted": False,
-    "appearance_neon_shooter_v1": False,
     "character_voice": {},
     "character_notes": {},
     "character_resources": {},
