@@ -12,8 +12,8 @@ class SqliteRecoveryManager:
     """Own database health checks, backup discovery, quarantine and recovery.
 
     The manager depends on narrow persistence callbacks, never on the concrete
-    repository or its private attributes. Snapshot file lifecycle is delegated
-    to SqliteSnapshotManager.
+    repository or its private attributes. Snapshot lifecycle is composed by the
+    repository through the independent snapshot service.
     """
 
     def __init__(
