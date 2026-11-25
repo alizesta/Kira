@@ -68,7 +68,7 @@ def build_embedding_config(settings) -> dict | None:
             return None
         url, kind = None, "provider"
     # Provider/model identity and index format are part of the key; changed models never reuse stale vectors.
-    tag = f"kira-embedding-v{INDEX_VERSION}:{kind}:{provider_id}:{model}"
+    tag = f"kira-index-v{INDEX_VERSION}:{kind}:{provider_id}:{model}"
     return {"kind": kind, "model": model, "pid": provider_id if kind == "provider" else "",
             "url": url, "provider": provider_id, "tag": tag, "index_version": INDEX_VERSION}
 
