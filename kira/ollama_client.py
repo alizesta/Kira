@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 import requests
-from .config import DEFAULTS as SETTINGS_DEFAULTS
+from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS
 
 _OLLAMA_DEFAULTS = SETTINGS_DEFAULTS["providers"]["ollama"]
 DEFAULT_NUM_CTX = _OLLAMA_DEFAULTS["num_ctx"]

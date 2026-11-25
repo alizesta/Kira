@@ -321,6 +321,17 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("num_predict", route)
         self.assertTrue(any("routes[0].num_ctx" in warning for warning in config.LOAD_WARNINGS))
 
+    def test_route_and_provider_defaults_are_derived_from_canonical_schema(self):
+        from kira import routes
+        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS
+
+        self.assertIs(config.DEFAULTS, SCHEMA_DEFAULTS)
+        self.assertEqual(routes.DEFAULT_ORDER, SCHEMA_DEFAULTS["provider_order"])
+        self.assertEqual(routes.BUILTIN["ollama"]["model"], SCHEMA_DEFAULTS["providers"]["ollama"]["model"])
+        self.assertEqual(routes.DEFAULT_CLOUD_TIMEOUT, SCHEMA_DEFAULTS["providers"]["groq"]["timeout"])
+        self.assertEqual(routes.DEFAULT_LOCAL_TIMEOUT, SCHEMA_DEFAULTS["providers"]["ollama"]["timeout"])
+        self.assertEqual(routes.DEFAULT_COOLDOWN, SCHEMA_DEFAULTS["route_cooldown"])
+
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
         self.assertEqual(s["model"], config.LOCAL_UNCENSORED_MODEL)

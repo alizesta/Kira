@@ -13,19 +13,21 @@ import ast
 import re
 from copy import deepcopy
 
+from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+
 BUILTIN = {
-    "groq": {"label": "Groq", "kind": "cloud", "type": "openai_compat", "model": "openai/gpt-oss-120b"},
-    "cloudflare": {"label": "Cloudflare Workers AI", "kind": "cloud", "type": "cloudflare", "model": "@cf/meta/llama-3.1-8b-instruct"},
-    "mistral": {"label": "Mistral", "kind": "cloud", "type": "openai_compat", "model": "mistral-small-latest"},
-    "openrouter": {"label": "OpenRouter", "kind": "cloud", "type": "openai_compat", "model": ""},
-    "ollama": {"label": "Ollama", "kind": "local", "type": "ollama", "model": "qwen3.5:4b"},
+    "groq": {"label": "Groq", "kind": "cloud", "type": "openai_compat", "model": SETTINGS_DEFAULTS["providers"]["groq"]["model"]},
+    "cloudflare": {"label": "Cloudflare Workers AI", "kind": "cloud", "type": "cloudflare", "model": SETTINGS_DEFAULTS["providers"]["cloudflare"]["model"]},
+    "mistral": {"label": "Mistral", "kind": "cloud", "type": "openai_compat", "model": SETTINGS_DEFAULTS["providers"]["mistral"]["model"]},
+    "openrouter": {"label": "OpenRouter", "kind": "cloud", "type": "openai_compat", "model": SETTINGS_DEFAULTS["providers"]["openrouter"]["model"]},
+    "ollama": {"label": "Ollama", "kind": "local", "type": "ollama", "model": SETTINGS_DEFAULTS["providers"]["ollama"]["model"]},
 }
-DEFAULT_ORDER = ["groq", "cloudflare", "mistral", "openrouter", "ollama"]
+DEFAULT_ORDER = list(SETTINGS_DEFAULTS["provider_order"])
 CLOUD_TIMEOUT = (5, 60)
 LOCAL_TIMEOUT = (10, 600)
-DEFAULT_CLOUD_TIMEOUT = 18
-DEFAULT_LOCAL_TIMEOUT = 180
-DEFAULT_COOLDOWN = 45                  # seconds after a transient failure (network / timeout / 5xx)
+DEFAULT_CLOUD_TIMEOUT = SETTINGS_DEFAULTS["providers"]["groq"]["timeout"]
+DEFAULT_LOCAL_TIMEOUT = SETTINGS_DEFAULTS["providers"]["ollama"]["timeout"]
+DEFAULT_COOLDOWN = SETTINGS_DEFAULTS["route_cooldown"]
 COOLDOWN_RANGE = (0, 3600)
 
 

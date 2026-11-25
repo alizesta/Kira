@@ -20,16 +20,17 @@ from . import discovery
 from . import routes as route_model
 from .discovery import DiscoveryError
 from .app.detected_capabilities import DetectedCapabilities
+from .settings_schema import PROVIDER_DEFAULT_MODELS
 
 SERVICES = {
-    "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_models": ("openai/gpt-oss-120b",)},
-    "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_models": ()},
-    "mistral": {"label": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_models": ("mistral-small-latest",)},
+    "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_models": PROVIDER_DEFAULT_MODELS["groq"]},
+    "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_models": PROVIDER_DEFAULT_MODELS["openrouter"]},
+    "mistral": {"label": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_models": PROVIDER_DEFAULT_MODELS["mistral"]},
     "google": {"label": "Google AI Studio", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-               "default_models": ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")},
-    "cloudflare": {"label": "Cloudflare Workers AI", "base_url": "", "default_models": ("@cf/meta/llama-3.1-8b-instruct",)},
+               "default_models": PROVIDER_DEFAULT_MODELS["google"]},
+    "cloudflare": {"label": "Cloudflare Workers AI", "base_url": "", "default_models": PROVIDER_DEFAULT_MODELS["cloudflare"]},
     "apinex": {"label": "APInex", "base_url": "https://api.apinex.bond/v1",
-               "default_models": ("free/deepseek-v4.1-flash", "free/gemini-3.8-flash", "free/qwen-3.8-max")},
+               "default_models": PROVIDER_DEFAULT_MODELS["apinex"]},
 }
 BUILTIN_FOR = {"groq": "groq", "mistral": "mistral", "cloudflare": "cloudflare", "openrouter": "openrouter"}      # google has no built-in id: it is a registered provider
 KEY_MIN, KEY_MAX = 16, 300
