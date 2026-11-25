@@ -144,6 +144,23 @@ class ASRManagerTests(unittest.TestCase):
         self.assertEqual(manager.active_engine_id, "second")
         self.assertEqual([call[0] for call in first.calls].count("shutdown"), 2)
 
+    def test_pending_cleanup_is_retried_before_unsupported_engine_rejection(self):
+        adapter = FakeAdapter("first")
+        manager = ASRManager(adapters=[adapter])
+        manager.initialize({"local_voice_asr_backend": "first"})
+
+        adapter.fail_shutdown = True
+        with self.assertRaises(ASRError) as shutdown_error:
+            manager.shutdown()
+        self.assertEqual(shutdown_error.exception.code, "shutdown_failed")
+
+        adapter.fail_shutdown = False
+        with self.assertRaises(ASRError) as selection_error:
+            manager.transcribe([], 16000, {"local_voice_asr_backend": "qwen3"})
+        self.assertEqual(selection_error.exception.code, "unsupported_engine")
+        self.assertEqual(manager.active_engine_id, "")
+        self.assertEqual([call[0] for call in adapter.calls].count("shutdown"), 2)
+
     def test_initialization_cleanup_failure_retains_adapter_for_retry(self):
         adapter = FakeAdapter(fail="initialization")
         adapter.fail_shutdown = True
