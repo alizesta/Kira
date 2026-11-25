@@ -136,6 +136,7 @@ class ASRManagerTests(unittest.TestCase):
         blocked = manager.discover(second_settings)
         self.assertFalse(blocked["ready"])
         self.assertEqual(blocked["state"], "failed")
+        self.assertFalse(blocked["initialized"])
         self.assertEqual(blocked["error_code"], "shutdown_failed")
 
         first.fail_shutdown = False
