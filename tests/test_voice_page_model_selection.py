@@ -27,6 +27,33 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         self.assertEqual(page.voice_engine.currentData(), "gemini_live")
         self.assertEqual(page.gemini_model.currentText(), "gemini-3.8-live")
 
+    def test_gemini_provider_refresh_does_not_replace_a_deleted_selection(self):
+        settings = {
+            "gemini_live_provider": "deleted-google",
+            "providers": {
+                "google-secondary": {
+                    "service": "google", "label": "Secondary account", "api_key": "secondary-secret"
+                },
+            },
+        }
+        page = VoicePage(settings, lambda key: key)
+        page.refresh_gemini_providers(settings)
+        self.assertEqual(page.gemini_provider.currentData(), "deleted-google")
+        self.assertIn("جایگزین نشد", page.gemini_provider.currentText())
+
+    def test_gemini_provider_refresh_keeps_selected_connection_when_its_key_is_empty(self):
+        settings = {
+            "gemini_live_provider": "google-primary",
+            "providers": {
+                "google-primary": {"service": "google", "label": "Primary account", "api_key": ""},
+                "google-secondary": {"service": "google", "label": "Secondary account", "api_key": "secondary-secret"},
+            },
+        }
+        page = VoicePage(settings, lambda key: key)
+        page.refresh_gemini_providers(settings)
+        self.assertEqual(page.gemini_provider.currentData(), "google-primary")
+        self.assertIn("کلید API خالی است", page.gemini_provider.currentText())
+
     def test_local_voice_controls_are_embedded_in_stt_and_tts_sections(self):
         page = VoicePage({}, lambda key: key)
         self.assertTrue(hasattr(page, "local_asr_chk"))

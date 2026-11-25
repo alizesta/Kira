@@ -525,7 +525,7 @@ class VoicePage(QScrollArea):
         self.live_toggle.setText(label)
 
     def refresh_gemini_providers(self, settings: dict) -> None:
-        """Refresh Google credentials from Connections without silently changing a saved provider."""
+        """Refresh Google connections without replacing a saved (possibly stale) selection."""
         combo = self.gemini_provider
         settings = settings or {}
         providers = []
@@ -539,29 +539,31 @@ class VoicePage(QScrollArea):
                 or str(provider_cfg.get("service") or "").strip().lower() == "google"
                 or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "").lower()
             )
-            if is_google and str(provider_cfg.get("api_key") or "").strip():
-                providers.append((str(provider_cfg.get("label") or provider_id), provider_id))
+            if is_google:
+                label = str(provider_cfg.get("label") or provider_id)
+                if not str(provider_cfg.get("api_key") or "").strip():
+                    label += " (کلید API خالی است)"
+                providers.append((label, provider_id))
 
         selected = str(combo.currentData() or settings.get("gemini_live_provider") or "").strip()
         combo.blockSignals(True)
         try:
             combo.clear()
             provider_ids = {provider_id for _label, provider_id in providers}
-            if selected and selected not in provider_ids and not providers:
-                combo.addItem("Provider ذخیره‌شده در Connections پیدا نشد", selected)
+            if selected and selected not in provider_ids:
+                combo.addItem("اتصال Google ذخیره‌شده پیدا نشد؛ حساب دیگری جایگزین نشد", selected)
             for label, provider_id in providers:
                 combo.addItem(label, provider_id)
             if not providers and not selected:
                 combo.addItem("ابتدا Google AI Studio را در بخش اتصالات ثبت کن", "")
             index = combo.findData(selected)
-            if index < 0 and combo.count():
+            if index < 0 and not selected and combo.count():
                 index = 0
             if index >= 0:
                 combo.setCurrentIndex(index)
         finally:
             combo.blockSignals(False)
         combo.setEnabled(bool(providers) or bool(selected))
-
     def _register(self, setter: Callable[[str], None], key: str) -> None:
         self._translations.append((setter, key))
 

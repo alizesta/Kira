@@ -140,6 +140,10 @@ class AttachmentsVisionController(WindowFeatureController):
             per_minute = defaults.max_frames_per_minute
         return max(1.0, min(interval, 60.0)), max(1, min(per_minute, 60))
 
+    def live_video_budget(self):
+        """Return the effective minimum interval and rolling per-minute frame cap."""
+        return self._live_budget_values()
+
     def _live_policy(self):
         interval, per_minute = self._live_budget_values()
         return SelectorPolicy(
@@ -287,7 +291,7 @@ class AttachmentsVisionController(WindowFeatureController):
             ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
             if source == "desktop" else foreground_identity
         )
-        if not all(foreground_identity) or (source == "game" and foreground_identity != expected):
+        if source == "game" and (not all(foreground_identity) or foreground_identity != expected):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
             return False
@@ -377,8 +381,10 @@ class AttachmentsVisionController(WindowFeatureController):
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
-            max_bytes=MAX_VIDEO_FRAME_BYTES, fps=1,
-            approx_kib_per_second=round(len(jpeg) / 1024.0, 2),
+            max_bytes=MAX_VIDEO_FRAME_BYTES, gate_max_fps=1,
+            min_interval_seconds=selector.policy.min_interval_seconds,
+            max_frames_per_minute=selector.policy.max_frames_per_minute,
+            approx_kib_per_frame=round(len(jpeg) / 1024.0, 2),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
