@@ -153,8 +153,11 @@ class RouterRouteTests(unittest.TestCase):
             s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
             "test-google-api-key-1234567890", local=False, enabled=True,
         )
+        google_mirror = "custom-google-mirror"
+        s["providers"][google_mirror] = dict(s["providers"][google])
+        s["providers"][google_mirror]["label"] = "Google AI Studio mirror"
         first = routes.add_route(s, google, "gemini-4-hydrogen", enabled=True)
-        second = routes.add_route(s, google, "gemini-4-hydrogen", enabled=True)
+        second = routes.add_route(s, google_mirror, "gemini-4-hydrogen", enabled=True)
         routes.reorder(s, [first["id"], second["id"], "groq"])
         f = dispatch({
             "generativelanguage.googleapis.com": Resp(503, {"error": {"message": "temporary unavailable"}}),
@@ -165,7 +168,7 @@ class RouterRouteTests(unittest.TestCase):
         google_calls = [call for call in f.calls if "generativelanguage.googleapis.com" in call["url"]]
         self.assertEqual(len(google_calls), 1)
         self.assertEqual(google_calls[0]["json"]["model"], "gemini-4-hydrogen")
-        self.assertTrue(any(a.get("result") == "duplicate_model_skipped" for a in r.last_attempts))
+        self.assertTrue(any(a.get("result") == "duplicate_target_skipped" for a in r.last_attempts))
         self.assertEqual(len(f.calls), 2)
 
     def test_two_models_of_one_provider_are_independent_routes(self):
@@ -420,7 +423,11 @@ class RouterRouteTests(unittest.TestCase):
     def test_duplicate_endpoint_model_credentials_are_not_retried_as_failover(self):
         s, r = make("groq", "cloudflare")
         groq_route = next(route for route in routes.get_routes(s) if route["provider"] == "groq")
-        routes.add_route(s, "groq", groq_route["model"], enabled=True)
+        mirror = "custom-groq-mirror"
+        s["providers"][mirror] = dict(s["providers"]["groq"])
+        s["providers"][mirror]["label"] = "Groq credential mirror"
+        s["providers"][mirror]["base_url"] = "https://api.groq.com/openai/v1"
+        routes.add_route(s, mirror, groq_route["model"], enabled=True)
         r = HybridRouter(s)
         f = dispatch({"groq": requests.ConnectionError("offline"), "cloudflare": ok_cloudflare("backup")})
         with mock.patch("requests.post", f):
