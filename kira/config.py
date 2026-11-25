@@ -331,6 +331,9 @@ def _validate_value(value, default, path, repaired):
                     value[child_key] = _validate_value(
                         value[child_key], child_default, f"{path}.{child_key}", repaired
                     )
+                else:
+                    value[child_key] = deepcopy(child_default)
+                    repaired.append(f"{path}.{child_key}")
     if not valid:
         repaired.append(path)
         return deepcopy(default)

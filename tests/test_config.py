@@ -219,6 +219,20 @@ class ConfigTests(unittest.TestCase):
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(saved["role_route_models"]["surface"], [expected])
 
+    def test_partial_nested_settings_restore_missing_schema_fields(self):
+        self.path.write_text(
+            json.dumps({"appearance": {"brightness": 75}}),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        self.assertEqual(settings["appearance"]["brightness"], 75)
+        self.assertEqual(
+            settings["appearance"]["background_color"],
+            config.DEFAULTS["appearance"]["background_color"],
+        )
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertIn("glow", saved["appearance"])
+
     def test_nested_provider_values_are_validated_and_repaired_on_disk(self):
         self.path.write_text(
             json.dumps({"providers": {"ollama": {"num_ctx": "huge", "keep_alive": []}}}),
