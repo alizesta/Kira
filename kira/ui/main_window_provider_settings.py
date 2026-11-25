@@ -164,188 +164,71 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_model_catalogs()
 
     def build_network_policy_panel(self):
-        """Expose the network boundary as an explicit, persisted user permission."""
+        """Expose one local-first Cloud fallback switch for ordinary chat."""
         panel = QWidget()
-        form = QFormLayout(panel)
-        self.network_policy_combo = QComboBox()
-        self.network_policy_combo.addItem("فقط مدل‌های محلی؛ ارسال به Cloud ممنوع", "local_only")
-        self.network_policy_combo.addItem("اجازهٔ استفاده از مدل‌های Cloud در صورت نیاز", "cloud_permitted")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.cloud_fallback_check = QCheckBox(
+            "در صورت نبود مدل محلی، از Cloud استفاده کن"
+        )
         settings = self.context.services.settings
-        current = str(settings.get("network_policy") or "local_only").strip().lower()
-        if current not in ("local_only", "cloud_permitted"):
-            current = "local_only"
-        self.network_policy_combo.setCurrentIndex(self.network_policy_combo.findData(current))
-        self.network_policy_combo.activated.connect(self.on_network_policy_selected)
-        form.addRow("مجوز دسترسی شبکه", self.network_policy_combo)
-        note = QLabel(
-            "حالت محلی پیش‌فرض امن است. فعال‌کردن Cloud اجازه می‌دهد درخواست‌های مجاز "
-            "در صورت نیاز به Provider ابری ارسال شوند؛ کلید API به‌تنهایی این مجوز را فعال نمی‌کند."
+        self.cloud_fallback_check.setChecked(
+            str(settings.get("network_policy") or "local_only").strip().lower()
+            == "cloud_permitted"
         )
-        note.setWordWrap(True)
-        form.addRow("", note)
-
-        provider_service = self.context.services.provider_application_service
-        providers = settings.get("providers", {})
-        allowed = settings.get("role_provider_allowlist", {})
-        surface_allowed = {
-            str(value).strip().lower()
-            for value in (allowed.get("surface", []) if isinstance(allowed, dict) else [])
-            if str(value).strip()
-        }
-        self.surface_provider_checks = {}
-        provider_box = QWidget(panel)
-        provider_layout = QVBoxLayout(provider_box)
-        provider_layout.setContentsMargins(0, 0, 0, 0)
-        cloud_providers = [
-            (pid, cfg) for pid, cfg in providers.items()
-            if pid != "ollama"
-            and isinstance(cfg, dict)
-            and provider_service.provider_kind(pid, cfg) == "cloud"
-        ]
-        if not cloud_providers:
-            provider_layout.addWidget(QLabel("ابتدا یک Provider ابری در همین صفحه اضافه و پیکربندی کن."))
-        for pid, cfg in cloud_providers:
-            check = QCheckBox(provider_service.provider_label(pid, cfg))
-            check.setChecked(pid.strip().lower() in surface_allowed or (
-                pid.strip().lower() == "google" and "google" in surface_allowed
-            ))
-            check.toggled.connect(
-                lambda checked, provider_id=pid: self.on_surface_provider_toggled(provider_id, checked)
-            )
-            self.surface_provider_checks[pid] = check
-            provider_layout.addWidget(check)
-        form.addRow("Providerهای مجاز برای مکالمهٔ عادی", provider_box)
-
-        self.enable_surface_cloud_btn = QPushButton("فعال‌سازی Cloud برای مکالمهٔ عادی")
-        self.enable_surface_cloud_btn.setToolTip(
-            "با تأیید صریح، Providerهای ابری فعال و دارای کلید را برای مکالمهٔ عادی مجاز می‌کند."
+        self.cloud_fallback_check.setToolTip(
+            "درخواست فقط وقتی به Provider ابری می‌رود که Route محلیِ قابل استفاده وجود نداشته باشد. "
+            "با فعال‌کردن این گزینه، متن درخواست ممکن است به سرویس ابری ارسال شود."
         )
-        self.enable_surface_cloud_btn.clicked.connect(self.enable_surface_cloud)
-        form.addRow("", self.enable_surface_cloud_btn)
+        self.cloud_fallback_check.toggled.connect(self.on_cloud_fallback_toggled)
+        layout.addWidget(self.cloud_fallback_check)
         return panel
 
-    def enable_surface_cloud(self):
-        """Explicit one-click opt-in for configured Cloud providers used by ordinary chat."""
+    def on_cloud_fallback_toggled(self, enabled):
+        """Persist the single local-first Cloud fallback permission."""
         settings = self.context.services.settings
-        provider_service = self.context.services.provider_application_service
-        providers = settings.get("providers", {})
-        selected = [
-            pid for pid, checkbox in getattr(self, "surface_provider_checks", {}).items()
-            if checkbox.isChecked()
-            and isinstance(providers.get(pid), dict)
-            and providers[pid].get("enabled", True)
-            and bool(str(providers[pid].get("api_key") or "").strip())
-        ]
-        if not selected:
-            selected = [
-                pid for pid, cfg in providers.items()
-                if pid != "ollama"
-                and isinstance(cfg, dict)
-                and cfg.get("enabled", True)
-                and bool(str(cfg.get("api_key") or "").strip())
-                and provider_service.provider_kind(pid, cfg) == "cloud"
-            ]
-        if not selected:
-            QMessageBox.warning(
-                self.window,
-                "Provider ابری آماده نیست",
-                "هیچ Provider ابریِ فعال با کلید API ذخیره‌شده پیدا نشد. ابتدا در همین صفحه یک Provider را پیکربندی و فعال کن.",
-            )
-            return False
+        previous = str(settings.get("network_policy") or "local_only").strip().lower()
+        settings["network_policy"] = "cloud_permitted" if enabled else "local_only"
 
-        labels = "، ".join(provider_service.provider_label(pid, providers.get(pid)) for pid in selected)
-        answer = QMessageBox.question(
-            self.window,
-            "تأیید ارسال مکالمه به Cloud",
-            "با ادامه، متن مکالمه و داده‌های لازم برای درخواست‌های عادی ممکن است به این Providerهای ابری ارسال شوند:\n"
-            f"{labels}\n\nهمچنین Cloud به‌عنوان مسیر جایگزین پس از Routeهای محلی مجاز خواهد بود. ادامه می‌دهی؟",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if answer != QMessageBox.Yes:
-            return False
+        if enabled:
+            provider_service = self.context.services.provider_application_service
+            providers = settings.get("providers", {})
+            allowlists = settings.get("role_provider_allowlist")
+            if not isinstance(allowlists, dict):
+                allowlists = {}
+                settings["role_provider_allowlist"] = allowlists
+            raw = allowlists.get("surface")
+            allowed = {
+                str(value).strip().lower()
+                for value in raw
+                if str(value).strip()
+            } if isinstance(raw, (list, tuple, set, frozenset)) else set()
+            allowed.add("ollama")
+            for provider_id, config in providers.items():
+                if (
+                    isinstance(config, dict)
+                    and provider_service.provider_kind(provider_id, config) == "cloud"
+                ):
+                    allowed.add(str(provider_id).strip().lower())
+            allowlists["surface"] = sorted(allowed)
 
-        settings["network_policy"] = "cloud_permitted"
-        allowlists = settings.get("role_provider_allowlist")
-        if not isinstance(allowlists, dict):
-            allowlists = {}
-            settings["role_provider_allowlist"] = allowlists
-        raw = allowlists.get("surface")
-        allowed = {
-            str(value).strip().lower()
-            for value in raw
-            if str(value).strip()
-        } if isinstance(raw, (list, tuple, set, frozenset)) else set()
-        allowed.update(str(pid).strip().lower() for pid in selected)
-        allowed.add("ollama")
-        allowlists["surface"] = sorted(allowed)
-
-        if not self.feature_controller("runtime").save_now():
+        runtime = self.feature_controller("runtime")
+        if not runtime.save_now():
+            settings["network_policy"] = previous if previous in ("local_only", "cloud_permitted") else "local_only"
+            self.cloud_fallback_check.blockSignals(True)
+            self.cloud_fallback_check.setChecked(settings["network_policy"] == "cloud_permitted")
+            self.cloud_fallback_check.blockSignals(False)
             QMessageBox.warning(
                 self.window,
                 "ذخیره تنظیمات ناموفق بود",
-                "مجوز Cloud در فایل تنظیمات ذخیره نشد. وضعیت ذخیره را در صفحه Route بررسی کن.",
+                "تغییر مجوز استفاده از Cloud ذخیره نشد.",
             )
             return False
-        for pid, checkbox in getattr(self, "surface_provider_checks", {}).items():
-            checkbox.setChecked(pid.strip().lower() in allowed)
-        self.network_policy_combo.setCurrentIndex(
-            self.network_policy_combo.findData("cloud_permitted")
-        )
+
         self.refresh_route_list()
-        runtime = self.feature_controller("runtime")
         if not self.context.session.busy:
             runtime.set_badge("idle", self.context.session.client.preview_route())
         return True
-
-    def on_surface_provider_toggled(self, provider_id, enabled):
-        """Persist an explicit per-provider permission for ordinary chat (surface)."""
-        settings = self.context.services.settings
-        allowlists = settings.get("role_provider_allowlist")
-        if not isinstance(allowlists, dict):
-            allowlists = {}
-            settings["role_provider_allowlist"] = allowlists
-        current = allowlists.get("surface")
-        values = list(current) if isinstance(current, (list, tuple, set, frozenset)) else []
-        normalized = {str(value).strip().lower() for value in values if str(value).strip()}
-        provider = str(provider_id).strip().lower()
-        if enabled:
-            normalized.add(provider)
-        else:
-            normalized.discard(provider)
-        # Keep Ollama's existing permission and stable provider ordering.
-        if "ollama" in {str(value).strip().lower() for value in values}:
-            normalized.add("ollama")
-        allowlists["surface"] = sorted(normalized)
-        self.feature_controller("runtime").save_now()
-        self.refresh_route_list()
-
-    def on_network_policy_selected(self, index):
-        """Persist Cloud permission only after a direct, explicit confirmation."""
-        requested = str(self.network_policy_combo.itemData(index) or "local_only")
-        if requested not in ("local_only", "cloud_permitted"):
-            requested = "local_only"
-        settings = self.context.services.settings
-        previous = str(settings.get("network_policy") or "local_only").strip().lower()
-        if previous not in ("local_only", "cloud_permitted"):
-            previous = "local_only"
-        if requested == "cloud_permitted" and previous != "cloud_permitted":
-            answer = QMessageBox.question(
-                self.window,
-                "اجازهٔ استفاده از Cloud",
-                "با فعال‌کردن این گزینه، درخواست‌های مجاز Kira ممکن است همراه متن و "
-                "ضمیمه‌های لازم به Provider ابری ارسال شوند. ادامه می‌دهی؟",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if answer != QMessageBox.Yes:
-                self.network_policy_combo.setCurrentIndex(
-                    self.network_policy_combo.findData(previous)
-                )
-                return
-        settings["network_policy"] = requested
-        self.feature_controller("runtime").save_now()
-        self.refresh_route_list()
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
