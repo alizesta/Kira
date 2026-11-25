@@ -173,6 +173,25 @@ class SQLiteEvidenceStorage:
         return saved
 
     @staticmethod
+    def vector_dimension(db_factory, index: EmbeddingIndex) -> int | None:
+        """Return dimensions only when the persisted index contract matches this reader."""
+        with db_factory() as connection:
+            metadata = connection.execute(
+                "SELECT index_version, dimensions FROM embedding_indexes WHERE model_tag=?",
+                (index.tag,),
+            ).fetchone()
+        if metadata is None or int(metadata["index_version"]) != index.index_version:
+            return None
+        return int(metadata["dimensions"])
+
+    @staticmethod
+    def invalidate_index(db_factory, model_tag: str) -> None:
+        """Discard only incompatible derived vectors; authoritative facts and evidence are untouched."""
+        with db_factory() as connection:
+            connection.execute("DELETE FROM vectors WHERE model=?", (model_tag,))
+            connection.execute("DELETE FROM embedding_indexes WHERE model_tag=?", (model_tag,))
+
+    @staticmethod
     def fetch_vectors(db_factory, index: EmbeddingIndex, fact_ids: Iterable[str]) -> list[EvidenceVector]:
         ids = list(dict.fromkeys(str(item) for item in fact_ids if item))
         if not ids:

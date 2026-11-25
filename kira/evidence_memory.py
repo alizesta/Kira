@@ -625,7 +625,19 @@ def _semantic(query_text, ids, cfg) -> dict[str, float]:
     try:
         index = EmbeddingIndex.from_config(cfg)
         with _lock:
-            stored = _STORAGE.fetch_vectors(_db, index, ids)
+            expected_dimension = _STORAGE.vector_dimension(_db, index)
+            if expected_dimension is not None and expected_dimension != len(query_vectors[0]):
+                _STORAGE.invalidate_index(_db, index.tag)
+                incompatible = True
+                stored = []
+            else:
+                incompatible = False
+                stored = _STORAGE.fetch_vectors(_db, index, ids)
+        if incompatible:
+            # The provider/model identifier stayed the same but its deployed vector shape changed.
+            # Rebuild only the derived index; evidence facts and quotations remain authoritative.
+            schedule_vector_backfill()
+            return {}
         scores = {}
         for vector in stored:
             score = cosine_similarity(query_vectors[0], vector.values)
