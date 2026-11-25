@@ -72,29 +72,29 @@ Additional behavior:
 
 The implementation is split into explicit, replaceable boundaries:
 
-- \`evidence_memory_models.py\`: canonical \`EvidenceFact\`, \`EvidenceQuote\`, \`EmbeddingIndex\`, and validated \`EvidenceVector\` data contracts.
-- \`evidence_memory_storage.py\`: SQLite schema, initialization/recovery, fact database connections, and atomic vector-index persistence.
-- \`evidence_memory_index.py\`: Persian normalization, query expansion, document token caching, and pure BM25 ranking.
-- \`evidence_memory_embeddings.py\`: the provider protocol, Ollama and configured OpenAI-compatible adapters, response validation, timeout/cooldown policy, and vector math.
-- \`evidence_memory_retrieval.py\`: read-only retrieval, pinned-fact policy, expiry filtering, lexical/semantic ranking, and reciprocal-rank fusion.
-- \`evidence_memory.py\`: backwards-compatible application facade, evidence ingestion, history backfill, memory editing, and prompt integration.
+- `evidence_memory_models.py`: canonical `EvidenceFact`, `EvidenceQuote`, `EmbeddingIndex`, and validated `EvidenceVector` data contracts.
+- `evidence_memory_storage.py`: SQLite schema, initialization/recovery, fact database connections, and atomic vector-index persistence.
+- `evidence_memory_index.py`: Persian normalization, query expansion, document token caching, and pure BM25 ranking.
+- `evidence_memory_embeddings.py`: the provider protocol, Ollama and configured OpenAI-compatible adapters, response validation, timeout/cooldown policy, and vector math.
+- `evidence_memory_retrieval.py`: read-only retrieval, pinned-fact policy, expiry filtering, lexical/semantic ranking, and reciprocal-rank fusion.
+- `evidence_memory.py`: backwards-compatible application facade, evidence ingestion, history backfill, memory editing, and prompt integration.
 
 ### Storage and index compatibility
 
 The fact and provenance tables remain authoritative. Embedding vectors are derived data stored separately from facts. A vector write is validated and committed as one transaction; a provider error, invalid response, interrupted indexing pass, or incompatible vector dimension cannot roll back or delete a fact.
 
-Every vector index has a key containing its backend, provider, model identifier, and index-format version (\`index-v1\`). The \`embedding_indexes\` table records the index version and vector dimension. When a dimension or index contract changes, only the affected derived vector rows are invalidated and rebuilt; facts and their evidence quotations are retained. Switching providers or model identifiers selects a separate index. Existing SQLite fact/evidence tables and their rows are preserved by additive schema initialization.
+Every vector index has a key containing its backend, provider, model identifier, and index-format version (`index-v1`). The `embedding_indexes` table records the index version and vector dimension. When a dimension or index contract changes, only the affected derived vector rows are invalidated and rebuilt; facts and their evidence quotations are retained. Switching providers or model identifiers selects a separate index. Existing SQLite fact/evidence tables and their rows are preserved by additive schema initialization.
 
-Provider adapters implement the same \`EmbeddingProvider.embed(texts, config, settings, timeout)\` contract. The storage layer accepts validated vectors and has no dependency on the chat provider, network client, API key, or embedding implementation. BM25 remains the deterministic retrieval path whenever an embedding adapter is disabled, unavailable, incompatible, or failing.
+Provider adapters implement the same `EmbeddingProvider.embed(texts, config, settings, timeout)` contract. The storage layer accepts validated vectors and has no dependency on the chat provider, network client, API key, or embedding implementation. BM25 remains the deterministic retrieval path whenever an embedding adapter is disabled, unavailable, incompatible, or failing.
 
 A backfill processes bounded batches and schedules the next pass after a successful batch until no unindexed active facts remain. Provider failure stops the current pass and activates cooldown; it does not prevent facts from being stored or lexically recalled.
 
 ### Information lifecycle
 
 - New facts and their source quotations are inserted in one SQLite transaction.
-- A correction keeps the previous fact as \`superseded\`; the newer active fact is retrieved instead. Expired temporary/event facts remain stored but are excluded from retrieval after \`valid_to\`.
+- A correction keeps the previous fact as `superseded`; the newer active fact is retrieved instead. Expired temporary/event facts remain stored but are excluded from retrieval after `valid_to`.
 - Editing an evidence-only or persona-backed item replaces the previous fact atomically and removes its derived vectors. New wording is eligible for re-indexing.
-- Explicit deletion removes the fact, its quotations, and its vectors. \`Forget everything\` clears evidence, facts, quarantine rows, vector rows, and index metadata while preserving the chat-history watermark so forgotten history is not imported again.
+- Explicit deletion removes the fact, its quotations, and its vectors. `Forget everything` clears evidence, facts, quarantine rows, vector rows, and index metadata while preserving the chat-history watermark so forgotten history is not imported again.
 - Pruning removes only eligible superseded/retracted facts and their dependent evidence/vector rows. Corrupt database files are moved aside rather than overwritten.
 
 The regression suite covers persistence under provider failure, model/provider index identity, multi-batch backfill, retrieval, edit/delete cleanup, and the existing legacy recall paths.
