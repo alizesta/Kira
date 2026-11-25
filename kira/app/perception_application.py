@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable, Protocol
 
 from ..perception import PerceptionEngine
+from ..perception.change_detector import ChangeDetector
 from ..perception.events import PerceptionEvent
 from ..vision_ocr import OcrResult, OcrService
 
@@ -76,7 +77,11 @@ class PerceptionApplicationService:
         self.capture = capture_service
         self.privacy = capture_service.privacy
         self.ocr_service = ocr_service or OcrService()
-        self.engine = PerceptionEngine(self.context, self.ocr_service)
+        self.engine = PerceptionEngine(
+            self.context,
+            self.ocr_service,
+            change_detector=ChangeDetector(clock=clock),
+        )
         self._trace = trace or (lambda *_args, **_kwargs: None)
         self._clock = clock
         self._generation = 0
