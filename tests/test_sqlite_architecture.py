@@ -13,6 +13,19 @@ from kira.chat.sqlite_repository import PersistenceError, SqliteChatRepository
 
 
 class SqlitePersistenceBoundaryTests(unittest.TestCase):
+    def test_conversation_sql_is_owned_by_separate_repository(self):
+        repository = SqliteChatRepository(db_path=self.database)
+        self.assertEqual(repository.init_db(), [])
+        self.assertEqual(
+            type(repository._conversations).__module__,
+            "kira.chat.sqlite_conversation_repository",
+        )
+        created = repository.create_conversation("kira", title="owned")
+        self.assertEqual(created["title"], "owned")
+        self.assertEqual(repository.get_conversation(created["id"])["title"], "owned")
+        self.assertTrue(repository.update_conversation(created["id"], title="updated"))
+        self.assertEqual(repository.get_conversation(created["id"])["title"], "updated")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
