@@ -21,6 +21,9 @@ from .leak_guard import LeakGuard, clean_final
 from .route_policy import RoutePolicyEngine, normalize_network_policy
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
+from .provider_execution import CancellationToken
+from .provider_retry_policy import ProviderRetryPolicy
+from .provider_runtime_state import ProviderRuntimeState
 from .hybrid_providers import (  # noqa: F401 - re-exported for backward compatibility
     COOLDOWN_CONFIG,
     COOLDOWN_RATE_LIMIT,
@@ -61,9 +64,13 @@ class HybridRouter:
     def __init__(self, settings: dict, *, detected_capabilities: DetectedCapabilities | None = None):
         self.settings = settings
         self.detected_capabilities = detected_capabilities or DetectedCapabilities()
-        self.cooldowns: dict[str, float] = {}
-        self.quota_blocks: dict[tuple, dict] = {}
-        self.states: dict[str, dict] = {}              # route id -> health / last error / last response time (runtime only)
+        # Runtime state is owned by this router instance, never a process-wide singleton.
+        self.runtime_state = ProviderRuntimeState()
+        # Backwards-compatible views for existing status/UI integrations.
+        self.cooldowns = self.runtime_state.cooldowns
+        self.quota_blocks = self.runtime_state.quota_blocks
+        self.states = self.runtime_state.states
+        self.retry_policy = ProviderRetryPolicy()
         self.metrics = deque(maxlen=METRICS_KEEP)       # per-request speed records (metadata only)
         self.benchmarks = deque(maxlen=50)
         self.last_provider = None
@@ -127,7 +134,7 @@ class HybridRouter:
                 return False, "no_key"
         if not route.get("model") and provider != "ollama":
             return False, "no_model"
-        if include_cooldown and self.cooldowns.get(route["id"], 0) - time.monotonic() > 0:
+        if include_cooldown and self.runtime_state.cooldown_remaining(route["id"]) > 0:
             return False, "cooldown"
         return True, "ok"
 
@@ -299,10 +306,8 @@ class HybridRouter:
         return out
 
     def reset_cooldowns(self, route_id=None):
-        if route_id:
-            self.cooldowns.pop(route_id, None)
-        else:
-            self.cooldowns.clear()
+        """Reset transient cooldown observations owned by this router."""
+        self.runtime_state.reset_cooldowns(route_id)
 
     # ---------- provider construction ----------
     def _make_provider(self, route):
@@ -331,10 +336,7 @@ class HybridRouter:
 
     # ---------- health / cooldown bookkeeping ----------
     def _state(self, rid):
-        return self.states.setdefault(rid, {"health": "unknown", "last_error": None, "last_ms": None,
-                                            "latency_ms": None, "last_ok_at": None,
-                                            "last_attempt_at": None, "failures": 0, "last_kind": None,
-                                            "retryable": None, "failure_class": None})
+        return self.runtime_state.state_for(rid)
 
     def _mark_success(self, route, ms, latency_ms=None):
         st = self._state(route["id"])
@@ -342,7 +344,7 @@ class HybridRouter:
         st.update(health="healthy", last_error=None, last_ms=ms, latency_ms=measured,
                   last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None,
                   retryable=None, failure_class=None, model_failures=0)
-        self.cooldowns.pop(route["id"], None)
+        self.runtime_state.clear_cooldown(route["id"])
 
     def _google_quota_scope(self, route):
         """Google's rate limits are shared per project and model, not per API key."""
@@ -356,22 +358,15 @@ class HybridRouter:
         return ("google-provider-model", str(route.get("provider") or "").strip().casefold(), model)
 
     def _quota_status(self, route):
-        """Return an active quota block without conflating it with cooldown or route policy."""
+        """Return an active quota block from this router's explicit quota scope."""
         scope = self._google_quota_scope(route) or (
             "route-model", str(route.get("provider") or "").casefold(),
             str(route.get("model") or "").casefold(),
         )
-        entry = self.quota_blocks.get(scope)
-        if not entry:
-            return None
-        expires_at = entry.get("expires_at")
-        if expires_at is not None and expires_at <= time.monotonic():
-            self.quota_blocks.pop(scope, None)
-            return None
-        return entry
+        return self.runtime_state.quota_status(scope)
 
     def reset_quota_blocks(self, route_id=None):
-        """Clear runtime quota observations; never changes Provider or Route configuration."""
+        """Clear quota observations for this router, or the selected route's scope."""
         if route_id:
             route = next((item for item in self.routes() if str(item.get("id") or "") == str(route_id)), None)
             if route is None:
@@ -380,9 +375,9 @@ class HybridRouter:
                 "route-model", str(route.get("provider") or "").casefold(),
                 str(route.get("model") or "").casefold(),
             )
-            self.quota_blocks.pop(scope, None)
+            self.runtime_state.clear_quota_block(scope)
         else:
-            self.quota_blocks.clear()
+            self.runtime_state.reset_quota_blocks()
 
     def _mark_failure(self, route, exc, secrets=()):
         kind, status, retryable, retry_after = classify(exc)
@@ -397,7 +392,7 @@ class HybridRouter:
             cooldown = base
         if cooldown > 0:
             cooldown_until = time.monotonic() + cooldown
-            self.cooldowns[route["id"]] = cooldown_until
+            self.runtime_state.set_cooldown(route["id"], cooldown_until)
             if kind == "rate" or status == 429:
                 quota_scope = self._google_quota_scope(route)
                 if quota_scope is not None:
@@ -405,7 +400,7 @@ class HybridRouter:
                     # lets separate API entries for the same project share that model bucket.
                     for sibling in self.routes():
                         if self._google_quota_scope(sibling) == quota_scope:
-                            self.cooldowns[sibling["id"]] = cooldown_until
+                            self.runtime_state.set_cooldown(sibling["id"], cooldown_until)
         st = self._state(route["id"])
         st["failures"] += 1
         st["last_kind"] = kind
@@ -423,11 +418,11 @@ class HybridRouter:
                 "route-model", str(route.get("provider") or "").casefold(),
                 str(route.get("model") or "").casefold(),
             )
-            self.quota_blocks[quota_scope] = {
+            self.runtime_state.set_quota_block(quota_scope, {
                 "kind": quota_kind_value,
                 "expires_at": None if quota_kind_value == "no_free" else time.monotonic() + 86400,
                 "route_id": str(route.get("id") or ""),
-            }
+            })
         # Quota exhaustion and permanent model/configuration errors affect runtime
         # health only. They must never rewrite route.enabled or any other user setting.
         if kind == "model":
@@ -459,6 +454,7 @@ class HybridRouter:
             self._lock.release()
             raise RuntimeError("درخواست لغو شده است.")
         self._cancel.clear()
+        cancel_token = CancellationToken(self._cancel, cancel_event)
         trace_token = None
         try:
             started = time.monotonic()
@@ -494,7 +490,7 @@ class HybridRouter:
                     self.last_attempts.append({"provider": candidate["provider"], "route_id": candidate_id,
                                                "result": "usage_limit_blocked"})
                     continue
-                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
+                if cancel_token.is_set():
                     break
                 quota_state = self._quota_status(candidate)
                 if quota_state:
@@ -513,7 +509,7 @@ class HybridRouter:
                     self.last_attempts.append({"provider": candidate["provider"], "route_id": candidate_id,
                                                "result": "cooldown", "cooldown_remaining_seconds": remaining})
             for route in candidates:
-                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
+                if cancel_token.is_set():
                     break
                 rid = route["id"]
                 if (rid in cooldown_routes or rid in quota_blocked_routes
@@ -550,17 +546,21 @@ class HybridRouter:
                 provider = None
                 try:
                     provider = self._make_provider(route)
-                    if cancel_event is not None and cancel_event.is_set():
-                        break
-                    provider.cancel_event = cancel_event
+                    provider.cancel_event = cancel_token
+                    self._active = provider
+                    if cancel_token.is_set():
+                        return self._finish(route, info, [], metrics, started, attempt_started, connect_at, first_at,
+                                            provider, stopped=True, failures=failures)
                     provider.upload_progress = lambda pct, _i=info: emit({"phase": "uploading", "percent": pct, **_i})
                     guard = LeakGuard()                                   # internal analysis never becomes part of the answer
                     if not stream:
                         answer = clean_final(provider.chat(messages, system_prompt, temperature))
+                        if cancel_token.is_set():
+                            return self._finish(route, info, [], metrics, started, attempt_started, connect_at,
+                                                first_at, provider, stopped=True, failures=failures)
                         parts = [answer] if answer else []
                         connect_at = first_at = time.monotonic()
                     else:
-                        self._active = provider
 
                         def on_connect():
                             nonlocal connect_at
@@ -585,7 +585,7 @@ class HybridRouter:
                                     parts.append(chunk)
                                     if on_chunk:
                                         on_chunk(chunk)
-                                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
+                                if cancel_token.is_set():
                                     break
                             if not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
                                 tail = guard.finish()
@@ -599,7 +599,13 @@ class HybridRouter:
                             raise ProviderError(route["provider"], ("مدل فقط متن تحلیل داخلی برگرداند و چیزی برای نمایش نبود؛ Route بعدی امتحان می‌شود."
                                                                     if guard.leaked else "مدل پاسخ خالی برگرداند."), True, kind="empty")
                 except Exception as exc:                                  # noqa: BLE001 - every provider failure is contained here
-                    if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):  # Stop: not a failure of the route
+                    decision = self.retry_policy.decide(
+                        exc, request_repeatable=False, partial_output=bool(parts),
+                        cancelled=cancel_token.is_set(),
+                    )
+                    request_trace("retry_decision", route_id=rid, retryable=decision.retryable,
+                                  retry_same_target=decision.retry_same_target, decision=decision.reason)
+                    if decision.reason == "cancelled":
                         return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                                             stopped=True, failures=failures)
                     safe = RuntimeError(redact(exc, *secrets)) if not isinstance(exc, (ProviderError, OllamaError)) else exc
@@ -612,13 +618,13 @@ class HybridRouter:
                     self.last_attempts.append({"provider": route["provider"], "route_id": rid, "model": route["model"], "result": "error",
                                                "error_kind": kind, "status_code": status,
                                                "duration_ms": int((time.monotonic() - attempt_started) * 1000)})
-                    if parts:                                             # connection died mid-answer: keep what arrived, never repeat it
+                    if not decision.continue_with_alternative:
                         return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                                             interrupted=str(safe), failures=failures)
                     metrics["failovers"] += 1
                     continue
                 return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
-                                    stopped=self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()), failures=failures)
+                                    stopped=cancel_token.is_set(), failures=failures)
             # nothing worked
             self.last_provider = self.last_model = self.last_route_id = self.last_kind = None
             role = _ROLE.get()
@@ -657,7 +663,7 @@ class HybridRouter:
                         failures.append("هیچ Route محلیِ مجاز و آماده‌ای برای مکالمه پیدا نشد؛ وضعیت اتصال Ollama و سلامت مدل را بررسی کن.")
             self.last_error = "; ".join(failures) or "هیچ Route فعالی تنظیم نشده است."
             self.last_duration_ms = int((time.monotonic() - started) * 1000)
-            if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
+            if cancel_token.is_set():
                 metrics.update(result="stopped", total_ms=self.last_duration_ms)
                 self.metrics.append(metrics)
                 self.last_metrics = metrics
@@ -754,10 +760,14 @@ class HybridRouter:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
         self._cancel.clear()
+        cancel_token = CancellationToken(self._cancel)
         self.last_attempts = []
         started = time.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         request_id = uuid.uuid4().hex[:8]
+        trace_token = set_trace_request_id(request_id)
+        request_trace("request_start", stream=False, tool_calling=True, role=_ROLE.get() or "chat")
+        attempted_route_targets = set()
         failures = []
         last_provider = None
         last_route_info = None
@@ -787,9 +797,23 @@ class HybridRouter:
                     native = getattr(provider, "chat_with_tools", None)
                     if not callable(native):
                         continue
+                    provider.cancel_event = cancel_token
+                    route_cfg = self._provider_cfg(route)
+                    endpoint = str(route_cfg.get("base_url") or route.get("provider") or "").strip().rstrip("/").casefold()
+                    target_key = (endpoint, str(route.get("model") or "").strip().casefold(),
+                                  str(route_cfg.get("api_key") or ""))
+                    if target_key in attempted_route_targets:
+                        self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
+                                                   "model": route["model"], "result": "duplicate_target_skipped"})
+                        continue
+                    attempted_route_targets.add(target_key)
                     emit({"phase": "connecting", **info})
+                    request_trace("route_selected", route_id=route["id"], provider=route.get("provider"),
+                                  model=route.get("model"), stream=False, tool_calling=True)
                     self._active = provider
                     result = native(messages, system_prompt, temperature, tools)
+                    if cancel_token.is_set():
+                        return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
                     if result is None:                         # this model/provider explicitly lacks native tool support
                         self._active = None
                         continue
@@ -824,6 +848,8 @@ class HybridRouter:
                     # Native function-calling requests are real provider requests too.
                     # Record reported token usage and metadata just like the streaming path.
                     self._ledger(metrics, metrics["result"], provider, stats)
+                    request_trace("request_completed", provider=route["provider"], model=model, route_id=route["id"],
+                                  result=metrics["result"], total_ms=elapsed)
                     self._write_telemetry({
                         "provider": route["provider"],
                         "model": model,
@@ -840,12 +866,19 @@ class HybridRouter:
                             "kind": info["kind"], "label": info["label"], "metrics": metrics,
                             "stopped": False, "interrupted": None}
                 except Exception as exc:                              # noqa: BLE001
-                    if self._cancel.is_set():
+                    decision = self.retry_policy.decide(
+                        exc, request_repeatable=False, partial_output=False, cancelled=cancel_token.is_set(),
+                    )
+                    request_trace("retry_decision", route_id=route["id"], retryable=decision.retryable,
+                                  retry_same_target=decision.retry_same_target, decision=decision.reason)
+                    if decision.reason == "cancelled":
                         return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
                     last_provider = provider
                     last_route_info = {**self.route_info(route), "route": route}
                     secrets = (self._provider_cfg(route).get("api_key"),)
                     kind, status, _cooldown = self._mark_failure(route, exc, secrets)
+                    request_trace("route_failed", route_id=route["id"], provider=route.get("provider"),
+                                  model=route.get("model"), error_kind=kind, status_code=status)
                     failures.append(f"{route['id']}: {redact(exc, *secrets)}")
                     self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
                                                "result": "error", "error_kind": kind, "status_code": status})
@@ -905,6 +938,8 @@ class HybridRouter:
                 raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
             return None
         finally:
+            request_trace("request_end", duration_ms=int((time.monotonic() - started) * 1000))
+            reset_trace_request_id(trace_token)
             self._active = None
             self._lock.release()
 
@@ -1041,7 +1076,7 @@ class HybridRouter:
             out.append({"name": route["id"], "provider": route["provider"], "model": route["model"],
                         "kind": route_model.provider_kind(route["provider"], self._provider_cfg(route)),
                         "enabled": ok or reason == "cooldown", "reason": reason,
-                        "cooldown": max(0, int(self.cooldowns.get(route["id"], 0) - now)),
+                        "cooldown": int(self.runtime_state.cooldown_remaining(route["id"], now=now)),
                         "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"],
                         "policy_decision": next((d["reason"] for d in self.last_route_decisions
                                                  if d["route_id"] == str(route.get("id") or "")), None),

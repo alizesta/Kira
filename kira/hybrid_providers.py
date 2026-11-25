@@ -396,6 +396,8 @@ class BaseProvider(ChatProvider):
         kind = "local" if self.config.get("local") else "cloud"
         self.timeout = route_model.clamp_timeout(self.config.get("timeout", 18), kind)
         self._resp = None
+        self._response_lock = threading.Lock()
+        self.cancel_event = None
         self.last_usage = None                  # token / cost numbers the provider REPORTED for the last request (kira/usage.py), else None
         if self.config.get("local"):
             self.needs_key = False
@@ -417,12 +419,26 @@ class BaseProvider(ChatProvider):
         except Exception:                                              # noqa: BLE001 - usage bookkeeping never breaks a request
             pass
 
+    def _cancelled(self):
+        event = getattr(self, "cancel_event", None)
+        return bool(event is not None and event.is_set())
+
+    def _track_response(self, response):
+        with self._response_lock:
+            self._resp = response
+
+    def _release_response(self, response):
+        with self._response_lock:
+            if self._resp is response:
+                self._resp = None
+
     def abort(self):
-        """Close the open stream from another thread (Stop button)."""
-        resp, self._resp = self._resp, None
-        if resp is not None:
+        """Close the active JSON response or SSE stream from another thread."""
+        with self._response_lock:
+            response, self._resp = self._resp, None
+        if response is not None:
             try:
-                resp.close()
+                response.close()
             except Exception:
                 pass
 
@@ -497,9 +513,12 @@ class BaseProvider(ChatProvider):
         burn multiple RPD units before HybridRouter gets a chance to fail over.
         Let the router classify the single response and apply its normal cooldown.
         """
+        if self._cancelled():
+            raise RuntimeError("درخواست لغو شده است.")
         kwargs = self._send_args(headers, payload)
-        if stream:
-            kwargs["stream"] = True
+        # Keep the response body lazy even for JSON calls so another thread can close
+        # the socket while requests is decoding a slow/non-streaming model response.
+        kwargs["stream"] = True
         timeout = (min(10, self.timeout), self.timeout) if stream else self.timeout
         started = time.monotonic()
         host = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).hostname or "unknown"
@@ -517,6 +536,11 @@ class BaseProvider(ChatProvider):
                          read_timeout_s=timeout[1] if isinstance(timeout, tuple) else timeout)
         try:
             response = requests.post(url, timeout=timeout, **kwargs)
+            self._track_response(response)
+            if self._cancelled():
+                self._release_response(response)
+                response.close()
+                raise RuntimeError("درخواست لغو شده است.")
         except Exception as exc:
             request_trace("http_transport_error", provider=self.name, model=self.model, host=host, error_type=type(exc).__name__, elapsed_ms=int((time.monotonic()-started)*1000))
             if google:
@@ -536,34 +560,53 @@ class BaseProvider(ChatProvider):
         return response
 
     def _post_json(self, url, headers, payload):
-        """POST and return the decoded JSON body. Every failure becomes a classified ProviderError."""
+        """POST one JSON request while keeping its response abortable until decoding ends."""
         body_started = time.monotonic()
+        response = None
         try:
-            response = self._post_once(url, headers, payload)
-        except requests.Timeout as exc:
-            raise self._fail("مهلت پاسخ‌گویی سرویس تمام شد.", True, kind="timeout") from exc
-        except requests.RequestException as exc:
-            raise self._fail(f"خطای شبکه: {exc}", True, kind="network") from exc
-        self._check_status(response)
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
-        if ":generateContent" in url:
-            data = _native_to_openai(data)
-        self._note_usage(data)
-        if self._is_google_endpoint():
             try:
-                msg = (data.get("choices") or [{}])[0].get("message") or {}
-                content = msg.get("content")
-                chars = sum(len(str(x.get("text", ""))) for x in content if isinstance(x, dict)) if isinstance(content, list) else len(str(content or ""))
-                gemini_trace("result", model=self.model, finish_reason=_gemini_finish(data) or None, content_chars=chars,
-                             tool_calls=len(msg.get("tool_calls") or []), empty=(chars == 0 and not msg.get("tool_calls")),
-                             **_gemini_usage(data))
-            except Exception:                                              # noqa: BLE001
-                pass
-        request_trace("http_body_decoded", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-body_started)*1000), response_shape="json")
-        return data
+                response = self._post_once(url, headers, payload)
+            except requests.Timeout as exc:
+                raise self._fail("مهلت پاسخ‌گویی سرویس تمام شد.", True, kind="timeout") from exc
+            except requests.RequestException as exc:
+                raise self._fail(f"خطای شبکه: {exc}", True, kind="network") from exc
+
+            self._check_status(response)
+            if self._cancelled():
+                raise RuntimeError("درخواست لغو شده است.")
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
+            except requests.Timeout as exc:
+                raise self._fail("مهلت دریافت بدنهٔ پاسخ تمام شد.", True, kind="timeout") from exc
+            except requests.RequestException as exc:
+                raise self._fail(f"ارتباط هنگام دریافت بدنهٔ پاسخ قطع شد: {exc}", True, kind="network") from exc
+            if self._cancelled():
+                raise RuntimeError("درخواست لغو شده است.")
+            if ":generateContent" in url:
+                data = _native_to_openai(data)
+            self._note_usage(data)
+            if self._is_google_endpoint():
+                try:
+                    msg = (data.get("choices") or [{}])[0].get("message") or {}
+                    content = msg.get("content")
+                    chars = sum(len(str(x.get("text", ""))) for x in content if isinstance(x, dict)) if isinstance(content, list) else len(str(content or ""))
+                    gemini_trace("result", model=self.model, finish_reason=_gemini_finish(data) or None, content_chars=chars,
+                                 tool_calls=len(msg.get("tool_calls") or []), empty=(chars == 0 and not msg.get("tool_calls")),
+                                 **_gemini_usage(data))
+                except Exception:                                              # noqa: BLE001
+                    pass
+            request_trace("http_body_decoded", provider=self.name, model=self.model,
+                          elapsed_ms=int((time.monotonic()-body_started)*1000), response_shape="json")
+            return data
+        finally:
+            if response is not None:
+                self._release_response(response)
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
     def _open_stream(self, url, headers, payload):
         """POST with stream=True; the status is checked before the first byte of the body is read."""
@@ -576,12 +619,12 @@ class BaseProvider(ChatProvider):
         try:
             self._check_status(response)
         except ProviderError:
+            self._release_response(response)
             try:
                 response.close()
             except Exception:
                 pass
             raise
-        self._resp = response
         return response
 
     def _stream_sse(self, url, headers, payload, extract, on_connect=None):
@@ -634,7 +677,7 @@ class BaseProvider(ChatProvider):
             if g_on:
                 gemini_trace("stream_closed", model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000), chunks=g_chunks,
                              raw_chars=g_raw, shown_chars=g_out, finish_reason=g_finish or None, empty=(g_out == 0), **g_usage)
-            self._resp = None
+            self._release_response(response)
             try:
                 response.close()
             except Exception:

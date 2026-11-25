@@ -296,9 +296,30 @@ class OllamaClient:
         except requests.RequestException as exc:
             raise OllamaError(f"خطای شبکه در ارتباط با Ollama: {exc}", "network") from exc
 
-    def _post(self, path, payload, timeout):
+    def _close_chat_response(self):
+        response = getattr(self, "_chat_resp", None)
+        self._chat_resp = None
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+    def _post(self, path, payload, timeout, *, cancellable=False):
+        event = getattr(self, "cancel_event", None)
+        if cancellable:
+            self._close_chat_response()
+            if event is not None and event.is_set():
+                raise RuntimeError("درخواست لغو شده است.")
         try:
-            return requests.post(f"{self.base_url}{path}", json=payload, timeout=timeout)
+            response = requests.post(f"{self.base_url}{path}", json=payload, timeout=timeout,
+                                     stream=bool(cancellable))
+            if cancellable:
+                self._chat_resp = response
+                if event is not None and event.is_set():
+                    self._close_chat_response()
+                    raise RuntimeError("درخواست لغو شده است.")
+            return response
         except requests.ConnectionError as exc:
             raise self._offline(exc) from exc
         except requests.Timeout as exc:
@@ -423,6 +444,12 @@ class OllamaClient:
 
     # ---------- chat ----------
     def chat(self, messages, system_prompt, temperature=0.7):
+        try:
+            return self._chat_impl(messages, system_prompt, temperature)
+        finally:
+            self._close_chat_response()
+
+    def _chat_impl(self, messages, system_prompt, temperature=0.7):
         from .hybrid_ai import normalize_messages          # local import: avoids a circular import
         normalized = normalize_messages(messages)
         clean = fit_messages(normalized, system_prompt, self.num_ctx)
@@ -437,18 +464,18 @@ class OllamaClient:
         }
         if not self._no_think:
             payload["think"] = False     # thinking models (qwen3.5 ...) otherwise answer inside "thinking"
-        r = self._post("/api/chat", payload, self.timeout)
+        r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code == 400 and "think" in r.text.lower() and "think" in payload:
             payload.pop("think")         # model has no thinking support
             self._no_think = True
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model         # e.g. configured qwen3.5:4b, installed as qwen3.5:latest
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         for _ in range(MAX_CONTEXT_RETRIES):
             if not self._retry_context_overflow(r, payload, normalized, system_prompt):
                 break
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code == 404:
             raise self._missing()
         if r.status_code >= 400:
@@ -474,6 +501,12 @@ class OllamaClient:
 
     # ---------- native function calling ----------
     def chat_with_tools(self, messages, system_prompt, temperature=0.4, tools=None):
+        try:
+            return self._chat_with_tools_impl(messages, system_prompt, temperature, tools)
+        finally:
+            self._close_chat_response()
+
+    def _chat_with_tools_impl(self, messages, system_prompt, temperature=0.4, tools=None):
         """One native tool-call round through Ollama's /api/chat tools schema.
 
         Return None only when the selected model explicitly rejects tool calling. The router can then
@@ -506,20 +539,20 @@ class OllamaClient:
         }
         if not self._no_think:
             payload["think"] = False
-        r = self._post("/api/chat", payload, self.timeout)
+        r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code == 400 and "think" in (r.text or "").lower() and "think" in payload:
             payload.pop("think")
             self._no_think = True
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         for _ in range(MAX_CONTEXT_RETRIES):
             if not self._retry_context_overflow(
                 r, payload, normalized, system_prompt, preserve_tool_messages=True,
             ):
                 break
-            r = self._post("/api/chat", payload, self.timeout)
+            r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         if r.status_code in (400, 422):
             detail = self._error_text(r).lower()
             unsupported = (
@@ -567,11 +600,12 @@ class OllamaClient:
 
     # ---------- streaming ----------
     def abort(self):
-        """Close the open HTTP stream (called from another thread when the user presses Stop)."""
-        resp = getattr(self, "_stream_resp", None)
-        if resp is not None:
+        """Close either a non-streaming JSON response or an active NDJSON stream."""
+        self._close_chat_response()
+        response = getattr(self, "_stream_resp", None)
+        if response is not None:
             try:
-                resp.close()
+                response.close()
             except Exception:
                 pass
 
