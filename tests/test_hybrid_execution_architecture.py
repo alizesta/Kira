@@ -116,6 +116,50 @@ class HybridExecutionArchitectureTests(unittest.TestCase):
         routers[0].runtime_state.update_state("route-a", {"health": "degraded"})
         self.assertEqual(routers[1].runtime_state.state_snapshot("route-a")["health"], "degraded")
 
+    def test_router_falls_through_to_a_provider_that_supports_native_tools(self):
+        settings = fresh_settings()
+        router = HybridRouter(settings)
+        candidates = [
+            {"id": "unsupported", "provider": "unsupported", "model": "m"},
+            {"id": "capable", "provider": "capable", "model": "m"},
+        ]
+
+        class UnsupportedProvider:
+            def chat_with_tools(self, messages, system_prompt, temperature, tools):
+                return None
+
+        class NativeProvider:
+            last_stats = None
+            last_usage = None
+
+            def chat_with_tools(self, messages, system_prompt, temperature, tools):
+                return {"text": "", "tool_calls": [{"id": "call-1", "tool": "open_app", "args": {"name": "editor"}}]}
+
+        providers = {"unsupported": UnsupportedProvider(), "capable": NativeProvider()}
+        router._candidates = lambda: candidates
+        router._usage_blocked_providers = lambda _routes: set()
+        router.eligibility = lambda _route: (True, "ok")
+        router.route_info = lambda route: {
+            "route_id": route["id"], "provider": route["provider"],
+            "model": route["model"], "kind": "cloud", "label": route["provider"],
+        }
+        router._provider_cfg = lambda route: {
+            "base_url": f"https://{route['id']}.example/v1", "api_key": f"key-{route['id']}",
+        }
+        router._make_provider = lambda route: providers[route["id"]]
+        router._ledger = lambda *args, **kwargs: None
+
+        with mock.patch.object(HybridRouter, "_write_telemetry"):
+            result = router.chat_with_tools(
+                [{"role": "user", "content": "open editor"}],
+                "system",
+                tools=[{"name": "open_app", "parameters": {"type": "object"}}],
+            )
+
+        self.assertEqual(result["provider"], "capable")
+        self.assertEqual(result["tool_calls"][0]["tool"], "open_app")
+        self.assertEqual([attempt["route_id"] for attempt in router.last_attempts], ["capable"])
+
     def test_cancellation_token_combines_router_and_external_events(self):
         internal, external = threading.Event(), threading.Event()
         token = CancellationToken(internal, external)
