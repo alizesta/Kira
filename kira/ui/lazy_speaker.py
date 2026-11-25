@@ -81,6 +81,11 @@ class LazySpeaker(QObject):
     def is_speaking(self):
         return bool(getattr(self._speaker, "_began", False)) if self._speaker is not None else False
 
+    @property
+    def _began(self):
+        """Preserve the legacy Speaker state read by QtSpeakerAdapter."""
+        return self.is_speaking()
+
     def is_idle(self):
         if self._speaker is None:
             return True
