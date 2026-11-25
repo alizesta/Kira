@@ -93,7 +93,7 @@ class DesktopCaptureService:
         self._kernel32 = value
 
     def foreground_window_info(self) -> dict[str, Any] | None:
-        """Return HWND/PID/exe/path/title/bounds. Missing identity fails closed."""
+        """Return foreground HWND/PID/bounds plus optional process metadata."""
         if self._user32 is None or self._kernel32 is None:
             return None
         hwnd = self._user32.GetForegroundWindow()
@@ -120,8 +120,9 @@ class DesktopCaptureService:
                     exe = os.path.basename(path).lower()
             finally:
                 self._kernel32.CloseHandle(process)
-        if not exe or not path or not title.value.strip():
-            return None
+        # Shell windows, overlays and some games do not expose readable process
+        # metadata. Keep the stable foreground HWND/PID/rect anchor and let the
+        # privacy policy inspect whichever optional fields Windows did provide.
         return {
             "hwnd": int(hwnd), "pid": int(pid.value), "exe": exe, "path": path,
             "title": title.value.strip(), "rect": (rect.left, rect.top, rect.right, rect.bottom),
