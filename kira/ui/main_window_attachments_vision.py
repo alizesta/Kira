@@ -3,8 +3,11 @@ from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
 from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
-from ..live_video_selector import LiveFrameSelector, SAMPLE_HEIGHT, SAMPLE_WIDTH, SelectorPolicy
-from ..vision_orchestrator import FrameJob
+from ..vision_runtime_services import (
+    LiveSessionManager,
+    VisionAnalysisCoordinator,
+    VisionCaptureService,
+)
 from ..vision_ocr import OcrResult, OcrService
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
@@ -28,44 +31,7 @@ from .main_window_attachments_vision_support import (
 
 
 from .window_feature_controller import WindowFeatureController
-
-LIVE_VIDEO_MAX_WIDTH = 480
-LIVE_VIDEO_MAX_HEIGHT = 270
-LIVE_VIDEO_JPEG_QUALITY = 35
-LIVE_VIDEO_CHANGE_THRESHOLD = 0.015
-# 16 levels per RGB channel produce at most 4,096 distinct colors.
-LIVE_VIDEO_CHANNEL_LEVELS = 16
-LIVE_VIDEO_PALETTE_COLORS = LIVE_VIDEO_CHANNEL_LEVELS ** 3
-_LIVE_VIDEO_CHANNEL_LUT = bytes(
-    (((value * (LIVE_VIDEO_CHANNEL_LEVELS - 1) + 127) // 255) * 255
-     + (LIVE_VIDEO_CHANNEL_LEVELS - 1) // 2)
-    // (LIVE_VIDEO_CHANNEL_LEVELS - 1)
-    for value in range(256)
-)
-
-
-def _quantize_live_video_image(image):
-    """Reduce RGB channel precision while keeping a true-color JPEG stream."""
-    if image is None or image.isNull():
-        return image
-    rgb = image.convertToFormat(QImage.Format_RGB888)
-    quantized = bytes(rgb.constBits()).translate(_LIVE_VIDEO_CHANNEL_LUT)
-    return QImage(
-        quantized, rgb.width(), rgb.height(), rgb.bytesPerLine(),
-        QImage.Format_RGB888,
-    ).copy()
-
-
-def _live_gray_sample(image):
-    """Small smoothed grayscale grid used only to decide whether the screen changed."""
-    small = image.scaled(
-        SAMPLE_WIDTH, SAMPLE_HEIGHT, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
-    ).convertToFormat(QImage.Format_Grayscale8)
-    stride = small.bytesPerLine()
-    raw = bytes(small.constBits())
-    return b"".join(
-        raw[row * stride:row * stride + SAMPLE_WIDTH] for row in range(SAMPLE_HEIGHT)
-    )
+from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
 
 
 def _game_fields(game):
@@ -86,6 +52,65 @@ class AttachmentsVisionController(WindowFeatureController):
             or id(session)
         )
 
+    def _frame_codec(self):
+        codec = getattr(self, "_vision_qt_frame_codec", None)
+        if codec is None:
+            codec = QtVisionFrameCodec()
+            self._vision_qt_frame_codec = codec
+        return codec
+
+    def _capture_service(self):
+        service = getattr(self, "_vision_capture_service", None)
+        if service is None:
+            service = VisionCaptureService(
+                self.context.adapters.game_mode,
+                self.context.services.vision_application_service,
+            )
+            self._vision_capture_service = service
+        return service
+
+    def _analysis_coordinator(self):
+        coordinator = getattr(self, "_vision_analysis_coordinator", None)
+        if coordinator is None:
+            coordinator = VisionAnalysisCoordinator(
+                self.context.services.vision_application_service,
+                self._frame_codec().encode_analysis_frame,
+                trace=vision_trace,
+            )
+            self._vision_analysis_coordinator = coordinator
+        return coordinator
+
+    def _live_transport(self):
+        transport = getattr(self, "_vision_live_transport", None)
+        if transport is None:
+            runtime = self.feature_controller("runtime")
+            transport = GeminiLiveTransportAdapter(
+                readiness=runtime.is_gemini_live_ready,
+                clear_frames=runtime.clear_gemini_video_frames,
+                send_frame=runtime.send_gemini_video_frame,
+            )
+            self._vision_live_transport = transport
+        return transport
+
+    def _max_live_frame_bytes(self):
+        from ..gemini_live import MAX_VIDEO_FRAME_BYTES
+        return MAX_VIDEO_FRAME_BYTES
+
+    def _live_session_manager(self):
+        manager = getattr(self, "_vision_live_session_manager", None)
+        if manager is None:
+            manager = LiveSessionManager(
+                self.context.services.settings,
+                self._capture_service(),
+                self.context.services.vision_application_service,
+                self.context.services.game_mode_application_service,
+                self._live_transport(),
+                self._frame_codec(),
+                max_frame_bytes_provider=self._max_live_frame_bytes,
+                trace=vision_trace,
+            )
+            self._vision_live_session_manager = manager
+        return manager
     def _trace_capture_state(self, game, frame, source=None):
         """Deduplicate capture diagnostics within this controller, never across windows."""
         state = (bool(game), frame is not None and not frame.isNull(), source)
@@ -143,45 +168,26 @@ class AttachmentsVisionController(WindowFeatureController):
         return 1000 if getattr(self, "_live_video_active", False) else base
 
     def _live_budget_values(self):
-        """Frame budget from settings, clamped; bad or missing values fall back to the defaults."""
-        settings = self.context.services.settings
-        defaults = SelectorPolicy()
-        try:
-            interval = float(settings.get("eye_live_min_interval_seconds", defaults.min_interval_seconds))
-        except (TypeError, ValueError):
-            interval = defaults.min_interval_seconds
-        try:
-            per_minute = int(settings.get("eye_live_max_frames_per_minute", defaults.max_frames_per_minute))
-        except (TypeError, ValueError):
-            per_minute = defaults.max_frames_per_minute
-        return max(1.0, min(interval, 60.0)), max(1, min(per_minute, 60))
+        """Return the effective Live frame budget from the session manager."""
+        return self._live_session_manager().budget_values()
 
     def live_video_budget(self):
         """Return the effective minimum interval and rolling per-minute frame cap."""
         return self._live_budget_values()
 
     def _live_policy(self):
-        interval, per_minute = self._live_budget_values()
-        return SelectorPolicy(
-            mean_threshold=LIVE_VIDEO_CHANGE_THRESHOLD,
-            min_interval_seconds=interval,
-            max_frames_per_minute=per_minute,
-        )
+        return self._live_session_manager().policy
 
     def _live_selector(self):
-        selector = getattr(self, "_live_frame_selector", None)
-        if selector is None:
-            selector = LiveFrameSelector(self._live_policy())
-            self._live_frame_selector = selector
-        return selector
+        return self._live_session_manager().selector
 
     def set_live_frame_budget(self, interval_seconds, frames_per_minute):
-        """Persist the Gemini Live frame budget and apply it to the running selector."""
+        """Persist the Live frame budget and apply it to the active selector."""
         settings = self.context.services.settings
         settings["eye_live_min_interval_seconds"] = float(interval_seconds)
         settings["eye_live_max_frames_per_minute"] = int(frames_per_minute)
         save_settings(settings)
-        self._live_selector().policy = self._live_policy()
+        self._live_session_manager().refresh_policy()
 
     def set_eye_mode_profile(self, profile):
         """Persist the manually chosen game profile. It never turns Eye Mode on by itself."""
@@ -196,10 +202,9 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.state._game_mode_profile = normalized
 
     def _eye_monitor_choices(self):
-        capture = self.context.adapters.game_mode.capture_service
         return [
             (monitor.id, monitor.name + (" · اصلی" if monitor.primary else ""))
-            for monitor in capture.list_monitors()
+            for monitor in self._capture_service().list_monitors()
         ]
 
     def build_eye_vision_page(self):
@@ -236,21 +241,15 @@ class AttachmentsVisionController(WindowFeatureController):
         return page
 
     def _clear_live_video_state(self):
-        self._live_selector().reset()
-        self._live_video_identity = None
-        self.feature_controller("runtime").clear_gemini_video_frames()
+        self._live_session_manager().reset(clear_remote=True)
 
     def set_live_video_active(self, enabled):
-        """Use a 1 Hz timer only while Live and a manual screen source are both active."""
+        """Synchronize Live sampling with the manually enabled Eye Mode source."""
+        self._live_session_manager().activate(bool(enabled))
         self._live_video_active = bool(enabled)
-        if enabled:
-            # A new Live session has seen no frame yet, even if the screen has not changed.
-            self._live_selector().reset()
         source_active = bool(self.context.state._game_mode_enabled)
         timer = self.context.state._game_capture_timer
         timer.setInterval(self._vision_interval_ms())
-        if not enabled:
-            self._clear_live_video_state()
         if source_active and not self.context.state._closing:
             if not timer.isActive():
                 timer.start()
@@ -262,172 +261,16 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.services.vision_application_service.release_frame_budget(frame_context)
         return False
 
-    def _maybe_stream_gemini_live_frame(self, _frame, source, window_info, *, frame_context=None):
-        """Send a full-monitor JPEG after rechecking Live readiness and foreground privacy."""
-        runtime = self.feature_controller("runtime")
-        if not runtime.is_gemini_live_ready():
-            return self._release_live_frame_budget(frame_context)
-        # Imported here: Live is already running at this point and startup stays deferred.
-        from ..gemini_live import MAX_VIDEO_FRAME_BYTES
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        if source == "desktop":
-            source_enabled = bool(privacy.enabled)
-        elif source == "game":
-            permissions = self.context.services.game_mode_application_service.permissions(
-                self.context.state._game_mode_profile
-            )
-            source_enabled = bool(self.context.state._game_mode_enabled and permissions["vision_capture"])
-        else:
-            source_enabled = False
-        if not source_enabled:
-            self._clear_live_video_state()
-            return self._release_live_frame_budget(frame_context)
-
-        capture = self.context.adapters.game_mode.capture_service
-        allow_partial_identity = source == "desktop"
-        current = capture.foreground_window_info(
-            allow_partial_identity=allow_partial_identity
+    def _maybe_stream_gemini_live_frame(self, frame, source, window_info, *, frame_context=None):
+        """Delegate Live privacy checks, sampling and frame admission to the session manager."""
+        return self._live_session_manager().stream_frame(
+            frame,
+            source,
+            window_info,
+            frame_context=frame_context,
+            game_mode_enabled=bool(self.context.state._game_mode_enabled),
+            game_mode_profile=self.context.state._game_mode_profile,
         )
-        service = self.context.services.vision_application_service
-        permitted = service.capture_allowed(
-            self.context.state._game_mode_enabled if source == "game" else False,
-            self.context.state._game_mode_profile if source == "game" else None,
-            source=source, window_info=current,
-        )
-        if not permitted:
-            self._clear_live_video_state()
-            vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
-            return self._release_live_frame_budget(frame_context)
-        foreground_identity = (
-            int(current.get("hwnd") or 0), int(current.get("pid") or 0),
-            str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
-            str(current.get("path") or "").casefold(),
-        )
-        expected = (
-            int((window_info or {}).get("hwnd") or 0), int((window_info or {}).get("pid") or 0),
-            str((window_info or {}).get("exe") or "").casefold(),
-            str((window_info or {}).get("title") or "").strip(),
-            str((window_info or {}).get("path") or "").casefold(),
-        )
-        # Desktop Eye Mode captures the selected monitor, not the foreground window.
-        # Keep its Live stream stable while focus moves between applications.
-        identity = (
-            ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
-            if source == "desktop" else foreground_identity
-        )
-        if source == "game" and (not all(foreground_identity) or foreground_identity != expected):
-            self._clear_live_video_state()
-            vision_trace("live_video_blocked", source=source, reason="foreground_changed")
-            return self._release_live_frame_budget(frame_context)
-        if identity != getattr(self, "_live_video_identity", None):
-            runtime.clear_gemini_video_frames()
-            self._live_selector().reset()
-            self._live_video_identity = identity
-
-        monitor_id = privacy.selected_monitor_id if source == "desktop" else None
-        if frame_context is not None and not self.context.services.vision_application_service.frame_orchestrator.is_current(frame_context):
-            return self._release_live_frame_budget(frame_context)
-        if _frame is not None and not _frame.isNull():
-            frame_image = _frame.scaled(
-                LIVE_VIDEO_MAX_WIDTH, LIVE_VIDEO_MAX_HEIGHT,
-                Qt.KeepAspectRatio, Qt.SmoothTransformation,
-            )
-        else:
-            pixmap = capture.capture_monitor_for_window(
-                current, monitor_id=monitor_id or None,
-                max_width=LIVE_VIDEO_MAX_WIDTH, max_height=LIVE_VIDEO_MAX_HEIGHT,
-            )
-            frame_image = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
-        if frame_image is None or frame_image.isNull():
-            self._clear_live_video_state()
-            vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
-            return self._release_live_frame_budget(frame_context)
-        latest = capture.foreground_window_info(
-            allow_partial_identity=allow_partial_identity
-        )
-        latest_identity = (
-            int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
-            str((latest or {}).get("exe") or "").casefold(),
-            str((latest or {}).get("title") or "").strip(),
-            str((latest or {}).get("path") or "").casefold(),
-        )
-        if (source == "game" and latest_identity != foreground_identity) or not service.capture_allowed(
-            self.context.state._game_mode_enabled if source == "game" else False,
-            self.context.state._game_mode_profile if source == "game" else None,
-            source=source, window_info=latest,
-        ):
-            self._clear_live_video_state()
-            vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
-            return self._release_live_frame_budget(frame_context)
-
-        image = _quantize_live_video_image(frame_image)
-        selector = self._live_selector()
-        sample = _live_gray_sample(image)
-        decision = selector.evaluate(sample)
-        if not decision.send:
-            return self._release_live_frame_budget(frame_context)
-        try:
-            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-
-            def encode_jpeg(frame, quality):
-                data = QByteArray()
-                buffer = QBuffer(data)
-                if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", quality):
-                    return b""
-                return bytes(data)
-
-            # Keep the normal frame small first; only step down further when necessary.
-            encoded_image = image
-            quality = LIVE_VIDEO_JPEG_QUALITY
-            jpeg = encode_jpeg(encoded_image, quality)
-            if len(jpeg) > MAX_VIDEO_FRAME_BYTES:
-                for quality in (30, 25, 20):
-                    jpeg = encode_jpeg(encoded_image, quality)
-                    if jpeg and len(jpeg) <= MAX_VIDEO_FRAME_BYTES:
-                        break
-            if len(jpeg) > MAX_VIDEO_FRAME_BYTES:
-                for width, height, quality in ((384, 216, 22), (320, 180, 20)):
-                    encoded_image = image.scaled(
-                        width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                    )
-                    jpeg = encode_jpeg(encoded_image, quality)
-                    if jpeg and len(jpeg) <= MAX_VIDEO_FRAME_BYTES:
-                        break
-            if not jpeg or len(jpeg) > MAX_VIDEO_FRAME_BYTES:
-                vision_trace(
-                    "live_video_frame_dropped", source=source,
-                    reason="frame_exceeds_size_limit", jpeg_bytes=len(jpeg),
-                    max_bytes=MAX_VIDEO_FRAME_BYTES,
-                    width=encoded_image.width(), height=encoded_image.height(),
-                )
-                return self._release_live_frame_budget(frame_context)
-        except Exception as exc:  # a video path error must not interrupt audio
-            vision_trace("live_video_encode_failed", source=source, error=type(exc).__name__)
-            return self._release_live_frame_budget(frame_context)
-        if not runtime.send_gemini_video_frame(jpeg):
-            return self._release_live_frame_budget(frame_context)
-        selector.commit(sample)
-        if frame_context is not None:
-            self.context.services.vision_application_service.commit_frame_budget(frame_context)
-        vision_trace(
-            "live_video_frame_queued", source=source,
-            frame_id=frame_context.frame_id if frame_context is not None else None,
-            session_id=frame_context.session_id if frame_context is not None else None,
-            reason=decision.reason, mean_change=round(decision.mean_change, 4),
-            changed_cells=decision.changed_cells,
-            skipped_unchanged=selector.skipped_unchanged,
-            skipped_rate_limited=selector.skipped_rate_limited,
-            format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
-            jpeg_quality=quality, jpeg_bytes=len(jpeg),
-            jpeg_kib=round(len(jpeg) / 1024.0, 2),
-            max_bytes=MAX_VIDEO_FRAME_BYTES, gate_max_fps=1,
-            min_interval_seconds=selector.policy.min_interval_seconds,
-            max_frames_per_minute=selector.policy.max_frames_per_minute,
-            approx_kib_per_frame=round(len(jpeg) / 1024.0, 2),
-            color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
-            palette_colors=LIVE_VIDEO_PALETTE_COLORS,
-        )
-        return True
 
     def _queue_perception_ocr(self, frame, source, window_info):
         """Update safe app context immediately; OCR only follows a changed screen."""
@@ -633,38 +476,26 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def capture_screen_attachment(self):
         """Attach an explicitly requested, privacy-approved foreground-window crop."""
-        capture = self.context.adapters.game_mode.capture_service
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        window_info = capture.foreground_window_info()
-        allowed, reason = privacy.evaluate_window(window_info, explicit=True)
-        if not allowed:
+        captured = self._capture_service().capture_explicit_window()
+        if not captured.allowed:
             vision_trace(
                 "capture_blocked",
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
-                reason=reason,
+                exe=str((captured.window_info or {}).get("exe") or "")[:80] or None,
+                reason=captured.reason,
             )
             self.feature_controller("session").add_chat(
                 "system", "ثبت تصویر به‌دلیل محدودیت حریم خصوصی انجام نشد."
             )
             return
-        policy = self.context.services.vision_application_service.policy
-        pixmap = capture.capture_window(
-            window_info,
-            monitor_id=privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
-        )
-        if pixmap is None or pixmap.isNull():
+        if captured.frame is None or captured.frame.isNull():
             self.feature_controller("session").add_chat(
                 "system", "ثبت تصویر پنجرهٔ فعال ناموفق بود یا پنجره روی مانیتور انتخاب‌شده نبود."
             )
             return
-        self.add_pasted_image(pixmap.toImage())
+        self.add_pasted_image(captured.frame)
         self.feature_controller("session").add_chat(
             "system", "🖥️ تصویر پنجرهٔ فعال به پیوست‌ها اضافه شد؛ تا وقتی خودت پیام را نفرستی، برای مدل ارسال نمی‌شود."
         )
-
-    # ---- attachments (images and files) ----
 
     def pick_attachments(self):
         exts = " ".join("*" + e for e in sorted(att.IMAGE_TYPES))
@@ -837,9 +668,8 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def set_desktop_monitor(self, monitor_id):
         """Persist selected display; empty value follows the foreground window's display."""
-        capture = self.context.adapters.game_mode.capture_service
         selected = str(monitor_id or "").strip()
-        available = {monitor.id for monitor in capture.list_monitors()}
+        available = {monitor.id for monitor in self._capture_service().list_monitors()}
         if selected and selected not in available:
             self.feature_controller("session").add_chat(
                 "system", "مانیتور انتخاب‌شده دیگر در دسترس نیست."
@@ -873,19 +703,13 @@ class AttachmentsVisionController(WindowFeatureController):
             self._capture_desktop_frame()
 
     def _cancel_vision_worker(self, session=None):
-        """Invalidate and cancel only the work owned by one Session."""
+        """Invalidate frame generations and cancel the worker owned by one session."""
         session = session or self.context.session
         if session is None:
             return
-        session_id = self._vision_session_id(session)
-        services = getattr(self.context, "services", None)
-        service = getattr(services, "vision_application_service", None)
-        if service is not None:
-            service.cancel_frame_session(session_id)
-        session._vision_frame_context = None
-        worker = getattr(session, "_vision_worker", None)
-        if worker is not None and worker.isRunning():
-            worker.cancel_request()
+        self._analysis_coordinator().cancel_worker(
+            session, self._vision_session_id(session)
+        )
 
     def _cancel_all_vision_workers(self):
         """Cancel every Session because the window-wide capture policy is changing."""
@@ -1205,266 +1029,143 @@ class AttachmentsVisionController(WindowFeatureController):
             self.feature_controller("runtime").reply_local(alert.message, alert.emotion)
 
     def _capture_game_frame(self):
-        """Capture one frame and let the orchestrator choose its sole cloud consumer."""
-        service = self.context.services.vision_application_service
-        if not service.capture_allowed(
+        """Capture through the policy boundary, then route the immutable frame context."""
+        captured = self._capture_service().capture_game_frame(
             self.context.state._game_mode_enabled,
             self.context.state._game_mode_profile,
-            source="game",
-        ):
-            self._clear_live_video_state()
-            self.context.state._latest_game_frame = None
-            self._cancel_vision_worker()
-            self._trace_capture_state(None, None)
-            return
-        self.context.adapters.game_mode.poll()
-        window_info = self.context.adapters.game_mode.last_game
-        if not service.capture_allowed(
-            self.context.state._game_mode_enabled,
-            self.context.state._game_mode_profile,
-            source="game",
-            window_info=window_info,
-        ):
-            self._clear_live_video_state()
-            self.context.state._latest_game_frame = None
-            if window_info:
-                _allowed, reason = service.desktop_capture_application_service.evaluate_window(
-                    window_info, explicit=True
-                )
-                vision_trace("capture_blocked", exe=str(window_info.get("exe") or "")[:80], reason=reason)
-            self._cancel_vision_worker()
-            return
-        capture = self.context.adapters.game_mode.capture_service
-        policy = service.policy
-        pixmap = capture.capture_window(
-            window_info, max_width=policy.max_width, max_height=policy.max_height
         )
-        frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
+        window_info = captured.window_info
+        if not captured.allowed:
+            self._clear_live_video_state()
+            self.context.state._latest_game_frame = None
+            if captured.stage == "privacy" and window_info:
+                vision_trace(
+                    "capture_blocked",
+                    exe=str(window_info.get("exe") or "")[:80],
+                    reason=captured.reason,
+                )
+            self._cancel_vision_worker()
+            if captured.stage == "source":
+                self._trace_capture_state(None, None)
+            return
+
+        frame = captured.frame
         self.context.state._latest_game_frame = frame
-        self._trace_capture_state(window_info, frame, "game" if frame is not None else None)
+        self._trace_capture_state(
+            window_info, frame, "game" if frame is not None else None
+        )
         if frame is None:
             return
         frame_context, decision = self._submit_vision_frame(frame, "game", window_info)
         if decision is not None and decision.route == "live":
-            # The game source still streams the complete monitor; route ownership is
-            # decided against the same immutable capture context as local analysis.
             self._maybe_stream_gemini_live_frame(
                 None, "game", window_info, frame_context=frame_context
             )
 
     def _capture_desktop_frame(self):
-        """Capture the selected monitor once and share that frame across eligible routes."""
-        service = self.context.services.vision_application_service
-        privacy = service.desktop_capture_application_service
-        capture = self.context.adapters.game_mode.capture_service
-        window_info = capture.foreground_window_info(allow_partial_identity=True)
-        allowed, reason = privacy.evaluate_window(window_info)
-        if not allowed:
+        """Capture the selected monitor through the source/privacy capture service."""
+        captured = self._capture_service().capture_desktop_frame()
+        window_info = captured.window_info
+        if not captured.allowed:
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
             vision_trace(
                 "capture_blocked",
                 exe=str((window_info or {}).get("exe") or "")[:80] or None,
-                reason=reason,
+                reason=captured.reason,
             )
             self._cancel_vision_worker()
             return
-        policy = service.policy
-        pixmap = capture.capture_monitor_for_window(
-            window_info,
-            monitor_id=privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
-        )
-        frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
+
+        frame = captured.frame
         self.context.state._latest_game_frame = frame
         if frame is None:
             vision_trace(
-                "capture_skipped", source="desktop",
-                exe=str(window_info.get("exe") or "")[:80],
+                "capture_skipped",
+                source="desktop",
+                exe=str((window_info or {}).get("exe") or "")[:80],
                 reason="selected_monitor_capture_failed",
             )
             return
-        frame_context, decision = self._submit_vision_frame(frame, "desktop", window_info)
+        frame_context, decision = self._submit_vision_frame(
+            frame, "desktop", window_info
+        )
         if decision is not None and decision.route == "live":
             self._maybe_stream_gemini_live_frame(
                 frame, "desktop", window_info, frame_context=frame_context
             )
 
     def _submit_vision_frame(self, frame, source, window_info):
-        """Create one immutable frame context and select exactly one cloud route."""
+        """Submit the frame to the Qt-free analysis coordinator."""
         service = self.context.services.vision_application_service
         if frame is None or frame.isNull():
             return None, None
-        # Local OCR/perception is a separate on-device capability, not a cloud route.
+        # Local OCR/perception remains a separate on-device capability.
         self._queue_perception_ocr(frame, source, window_info)
         enabled = self.context.state._game_mode_enabled if source == "game" else True
         profile = self.context.state._game_mode_profile if source == "game" else None
-        worker = self.context.session._vision_worker
+        session = self.context.session
         analysis_allowed = service.should_analyze(
             enabled=enabled,
             profile=profile,
             frame_available=True,
             worker_running=False,
-            chat_busy=self.context.session.busy,
-            provider_busy=self.context.session.client.busy,
+            chat_busy=session.busy,
+            provider_busy=session.client.busy,
             speech_active=self.context.services.voice_application_service.is_speaking(),
             source=source,
             window_info=window_info,
         )
-        runtime = self.feature_controller("runtime")
-        live_ready = bool(runtime.is_gemini_live_ready())
-        session_id = self._vision_session_id(self.context.session)
-        orchestrator = service.frame_orchestrator
+        live_ready = bool(self.feature_controller("runtime").is_gemini_live_ready())
+        session_id = self._vision_session_id(session)
         if live_ready:
             interval_seconds, max_frames_per_minute = self._live_budget_values()
         else:
             interval_seconds = max(0.25, float(service.policy.interval_seconds))
             max_frames_per_minute = max(1, int(60.0 / interval_seconds))
-        orchestrator.configure_budget(
-            max_frames_per_minute=max_frames_per_minute,
-            min_interval_seconds=interval_seconds,
-            session_id=session_id,
-        )
-        frame_context = orchestrator.create_context(session_id, source, window_info)
-        decision = orchestrator.decide(
-            frame_context, live_ready=live_ready, analysis_allowed=analysis_allowed
-        )
-        vision_trace(
-            "frame_route_decided",
-            frame_id=frame_context.frame_id,
-            session_id=frame_context.session_id,
-            source=source,
-            route=decision.route,
-            reason=decision.reason,
-            generation=frame_context.generation,
-        )
-        if decision.route != orchestrator.ANALYSIS:
-            return frame_context, decision
         try:
-            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-            data = QByteArray()
-            buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not frame.save(
-                buffer, "JPEG", service.policy.jpeg_quality
-            ):
-                service.release_frame_budget(frame_context)
-                return frame_context, decision
-            jpeg = bytes(data)
-            thumbnail = frame.scaled(
-                32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation
-            ).convertToFormat(QImage.Format_Grayscale8)
-            visual_sample = bytes(
-                thumbnail.pixelColor(x, y).red()
-                for y in range(thumbnail.height())
-                for x in range(thumbnail.width())
-            )
-            if not service.enqueue_frame(FrameJob(frame_context, jpeg, visual_sample)):
-                service.release_frame_budget(frame_context)
-                return frame_context, decision
-            self._dispatch_next_vision_job()
-        except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
-            service.discard_frame(frame_context)
-            vision_trace("analysis_error", source=source, error=f"{type(exc).__name__}: {exc}")
-            self.feature_controller("session").add_chat(
-                "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
-            )
-        return frame_context, decision
-
-    def _dispatch_next_vision_job(self):
-        """Dispatch the newest queued frame only when its owning session is ready."""
-        service = self.context.services.vision_application_service
-        session = self.context.session
-        if session is None:
-            return
-        session_id = self._vision_session_id(session)
-        if self.context.state._closing:
-            self._cancel_vision_worker(session)
-            return
-        status = getattr(session, "status", "")
-        if status in ("closing", "closed", "failed"):
-            self._cancel_vision_worker(session)
-            active = getattr(session, "_vision_worker", None)
-            if status == "closing" and (active is None or not active.isRunning()):
-                self.feature_controller("session")._dispose_chat_session(session)
-            return
-        active = getattr(session, "_vision_worker", None)
-        if active is not None and active.isRunning():
-            return
-        job = service.take_next_frame(session_id)
-        if job is None:
-            return
-        frame_context = job.context
-        if session_id != frame_context.session_id or not service.frame_context_is_current(frame_context):
-            service.release_frame_budget(frame_context)
-            vision_trace(
-                "analysis_discarded", frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id, source=frame_context.source,
-                reason="stale_session_context",
-            )
-            return
-        source = frame_context.source
-        enabled = self.context.state._game_mode_enabled if source == "game" else True
-        profile = self.context.state._game_mode_profile if source == "game" else None
-        window_info = {
-            "hwnd": frame_context.window_identity[0],
-            "pid": frame_context.window_identity[1],
-            "exe": frame_context.window_identity[2],
-            "title": frame_context.window_identity[3],
-            "path": frame_context.window_identity[4],
-        }
-        try:
-            eligible = service.should_analyze(
-                enabled=enabled, profile=profile, frame_available=True,
-                worker_running=False, chat_busy=session.busy, provider_busy=session.client.busy,
-                speech_active=self.context.services.voice_application_service.is_speaking(),
-                source=source, window_info=window_info,
-            )
-            if not eligible:
-                service.release_frame_budget(frame_context)
-                return
-            if not service.accept_frame(
-                job.payload,
-                visual_sample=job.visual_sample,
+            frame_context, decision = self._analysis_coordinator().submit_frame(
+                frame,
+                source,
+                window_info,
                 session_id=session_id,
-            ):
-                service.release_frame_budget(frame_context)
-                return
-            image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
-            image = att.image_attachment(job.payload, image_name, "image/jpeg")
-            router = getattr(session, "vision_router", None)
-            if router is None:
-                raise RuntimeError("session-owned Vision router is unavailable")
-            worker = VisionAnalysisWorker(
-                router, image,
-                ocr_enabled=(
-                    bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
-                    if source == "game" else False
-                ),
-                frame_context=frame_context,
+                live_ready=live_ready,
+                analysis_allowed=analysis_allowed,
+                interval_seconds=interval_seconds,
+                max_frames_per_minute=max_frames_per_minute,
             )
-            session._vision_session = session
-            session._vision_frame_context = frame_context
-            session._vision_worker = worker
+            if decision is not None and decision.route == service.frame_orchestrator.ANALYSIS:
+                self._dispatch_next_vision_job()
+            return frame_context, decision
+        except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
             vision_trace(
-                "analysis_started", frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id, source=source,
-                jpeg_bytes=len(job.payload),
-            )
-            worker.done_with_context.connect(session.relay.game_vision_done_with_context)
-            worker.finished.connect(session.relay.game_vision_finished)
-            worker.start()
-            service.commit_frame_budget(frame_context)
-        except Exception as exc:
-            service.release_frame_budget(frame_context)
-            vision_trace(
-                "analysis_error", frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id, source=source,
+                "analysis_error", source=source,
                 error=f"{type(exc).__name__}: {exc}",
             )
             self.feature_controller("session").add_chat(
                 "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
             )
+            return None, None
+
+    def _dispatch_next_vision_job(self):
+        """Provide session and Qt adapters to the Qt-free analysis coordinator."""
+        session = self.context.session
+        if session is None:
+            return
+        session_controller = self.feature_controller("session")
+        self._analysis_coordinator().dispatch_next(
+            session,
+            session_id=self._vision_session_id(session),
+            closing=bool(self.context.state._closing),
+            game_mode_enabled=bool(self.context.state._game_mode_enabled),
+            game_mode_profile=self.context.state._game_mode_profile,
+            speech_active=self.context.services.voice_application_service.is_speaking(),
+            settings=self.context.services.settings,
+            worker_factory=VisionAnalysisWorker,
+            attachment_factory=att.image_attachment,
+            dispose_session=session_controller._dispose_chat_session,
+            report_error=lambda message: session_controller.add_chat("system", message),
+        )
 
     def _send_pending_for_session(self, session):
         if self.context.state._closing or session is None or session.cid not in self.context.state.sessions:
@@ -1630,53 +1331,36 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _live_vision_attachment(self):
         """Attach a privacy-approved frame from Eye Mode's selected monitor."""
-        if not self.context.state._game_mode_enabled:
-            return None
-        service = self.context.services.vision_application_service
-        privacy = service.desktop_capture_application_service
-        if not privacy.enabled:
-            return None
-        capture = self.context.adapters.game_mode.capture_service
-        window_info = capture.foreground_window_info(allow_partial_identity=True)
-        allowed, reason = privacy.evaluate_window(window_info)
-        if not allowed or not service.capture_allowed(
-            False, None, source="desktop", window_info=window_info
-        ):
+        captured = self._capture_service().capture_desktop_attachment(
+            source_enabled=bool(self.context.state._game_mode_enabled)
+        )
+        if not captured.allowed:
             vision_trace(
                 "attach_blocked",
                 source="desktop",
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
-                reason=reason if not allowed else "eye_mode_source_disabled",
+                exe=str((captured.window_info or {}).get("exe") or "")[:80] or None,
+                reason=captured.reason,
             )
             return None
-        policy = service.policy
-        pixmap = capture.capture_monitor_for_window(
-            window_info,
-            monitor_id=privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
-        )
-        frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
-        if frame is None:
+        frame = captured.frame
+        if frame is None or frame.isNull():
             vision_trace(
                 "attach_skip",
                 source="desktop",
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
+                exe=str((captured.window_info or {}).get("exe") or "")[:80] or None,
                 reason="selected_monitor_capture_failed",
             )
             return None
         try:
-            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-            data = QByteArray()
-            buffer = QBuffer(data)
+            policy = self.context.services.vision_application_service.policy
             quality = min(int(policy.jpeg_quality), int(CAPTURE_JPEG_QUALITY))
-            if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", quality):
-                return None
-            jpeg = bytes(data)
+            jpeg = self._frame_codec().encode_jpeg(frame, quality)
+            if not jpeg:
+                raise RuntimeError("jpeg_encode_failed")
             vision_trace(
                 "attach_ok",
                 source="desktop",
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
+                exe=str((captured.window_info or {}).get("exe") or "")[:80] or None,
                 width=frame.width(),
                 height=frame.height(),
                 jpeg_bytes=len(jpeg),
@@ -1686,13 +1370,30 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace(
                 "attach_error",
                 source="desktop",
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
+                exe=str((captured.window_info or {}).get("exe") or "")[:80] or None,
                 error=f"{type(exc).__name__}: {exc}",
             )
             self.feature_controller("session").add_chat(
                 "system", f"تصویر مانیتور انتخاب‌شده آماده نشد: {str(exc)[:180]}"
             )
             return None
+
+    def dispose_runtime_services(self):
+        """Cancel service-owned Vision work after the host has stopped its Qt workers."""
+        self._cancel_all_vision_workers()
+        self._cancel_perception_worker()
+        manager = getattr(self, "_vision_live_session_manager", None)
+        if manager is not None:
+            manager.dispose()
+        perception_worker = self.context.state._perception_worker
+        if perception_worker is not None and perception_worker.isRunning():
+            return False
+        sessions = tuple(self.context.state.sessions.values())
+        return not any(
+            (worker := getattr(session, "_vision_worker", None)) is not None
+            and worker.isRunning()
+            for session in sessions
+        )
 
     def _game_vision_attachment(self):
         """Backward-compatible Game Mode attachment facade."""

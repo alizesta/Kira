@@ -95,3 +95,35 @@ When Gemini Live voice conversation and a manually enabled visual source are act
 The privacy policy is rechecked against the foreground window identity. An image is sent only when HWND/PID and source permission are verified. Disabling Live Desktop Vision or Game Mode, stopping the conversation, or detecting a blocked window clears pending frames. Images are held in memory only and are not automatically added to conversation history or user files.
 
 This capability provides the model with visible content from that monitor only; it does not grant access to other monitors. 1 FPS is not continuous 30/60 FPS video.
+
+
+## Vision runtime responsibility boundaries (Task 14)
+
+The Vision window controller is a Qt adapter. It translates UI actions and timer
+ticks into service calls, publishes status, and supplies the Qt image codec and
+worker factory. It no longer owns capture policy, Live-session policy, frame-route
+admission, queue cancellation, or worker dispatch.
+
+- ChatAttachmentController remains the sole owner of pre-send attachment loading,
+  cancellation, tile lifetime, and attachment payloads. The Vision controller
+  keeps only file-picker, drag/drop, upload-status, and compatibility entry points.
+- VisionCaptureService owns Game/Desktop/explicit-window capture decisions,
+  monitor selection inputs, privacy checks, and conversion of capture-adapter
+  results to the stable CaptureResult contract.
+- VisionAnalysisCoordinator owns per-session route selection, JPEG/frame-job
+  admission, queued-job dispatch, worker start/cancel, and frame-budget release
+  or commit. It imports no Qt module. Worker creation and session-relay binding
+  are supplied through the explicit VisionWorkerContract.
+- LiveSessionManager owns Live frame budgets, foreground/privacy revalidation,
+  monitor identity, change selection, transport admission, and reservation
+  commit/release. Its transport and frame codec are injected interfaces.
+- QtVisionFrameCodec is the UI-side QImage/QBuffer adapter. VisionAnalysisWorker
+  emits its result with the immutable FrameContext and does not retain a
+  MainWindow/controller reference.
+
+A frame is committed to the Live selector only after the transport accepts it.
+A routed frame reservation is released on blocked, stale, unchanged, failed
+encoding, rejected queue, or rejected transport paths. Session cancellation
+invalidates its generation before requesting worker cancellation, so late
+results cannot become current again. During window shutdown, each session is
+cancelled through the same coordinator before the Vision services are disposed.

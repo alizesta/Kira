@@ -208,7 +208,11 @@ class ProviderTestWorker(QThread):
 
 
 class VisionAnalysisWorker(QThread):
-    """Bounded image analysis; uses only a route marked/recognized as Vision-capable."""
+    """Qt implementation of VisionWorkerContract; knows no MainWindow/controller.
+
+    Emits its result with the immutable FrameContext, then uses QThread.finished
+    as the lifecycle signal. The owning ChatSession relay is the sole recipient.
+    """
     done = Signal(bool, str, int)
     done_with_context = Signal(bool, str, int, object)
 

@@ -622,6 +622,11 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                     return False
             except Exception:
                 return False
+        try:
+            if not self.feature_controller("attachments_vision").dispose_runtime_services():
+                return False
+        except Exception:
+            return False
         vision_service = getattr(self.context.services, "vision_application_service", None)
         if vision_service is not None:
             try:
@@ -717,9 +722,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 sess.client.cancel()
             if sess.timer is not None:
                 sess.timer.stop()
-            vision_worker = getattr(sess, "_vision_worker", None)
-            if vision_worker is not None and vision_worker.isRunning():
-                vision_worker.cancel_request()
+            self.feature_controller("attachments_vision")._cancel_vision_worker(sess)
         for timer_name in ("wake_timer", "_game_poll_timer", "_game_capture_timer", "_mood_ui_timer"):
             timer = self.context.resource(timer_name)
             if timer is not None:
