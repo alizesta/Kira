@@ -24,8 +24,7 @@ class SqliteRecoveryManager:
         read_rows: Callable[[Path], list[tuple]],
         read_conversations: Callable[[Path], list[dict]],
         merge_rows: Callable[..., list[tuple]],
-        write_rows: Callable[[list[tuple]], None],
-        restore_conversations: Callable[[list[dict]], None],
+        write_recovery_state: Callable[[list[tuple], list[dict]], None],
         db_name: str,
         persistence_error: type[Exception],
     ):
@@ -34,8 +33,7 @@ class SqliteRecoveryManager:
         self._read_rows = read_rows
         self._read_conversations = read_conversations
         self._merge_rows = merge_rows
-        self._write_rows = write_rows
-        self._restore_conversations = restore_conversations
+        self._write_recovery_state = write_recovery_state
         self._db_name = str(db_name)
         self._persistence_error = persistence_error
 
@@ -96,10 +94,9 @@ class SqliteRecoveryManager:
         backup_rows, backup = self.latest_backup_rows()
         backup_conversations = self._read_conversations(backup) if backup else []
         merged = self._merge_rows(backup_rows, salvaged)
-        # The rewrite is one Unit of Work; metadata restoration is separately
-        # transactional and only starts after the message rewrite commits.
-        self._write_rows(merged)
-        self._restore_conversations([*backup_conversations, *salvaged_conversations])
+        # Messages and conversation metadata share one Unit of Work. A failed
+        # metadata validation therefore rolls back the entire recovery rewrite.
+        self._write_recovery_state(merged, [*backup_conversations, *salvaged_conversations])
         source = f" و از پشتیبان «{backup.parent.name}» کامل شد" if backup and backup_rows else ""
         return (
             f"دیتابیس گفتگو خراب بود ({reason}). فایل خراب پاک نشد و با نام «{quarantine.name}» "
