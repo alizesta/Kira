@@ -59,19 +59,29 @@ class NativeRoutingTests(unittest.TestCase):
                 make().chat(MSGS, "s", 0.2)
             self.assertTrue(rec.calls[0]["url"].endswith("/chat/completions"))
 
-    def test_plain_400_is_retried_once_on_openai_compat_but_503_is_never_replayed(self):
+    def test_plain_400_does_not_silently_fall_back_unless_explicitly_enabled(self):
         bad = Resp(400, {"error": {"message": "Invalid JSON payload"}})
-        rec = Recorder(bad, Resp(200, {"choices": [{"message": {"content": "fallback"}}]}))
+        rec = Recorder(bad)
         with mock.patch("requests.post", rec):
-            self.assertEqual(make().chat(MSGS, "s", 0.2), "fallback")
-        self.assertEqual(len(rec.calls), 2)
+            with self.assertRaises(ProviderError) as caught:
+                make().chat(MSGS, "s", 0.2)
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(len(rec.calls), 1)
         self.assertIn(":generateContent", rec.calls[0]["url"])
+
+        rec = Recorder(
+            Resp(400, {"error": {"message": "Invalid JSON payload"}}),
+            Resp(200, {"choices": [{"message": {"content": "fallback"}}]}),
+        )
+        with mock.patch("requests.post", rec):
+            self.assertEqual(make(gemini_native_fallback=True).chat(MSGS, "s", 0.2), "fallback")
+        self.assertEqual(len(rec.calls), 2)
         self.assertTrue(rec.calls[1]["url"].endswith("/chat/completions"))
 
         rec = Recorder(Resp(503, {"error": {"message": "overloaded"}}), native_ok())
         with mock.patch("requests.post", rec):
             with self.assertRaises(ProviderError):
-                make().chat(MSGS, "s", 0.2)
+                make(gemini_native_fallback=True).chat(MSGS, "s", 0.2)
         self.assertEqual(len(rec.calls), 1)                       # a 5xx may have counted against quota: no replay
 
 
@@ -140,11 +150,21 @@ class NativeStreamTests(unittest.TestCase):
         self.assertTrue(rec.calls[0]["url"].endswith(":streamGenerateContent?alt=sse"))
         self.assertTrue(rec.calls[0]["stream"])
 
-    def test_stream_400_before_any_text_falls_back_to_openai_compat_once(self):
+    def test_stream_400_requires_explicit_compatibility_fallback(self):
         bad = StreamResp([], status=400, body={"error": {"message": "Invalid JSON payload"}})
-        rec = Recorder(bad, StreamResp(sse("سلام")))
+        rec = Recorder(bad)
         with mock.patch("requests.post", rec):
-            self.assertEqual("".join(make().stream(MSGS, "s", 0.2)), "سلام")
+            with self.assertRaises(ProviderError):
+                "".join(make().stream(MSGS, "s", 0.2))
+        self.assertEqual(len(rec.calls), 1)
+        self.assertIn(":streamGenerateContent", rec.calls[0]["url"])
+
+        rec = Recorder(
+            StreamResp([], status=400, body={"error": {"message": "Invalid JSON payload"}}),
+            StreamResp(sse("سلام")),
+        )
+        with mock.patch("requests.post", rec):
+            self.assertEqual("".join(make(gemini_native_fallback=True).stream(MSGS, "s", 0.2)), "سلام")
         self.assertEqual(len(rec.calls), 2)
         self.assertTrue(rec.calls[1]["url"].endswith("/chat/completions"))
 

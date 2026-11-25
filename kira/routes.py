@@ -89,7 +89,7 @@ def _check_url(url):
     return url
 
 
-def update_provider(settings, pid, *, label=None, base_url=None, api_key=None, account_id=None, local=None):
+def update_provider(settings, pid, *, label=None, base_url=None, api_key=None, account_id=None, local=None, quota_scope=None):
     """Edit a registered provider in place. Its id never changes, so every route / model attached to it stays attached.
 
     None = leave as it is. api_key: None or "" keeps the saved key (changing it is optional). base_url "" on a built-in
@@ -124,6 +124,9 @@ def update_provider(settings, pid, *, label=None, base_url=None, api_key=None, a
         updates["local"] = bool(local)
     if api_key is not None and str(api_key).strip():
         updates["api_key"] = str(api_key).strip()
+    if quota_scope is not None:
+        scope = str(quota_scope).strip()[:100]
+        updates["quota_scope"] = scope or None
     changed = []
     for key, value in updates.items():
         if value is None:

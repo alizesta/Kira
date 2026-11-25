@@ -803,9 +803,12 @@ class OpenAICompatibleProvider(BaseProvider):
 
     @staticmethod
     def _native_rejected(exc):
-        """Only a plain 400 means 'this request shape is not accepted': safe to retry once on the OpenAI-compatible route
-        (a 400 does not consume quota; timeouts / 5xx / 429 are never replayed because they may)."""
+        """A plain 400 may be eligible for a compatibility retry; all other failures remain native errors."""
         return getattr(exc, "status_code", None) == 400 and getattr(exc, "kind", "") == "request"
+
+    def _native_fallback_enabled(self):
+        """Compatibility fallback is opt-in because this endpoint may be slower or less reliable for new models."""
+        return self.config.get("gemini_native_fallback") is True
 
     def _send_json(self, url, headers, payload):
         n_url, n_headers, n_payload = self._maybe_native(url, headers, payload, False)
@@ -815,6 +818,10 @@ class OpenAICompatibleProvider(BaseProvider):
             return self._post_json(n_url, n_headers, n_payload)
         except ProviderError as exc:
             if not self._native_rejected(exc):
+                raise
+            if not self._native_fallback_enabled():
+                gemini_trace("native_rejected_no_fallback", model=self.model, status_code=exc.status_code,
+                             error=redact(str(exc), self.secret)[:200])
                 raise
             gemini_trace("native_rejected_use_openai_compat", model=self.model, error=redact(str(exc), self.secret)[:200])
             return self._post_json(url, headers, payload)
@@ -846,6 +853,10 @@ class OpenAICompatibleProvider(BaseProvider):
             return
         except ProviderError as exc:
             if started or not self._native_rejected(exc):
+                raise
+            if not self._native_fallback_enabled():
+                gemini_trace("native_rejected_no_fallback", model=self.model, status_code=exc.status_code,
+                             error=redact(str(exc), self.secret)[:200])
                 raise
             gemini_trace("native_rejected_use_openai_compat", model=self.model, error=redact(str(exc), self.secret)[:200])
         finally:

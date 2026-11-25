@@ -230,17 +230,9 @@ class HybridRouter:
         if pinned is not None and self.cooldowns.get(pinned["id"], 0) > now:
             pinned = None
 
-        def queue_key(route):
-            rid = route["id"]
-            state = self._state(rid)
-            rate_limited = self.cooldowns.get(rid, 0) > now and state.get("last_kind") == "rate"
-            latency = state.get("latency_ms")
-            known_latency = isinstance(latency, (int, float)) and latency >= 0
-            return (1 if rate_limited else 0, 0 if known_latency else 1,
-                    float(latency) if known_latency else float("inf"))
-
+        # Preserve the user's configured order. Cooldowns are checked by eligibility()
+        # when a route is attempted; latency measurements must never change failover priority.
         tail = [route for route in base if pinned is None or route["id"] != pinned["id"]]
-        tail = sorted(tail, key=queue_key)       # stable: unknown pings retain their configured order
         return ([pinned] if pinned is not None else []) + tail
 
     def vision_route_id(self):
@@ -376,6 +368,16 @@ class HybridRouter:
                   last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None, model_failures=0)
         self.cooldowns.pop(route["id"], None)
 
+    def _google_quota_scope(self, route):
+        """Stable quota bucket for Google routes sharing one project or one provider key."""
+        cfg = self._provider_cfg(route)
+        if not route_model.is_google(route.get("provider"), cfg):
+            return None
+        project_scope = str(cfg.get("quota_scope") or "").strip().casefold()
+        if project_scope:
+            return ("google-project", project_scope)
+        return ("google-provider", str(route.get("provider") or "").strip().casefold())
+
     def _mark_failure(self, route, exc, secrets=()):
         kind, status, retryable, retry_after = classify(exc)
         base = int(route.get("cooldown", COOLDOWN_TRANSIENT) or 0)
@@ -388,7 +390,16 @@ class HybridRouter:
         else:
             cooldown = base
         if cooldown > 0:
-            self.cooldowns[route["id"]] = time.monotonic() + cooldown
+            cooldown_until = time.monotonic() + cooldown
+            self.cooldowns[route["id"]] = cooldown_until
+            if kind == "rate" or status == 429:
+                quota_scope = self._google_quota_scope(route)
+                if quota_scope is not None:
+                    # Google quotas are project-scoped, not model/route-scoped.
+                    # The optional quota_scope lets separate API keys share the same project bucket.
+                    for sibling in self.routes():
+                        if self._google_quota_scope(sibling) == quota_scope:
+                            self.cooldowns[sibling["id"]] = cooldown_until
         st = self._state(route["id"])
         st["failures"] += 1
         st["last_kind"] = kind
@@ -868,16 +879,13 @@ class HybridRouter:
                 client.chat([{"role": "user", "content": "OK"}], "Reply with only: OK", 0.1)
                 ok, msg = True, "اتصال و دریافت پاسخ موفق بود."
             else:
-                # Explicit route tests are quick health checks, not full chat turns.
-                # Keep them bounded even though normal Google chat may use 60 seconds.
-                test_timeout = 15
+                # Route tests must get the same total response budget as real chat.
+                # This matters for Gemini thinking models such as Hydrogen.
+                test_timeout = max(1, int(route_model.effective_timeout(route, cfg) or 15))
                 merged = {
                     **cfg,
                     "model": route["model"],
-                    "timeout": min(
-                        int(route_model.effective_timeout(route, cfg) or test_timeout),
-                        test_timeout,
-                    ),
+                    "timeout": test_timeout,
                 }
                 ok, msg = probe_provider(
                     route["provider"], merged, timeout=test_timeout

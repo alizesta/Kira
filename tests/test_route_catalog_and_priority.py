@@ -1,4 +1,4 @@
-"""Regression coverage for refreshed model catalogs and latency-aware failover order."""
+"""Regression coverage for refreshed model catalogs and configured failover priority."""
 import time
 import unittest
 
@@ -56,7 +56,7 @@ class ModelCatalogReconciliationTests(unittest.TestCase):
 
 
 class RoutePriorityTests(unittest.TestCase):
-    def test_lower_measured_latency_precedes_slower_routes_and_rate_limit_is_last(self):
+    def test_measured_latency_does_not_reorder_configured_route_priority(self):
         settings = {
             "providers": {
                 "groq": {"enabled": True, "api_key": "key"},
@@ -75,9 +75,9 @@ class RoutePriorityTests(unittest.TestCase):
         router.states["limited"] = {"latency_ms": 15, "last_kind": "rate"}
         router.states["fast"] = {"latency_ms": 90, "last_kind": None}
         router.cooldowns["limited"] = time.monotonic() + 120
-        self.assertEqual([r["id"] for r in router._candidates()], ["fast", "slow", "limited"])
+        self.assertEqual([r["id"] for r in router._candidates()], ["slow", "limited", "fast"])
 
-    def test_unknown_latency_preserves_configured_order_after_measured_routes(self):
+    def test_known_and_unknown_latency_both_preserve_configured_order(self):
         settings = {
             "providers": {
                 "groq": {"enabled": True, "api_key": "key"},
@@ -91,7 +91,7 @@ class RoutePriorityTests(unittest.TestCase):
         }
         router = HybridRouter(settings)
         router.states["known"] = {"latency_ms": 140, "last_kind": None}
-        self.assertEqual([r["id"] for r in router._candidates()], ["known", "unknown"])
+        self.assertEqual([r["id"] for r in router._candidates()], ["unknown", "known"])
 
 
 class ProviderErrorClassificationTests(unittest.TestCase):

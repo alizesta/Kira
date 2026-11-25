@@ -605,9 +605,14 @@ class ProviderSettingsController(WindowFeatureController):
         key.setPlaceholderText("کلید جدید (اختیاری) — خالی = کلید فعلی حفظ می‌شود")
         account = QLineEdit(str(cfg.get("account_id", "")))
         base = QLineEdit(str(cfg.get("base_url", "")))
+        quota_scope = QLineEdit(str(cfg.get("quota_scope", "")))
+        quota_scope.setPlaceholderText("برای کلیدهای یک پروژه، مقدار یکسان وارد کن")
+        is_google = route_model.is_google(pid, cfg)
         if custom:
             form.addRow("نام", name)
         form.addRow(f"API Key (فعلی: {self.context.services.provider_application_service.mask_key(cfg.get('api_key')) or '—'})", key)
+        if is_google:
+            form.addRow("گروه سهمیهٔ پروژهٔ Google", quota_scope)
         if service == "cloudflare":
             form.addRow("Account ID", account)
         if custom and service == "custom":
@@ -620,7 +625,8 @@ class ProviderSettingsController(WindowFeatureController):
             return
         new_key = key.text().strip()
         fields = {"label": name.text() if custom else None, "account_id": (account.text() or None) if service == "cloudflare" else None,
-                  "base_url": base.text() if (custom and service == "custom") else None}
+                  "base_url": base.text() if (custom and service == "custom") else None,
+                  "quota_scope": quota_scope.text() if is_google else None}
         if not new_key:
             self.apply_api_edit(pid, fields, None, None)
             return
@@ -648,7 +654,7 @@ class ProviderSettingsController(WindowFeatureController):
     def apply_api_edit(self, pid, fields, new_key, det):
         try:
             self.context.services.provider_application_service.update_provider(self.context.services.settings, pid, label=fields["label"], base_url=fields["base_url"],
-                                        account_id=fields["account_id"], api_key=new_key)
+                                        account_id=fields["account_id"], api_key=new_key, quota_scope=fields["quota_scope"])
         except ValueError as exc:
             self.api_status.setText("✕ " + str(exc))
             return

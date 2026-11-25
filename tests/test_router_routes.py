@@ -257,7 +257,7 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(route["timeout"], routes.DEFAULT_CLOUD_TIMEOUT)
         self.assertEqual(provider.timeout, routes.CLOUD_TIMEOUT[1])
 
-    def test_google_route_probe_has_a_fifteen_second_total_budget(self):
+    def test_google_route_probe_uses_the_chat_timeout_budget(self):
         s = helpers.fresh_settings()
         pid = routes.add_provider(
             s, "Google AI Studio",
@@ -277,11 +277,11 @@ class RouterRouteTests(unittest.TestCase):
             ok, message, _ms = router.test_route(route["id"])
 
         self.assertTrue(ok, message)
-        # The short test budget must not reduce the normal chat route timeout.
+        # Model discovery remains bounded, but generation gets the real chat budget.
         self.assertEqual(router._make_provider(route).timeout, routes.CLOUD_TIMEOUT[1])
         self.assertLessEqual(get.call_args.kwargs["timeout"], 15)
-        self.assertLessEqual(post.calls[0]["timeout"], 15)
-        self.assertGreater(post.calls[0]["timeout"], 0)
+        self.assertGreater(post.calls[0]["timeout"], 15)
+        self.assertLessEqual(post.calls[0]["timeout"], routes.CLOUD_TIMEOUT[1])
 
     def test_google_gemini_explicit_extended_timeout_is_preserved(self):
         s = helpers.fresh_settings()
@@ -462,6 +462,44 @@ class RouterRouteTests(unittest.TestCase):
         text = str(rec)
         for bad in ("private reply", "سلام", CANARY, "api_key"):
             self.assertNotIn(bad, text)
+
+    def test_google_429_cools_down_all_routes_in_the_same_project_scope(self):
+        s = helpers.fresh_settings()
+        google_one = routes.add_provider(
+            s, "Google project key one",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="google-project-key-one",
+        )
+        google_two = routes.add_provider(
+            s, "Google project key two",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="google-project-key-two",
+        )
+        routes.update_provider(s, google_one, quota_scope="shared-project")
+        routes.update_provider(s, google_two, quota_scope="shared-project")
+        first = routes.add_route(s, google_one, "gemini-3.8-flash")
+        second = routes.add_route(s, google_two, "gemini-4-hydrogen")
+        backup = routes.add_provider(
+            s, "Backup API", "https://backup.example.test/v1", api_key="backup-key"
+        )
+        routes.add_route(s, backup, "backup-model")
+        router = HybridRouter(s)
+        f = dispatch({
+            "generativelanguage.googleapis.com": Resp(429, {"error": {"message": "quota exceeded"}}),
+            "backup.example.test": ok_openai("backup-answer"),
+        })
+
+        with mock.patch("requests.post", f):
+            self.assertEqual(router.chat(MSGS, SYS), "backup-answer")
+
+        self.assertEqual(
+            sum("generativelanguage.googleapis.com" in call["url"] for call in f.calls),
+            1,
+        )
+        self.assertIn(first["id"], router.cooldowns)
+        self.assertIn(second["id"], router.cooldowns)
+        self.assertGreater(router.cooldowns[second["id"]] - time.monotonic(), 250)
+
 
 
 if __name__ == "__main__":
