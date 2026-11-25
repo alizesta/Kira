@@ -4,7 +4,7 @@ from copy import deepcopy
 from unittest.mock import patch
 
 from kira.app.provider_application import ProviderApplicationService
-from kira import routes as route_model
+from kira import config, routes as route_model
 
 
 class ProviderApplicationServiceTests(unittest.TestCase):
@@ -70,11 +70,10 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         )
 
     def test_delete_api_clears_detected_route_notes(self):
+        self.settings = deepcopy(config.DEFAULTS)
+        self.service.ensure_routes(self.settings)
         provider_id = "groq"
         routes = [route for route in route_model.get_routes(self.settings) if route["provider"] == provider_id]
-        if not routes:
-            route_model.add_route(self.settings, provider_id, "openai/gpt-oss-120b", enabled=True)
-            routes = [route for route in route_model.get_routes(self.settings) if route["provider"] == provider_id]
         route_id = routes[0]["id"]
         self.service.detected_capabilities.mapping_set("route_notes", route_id, "previous automatic failure")
         self.service.delete_api(self.settings, provider_id)
