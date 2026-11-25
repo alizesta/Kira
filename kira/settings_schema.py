@@ -122,7 +122,7 @@ DEFAULTS = {
     # Route Manager (1.5.1): "routes" itself is created by routes.ensure_routes() on load (migrated from the old layout).
     "manual_route_id": "",          # "" = automatic by priority; otherwise the route chosen by hand
     "failover_enabled": True,       # manual choice may still fall back within the active network policy
-    "network_policy": "cloud_permitted",  # local_only blocks every Cloud route; cloud_permitted allows configured role fallback       # a manual choice may still fall back to the next route
+    "network_policy": "cloud_permitted",  # local_only blocks every Cloud route; cloud_permitted allows configured Cloud fallback
     "default_route_id": "",
     "route_free_only": True,        # catalog refresh switches off routes whose model is explicitly no longer free
     "providers": {
