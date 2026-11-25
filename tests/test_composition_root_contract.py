@@ -223,6 +223,17 @@ class CompositionRootContractTests(unittest.TestCase):
 
 
 class AttachmentControllerOwnershipTests(unittest.TestCase):
+    def test_vision_controller_does_not_import_attachment_ui_support(self):
+        source = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        module = ast.parse(source)
+        imports = {
+            node.module for node in ast.walk(module)
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        self.assertNotIn("main_window_attachments_vision_support", imports)
+        self.assertNotIn("QFileDialog", source)
+        self.assertNotIn("AttachmentTile", source)
+
     def test_drag_drop_and_attachment_ui_are_owned_by_lazy_attachment_controller(self):
         main_window = parse("kira/ui/main_window.py")
         vision = parse("kira/ui/main_window_attachments_vision.py")

@@ -1,15 +1,12 @@
 """Dedicated attachment presentation controller, separate from desktop Vision."""
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout
+
 from ..chat import attachments as att
-from .main_window_attachments_vision_support import (
-    AttachmentTile,
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QTimer,
-    front_only,
-)
+from ..ui_widgets import AttachmentTile
+from .main_window_support import front_only
 from .window_feature_controller import WindowFeatureController
 
 
