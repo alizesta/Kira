@@ -1045,12 +1045,20 @@ class ProviderSettingsController(WindowFeatureController):
     def scan_ollama(self):
         if self.context.state._closing:
             return
+        try:
+            from shiboken6 import isValid
+            route_status = self.context.views.route_status
+            if not isValid(route_status):
+                return
+        except (AttributeError, RuntimeError, TypeError):
+            # The AI settings page is lazy; do not start a worker without live UI targets.
+            return
         current = self.context.resource("_scan_worker")
         if current is not None and current.isRunning():
             return
-        if hasattr(self, "route_scan_btn"):
+        if hasattr(self, "route_scan_btn") and isValid(self.route_scan_btn):
             self.route_scan_btn.setEnabled(False)
-        self.context.views.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
+        route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
         client = self.context.services.provider_application_service.create_ollama_client(self.context.services.settings)
 
         def task():
@@ -1079,17 +1087,25 @@ class ProviderSettingsController(WindowFeatureController):
         if worker is None or self.context.state._scan_worker is not worker or self.context.state._closing:
             return
         ok, value = result
-        if hasattr(self, "route_scan_btn"):
+        try:
+            from shiboken6 import isValid
+            route_status = self.context.views.route_status
+            model_view = self.context.views.model
+            if not isValid(route_status) or not isValid(model_view):
+                return
+        except (AttributeError, RuntimeError, TypeError):
+            return
+        if hasattr(self, "route_scan_btn") and isValid(self.route_scan_btn):
             self.route_scan_btn.setEnabled(True)
         if not ok:
-            self.context.views.route_status.setText("✕ " + value)
+            route_status.setText("✕ " + value)
             return
         self.context.services.provider_application_service.set_ollama_models(value)
-        self.context.views.model.set_models(value)
+        model_view.set_models(value)
         added = self.context.services.provider_application_service.add_ollama_models(self.context.services.settings, value)
         self.feature_controller("runtime").save_now()
         self.refresh_route_list()
-        self.context.views.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
+        route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
         self.refresh_unified_models()
 
     def run_benchmark(self, all_enabled):
