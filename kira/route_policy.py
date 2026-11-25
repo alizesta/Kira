@@ -38,6 +38,19 @@ class RoutePolicyEngine:
         supports_vision: Callable,
     ):
         settings = settings if isinstance(settings, dict) else {}
+        original_routes = list(routes)
+        decisions = {}
+
+        def filter_routes(items, predicate, reason):
+            kept = []
+            for item in items:
+                rid = str(item.get("id") or "")
+                if predicate(item):
+                    kept.append(item)
+                else:
+                    decisions[rid] = reason
+            return kept
+
         network_policy = str(settings.get("network_policy") or CLOUD_PERMITTED).strip().lower()
         if network_policy not in (LOCAL_ONLY, CLOUD_PERMITTED):
             network_policy = CLOUD_PERMITTED
@@ -55,30 +68,33 @@ class RoutePolicyEngine:
             if not local_ready:
                 if network_policy == LOCAL_ONLY:
                     return [], [RouteDecision(str(r.get("id") or ""), False, "local_unavailable_local_only") for r in routes]
-                routes = [
-                    route for route in routes
-                    if provider_kind(route.get("provider"), provider_cfg(route)) == "cloud"
-                ]
+                routes = filter_routes(
+                    routes,
+                    lambda route: provider_kind(route.get("provider"), provider_cfg(route)) == "cloud",
+                    "local_unavailable_cloud_fallback",
+                )
                 allowed = None
 
         if network_policy == LOCAL_ONLY:
-            routes = [
-                route for route in routes
-                if provider_kind(route.get("provider"), provider_cfg(route)) == "local"
-            ]
+            routes = filter_routes(
+                routes,
+                lambda route: provider_kind(route.get("provider"), provider_cfg(route)) == "local",
+                "blocked_by_local_only",
+            )
 
-        if vision_only and role in ("surface", "deep"):
+        if vision_only and role in ("surface", "deep") and network_policy != LOCAL_ONLY:
             allowed = ["google"]
 
         if isinstance(allowed, (list, tuple)):
             allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
-            routes = [
-                route for route in routes
-                if (
+            routes = filter_routes(
+                routes,
+                lambda route: (
                     ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
                     or str(route.get("provider") or "").lower() in allow
-                )
-            ]
+                ),
+                "blocked_by_role_provider_allowlist",
+            )
 
         model_allowlist = settings.get("role_route_models")
         allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
@@ -89,23 +105,34 @@ class RoutePolicyEngine:
             local_surface_routes = (
                 role == "surface" and isinstance(allowed, set) and "ollama" in allowed
             )
-            routes = [
-                route for route in routes
-                if (
+            routes = filter_routes(
+                routes,
+                lambda route: (
                     local_surface_routes
                     and str(route.get("provider") or "").strip().lower() == "ollama"
-                ) or str(route.get("model") or "").strip().lower() in model_ids
-            ]
+                ) or str(route.get("model") or "").strip().lower() in model_ids,
+                "blocked_by_role_model_allowlist",
+            )
 
         # Provider usage limits are a policy constraint, not a health signal.
         # Their implementation owns its own storage/error handling.
         from . import usage
         if preferred_route_id and not usage.role_allowed(role):
             preferred_route_id = ""
+        before_limits = list(routes)
         routes = usage.apply_limits(routes, is_eligible)
+        retained = {str(r.get("id") or "") for r in routes}
+        for route in before_limits:
+            rid = str(route.get("id") or "")
+            if rid not in retained:
+                decisions[rid] = "blocked_by_usage_limit"
 
         if vision_only:
-            routes = [r for r in routes if supports_vision(r, provider_cfg(r))]
+            routes = filter_routes(
+                routes,
+                lambda route: supports_vision(route, provider_cfg(route)),
+                "vision_not_supported",
+            )
 
         manual_id = str(settings.get("manual_route_id") or "")
         manual = next((r for r in routes if str(r.get("id") or "") == manual_id), None) if manual_id else None
@@ -124,12 +151,15 @@ class RoutePolicyEngine:
         if pinned is not None:
             ordered = [pinned] + [r for r in ordered if r is not pinned]
 
-        decisions = []
         selected_ids = {str(r.get("id") or "") for r in ordered}
+        result = []
         for route in ordered:
-            decisions.append(RouteDecision(str(route.get("id") or ""), True, "selected_by_policy"))
-        for route in routes:
             rid = str(route.get("id") or "")
-            if rid not in selected_ids:
-                decisions.append(RouteDecision(rid, False, "filtered_by_policy"))
-        return ordered, decisions
+            reason = "preferred_route" if preferred is route else ("manual_route" if manual is route else "priority_order")
+            result.append(RouteDecision(rid, True, reason))
+        for route in original_routes:
+            rid = str(route.get("id") or "")
+            if rid not in selected_ids and rid not in decisions:
+                decisions[rid] = "not_selected"
+        result.extend(RouteDecision(rid, False, reason) for rid, reason in decisions.items())
+        return ordered, result
