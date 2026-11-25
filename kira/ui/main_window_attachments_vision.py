@@ -1004,7 +1004,7 @@ class AttachmentsVisionController(WindowFeatureController):
         """Cancel and dispose service-owned Vision and Perception work after worker drain."""
         self._cancel_all_vision_workers()
         perception_controller = getattr(
-            self.context.services, "perception_worker_controller", None
+            self.context.adapters, "perception_worker_controller", None
         )
         if perception_controller is not None and not perception_controller.dispose():
             return False
