@@ -194,7 +194,6 @@ class HybridRouter:
             provider_cfg=self._provider_cfg,
             provider_kind=route_model.provider_kind,
             is_google=route_model.is_google,
-            is_eligible=lambda route: self.eligibility(route, include_cooldown=False)[0],
             supports_vision=self._route_supports_vision,
         )
         self.last_route_decisions = [
