@@ -249,8 +249,49 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         )
         tool_agent.set_settings(settings)
         window = MainWindow()
+        from ..app.vision_runtime import VisionRuntimeProvider, VisionRuntimeServices
         from .main_window_composition import initialize_main_window
+
+        def build_vision_runtime():
+            from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
+            from .perception_worker_controller import PerceptionWorkerController
+            from ..request_trace import vision_trace
+            from ..gemini_live import MAX_VIDEO_FRAME_BYTES
+
+            context = window.presentation_context
+            runtime_controller = context.controllers.require("runtime")
+            frame_codec = QtVisionFrameCodec()
+            transport = GeminiLiveTransportAdapter(
+                readiness=runtime_controller.is_gemini_live_ready,
+                clear_frames=runtime_controller.clear_gemini_video_frames,
+                send_frame=runtime_controller.send_gemini_video_frame,
+            )
+            runtime = VisionRuntimeServices(
+                game_mode_adapter=context.adapters.game_mode,
+                game_mode_application_service=context.services.game_mode_application_service,
+                vision_application_service=context.services.vision_application_service,
+                desktop_context_application_service=context.services.desktop_context_application_service,
+                settings=context.services.settings,
+                frame_codec=frame_codec,
+                live_transport=transport,
+                max_frame_bytes_provider=lambda: MAX_VIDEO_FRAME_BYTES,
+                trace=vision_trace,
+            )
+            context.adapters.perception_worker_controller = PerceptionWorkerController(
+                runtime.perception_application_service,
+                frame_codec,
+                context.services.settings,
+                is_closing=lambda: bool(context.state._closing),
+                game_mode_enabled=lambda: bool(context.state._game_mode_enabled),
+                trace=vision_trace,
+                parent=window,
+            )
+            return runtime
+
+        vision_runtime_provider = VisionRuntimeProvider(build_vision_runtime)
         initialize_main_window(
+            window,
+            vision_runtime_provider=vision_runtime_provider,
             window,
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),

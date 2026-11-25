@@ -26,6 +26,7 @@ def initialize_main_window(
     provider_application_service=None,
     coding_agent_application_service=None,
     vision_application_service=None,
+    vision_runtime_provider=None,
     desktop_context_application_service=None,
     runtime_settings_application_service=None,
     shared_skills_application_service=None,
@@ -95,6 +96,7 @@ def initialize_main_window(
         "provider_application_service": provider_application_service,
         "coding_agent_application_service": coding_agent_application_service,
         "vision_application_service": vision_application_service,
+        "vision_runtime_provider": vision_runtime_provider,
         "desktop_context_application_service": desktop_context_application_service,
         "runtime_settings_application_service": runtime_settings_application_service,
         "shared_skills_application_service": shared_skills_application_service,
@@ -141,6 +143,7 @@ def initialize_main_window(
     self.services.runtime_settings_application_service.configure(self.services.settings)
     self.services.coding_agent_application_service = coding_agent_application_service
     self.services.vision_application_service = vision_application_service
+    self.services.vision_runtime_provider = vision_runtime_provider
     self.services.desktop_context_application_service = desktop_context_application_service
     self.state._db_notes = self.services.chat_application_service.init_history()
     self.services.session_manager = session_manager
@@ -537,47 +540,6 @@ def initialize_main_window(
         action = self.views.nav_menu.addAction(make_icon(icon_name), self.controllers.require("session").t(key))
         action.triggered.connect(lambda checked=False, idx=i: self.controllers.require("session").go_tab(idx))
         self.state._menu_actions.append(action)
-
-    # Register a lazy factory at the composition boundary. Expensive OCR/runtime
-    # resources are created only after explicit Eye Mode use, never at startup.
-    from ..app.vision_runtime import VisionRuntimeProvider, VisionRuntimeServices
-
-    def _build_vision_runtime():
-        from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
-        from .perception_worker_controller import PerceptionWorkerController
-        from ..request_trace import vision_trace
-        from ..gemini_live import MAX_VIDEO_FRAME_BYTES
-
-        runtime_controller = self.controllers.require("runtime")
-        frame_codec = QtVisionFrameCodec()
-        transport = GeminiLiveTransportAdapter(
-            readiness=runtime_controller.is_gemini_live_ready,
-            clear_frames=runtime_controller.clear_gemini_video_frames,
-            send_frame=runtime_controller.send_gemini_video_frame,
-        )
-        runtime = VisionRuntimeServices(
-            game_mode_adapter=self.adapters.game_mode,
-            game_mode_application_service=self.services.game_mode_application_service,
-            vision_application_service=self.services.vision_application_service,
-            desktop_context_application_service=self.services.desktop_context_application_service,
-            settings=self.services.settings,
-            frame_codec=frame_codec,
-            live_transport=transport,
-            max_frame_bytes_provider=lambda: MAX_VIDEO_FRAME_BYTES,
-            trace=vision_trace,
-        )
-        self.adapters.perception_worker_controller = PerceptionWorkerController(
-            runtime.perception_application_service,
-            frame_codec,
-            self.services.settings,
-            is_closing=lambda: bool(self.state._closing),
-            game_mode_enabled=lambda: bool(self.state._game_mode_enabled),
-            trace=vision_trace,
-            parent=self.host,
-        )
-        return runtime
-
-    self.services.vision_runtime_provider = VisionRuntimeProvider(_build_vision_runtime)
 
     # Eye Mode is explicit opt-in. Keep the compatibility setting disabled without
     # constructing the deferred Vision and desktop-capture services during composition.
