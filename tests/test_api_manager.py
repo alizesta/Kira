@@ -420,6 +420,17 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         self.assertEqual(s["default_route_id"], "groq")
         self.assertEqual(s["manual_route_id"], "")
 
+    def test_model_toggle_matches_existing_route_case_insensitively(self):
+        s = fresh()
+        am.register(s, am.Detection("ok", "groq", "", [{"id": "Model-X"}]), GROQ_KEY)
+        route_id = next(r["id"] for r in rm.get_routes(s) if r["provider"] == "groq")
+        self.assertEqual(am.set_model_enabled(s, "groq", "model-x", False), route_id)
+        self.assertFalse(rm.find_route(s, route_id)["enabled"])
+        self.assertEqual(
+            sum(r["provider"] == "groq" and r["model"].casefold() == "model-x" for r in rm.get_routes(s)),
+            1,
+        )
+
     def test_model_toggle_creates_and_disables_routes(self):
         s = fresh()
         am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}, {"id": "llama-x"}]), GROQ_KEY)
