@@ -34,7 +34,6 @@ class RoutePolicyEngine:
         provider_cfg: Callable,
         provider_kind: Callable,
         is_google: Callable,
-        is_eligible: Callable,
         supports_vision: Callable,
     ):
         settings = settings if isinstance(settings, dict) else {}
