@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import fnmatch
-import os
+import ntpath
 from typing import Any
 
 
@@ -98,19 +98,28 @@ class DesktopCaptureApplicationService:
         return True
 
     def evaluate_window(self, window_info: dict[str, Any] | None, *,
-                        explicit: bool = False) -> tuple[bool, str]:
+                        explicit: bool = False,
+                        allow_partial_identity: bool = False) -> tuple[bool, str]:
         if not explicit and not self.enabled:
             return False, "desktop_vision_disabled"
         if not isinstance(window_info, dict):
             return False, "foreground_window_unidentified"
+        path_value = self._normal(window_info.get("path"))
+        exe_value = self._normal(ntpath.basename(str(window_info.get("exe") or "")))
+        if not exe_value and path_value:
+            exe_value = self._normal(ntpath.basename(path_value))
         identity = {
-            "exe": self._normal(os.path.basename(str(window_info.get("exe") or ""))),
+            "exe": exe_value,
             "title": self._normal(window_info.get("title")),
-            "path": self._normal(window_info.get("path")),
+            "path": path_value,
         }
         if (not window_info.get("hwnd") or not window_info.get("pid")
-                or not identity["exe"] or not identity["title"] or not identity["path"]
                 or not window_info.get("rect")):
+            return False, "foreground_window_identity_incomplete"
+        if allow_partial_identity:
+            if not any(identity.values()):
+                return False, "foreground_window_identity_incomplete"
+        elif not all(identity.values()):
             return False, "foreground_window_identity_incomplete"
         blocked = [
             (kind, pattern)

@@ -138,18 +138,27 @@ class ChatController(WindowFeatureController):
                     self.feature_controller("runtime").on_error(event.error or "Chat request failed")
 
     def submit(self, text, attachments=None, _voice=None):
-        if self.context.state.cur.status in ("closing", "closed", "failed"):
+        current_session = self.context.state.cur
+        if current_session.status in ("closing", "closed", "failed"):
             return
+        vision_session = getattr(self.context.session, "_vision_session", None)
+        vision_worker = getattr(self.context.session, "_vision_worker", None)
+        vision_running = bool(
+            vision_session is current_session
+            and vision_worker is not None
+            and vision_worker.isRunning()
+        )
+        busy = bool(self.context.session.busy or vision_running)
         if _voice is None:
             voice, self.context.session._voice_next = self.context.session._voice_next, False
         else:
             voice, self.context.session._voice_next = bool(_voice), False
-        if self.context.session.busy and not attachments:
+        if busy and not attachments:
             try:
                 control_dispatch = self.context.services.chat_application_service.dispatch_control_commands(
-                    self.context.state.cur.session_id,
+                    current_session.session_id,
                     text,
-                    metadata={"character_id": self.context.state.cur.cid},
+                    metadata={"character_id": current_session.cid},
                 )
             except Exception:  # noqa: BLE001 - a control message must never block normal chat
                 control_dispatch = None
@@ -157,12 +166,14 @@ class ChatController(WindowFeatureController):
                 if control_dispatch.reply_text:
                     self.feature_controller("session").add_chat("system", control_dispatch.reply_text)
                 return
-        self.feature_controller("session")._ensure_session_conversation(self.context.state.cur)
+        if vision_running:
+            vision_worker.cancel_request()
+        self.feature_controller("session")._ensure_session_conversation(current_session)
         result = self.context.services.chat_application_service.submit_message(
             self.context.state.cur.session_id, text, attachments, voice,
-            busy=self.context.session.busy,
-            conversation_id=self.context.state.cur.conversation_id,
-            character_id=self.context.state.cur.cid,
+            busy=busy,
+            conversation_id=current_session.conversation_id,
+            character_id=current_session.cid,
         )
         if not result.accepted:
             return

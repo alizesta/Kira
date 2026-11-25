@@ -155,6 +155,13 @@ def remove_provider(settings, pid):
         settings["routes"] = [r for r in keep if isinstance(r, dict)]
     if settings.get("manual_route_id") in removed:
         settings["manual_route_id"] = ""
+    if settings.get("default_route_id") in removed:
+        remaining = settings.get("routes") or []
+        settings["default_route_id"] = remaining[0]["id"] if remaining else ""
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        for route_id in removed:
+            notes.pop(route_id, None)
     sync_legacy(settings)
     return removed
 

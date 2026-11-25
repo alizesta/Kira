@@ -33,6 +33,41 @@ class DesktopCapturePolicyTests(unittest.TestCase):
         service.set_enabled(True)
         self.assertEqual(service.evaluate_window(make_window()), (True, "allowed"))
 
+    def test_live_monitor_accepts_partial_identity_but_regular_policy_does_not(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        for missing in ("title", "exe", "path"):
+            item = make_window()
+            item[missing] = ""
+            self.assertEqual(
+                service.evaluate_window(item),
+                (False, "foreground_window_identity_incomplete"),
+            )
+            self.assertEqual(
+                service.evaluate_window(item, allow_partial_identity=True),
+                (True, "allowed"),
+            )
+        unidentified = make_window(exe="", title="", path="")
+        self.assertEqual(
+            service.evaluate_window(unidentified, allow_partial_identity=True),
+            (False, "foreground_window_identity_incomplete"),
+        )
+
+    def test_partial_live_identity_still_checks_every_available_privacy_field(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        private = make_window(exe="", title="Incognito", path="")
+        self.assertEqual(
+            service.evaluate_window(private, allow_partial_identity=True),
+            (False, "blocked_title"),
+        )
+        private["title"] = ""
+        private["path"] = r"C:\\Apps\\KeePassXC.exe"
+        self.assertEqual(
+            service.evaluate_window(private, allow_partial_identity=True),
+            (False, "blocked_exe"),
+        )
+
     def test_password_manager_and_private_title_are_blocked(self):
         service = DesktopCaptureApplicationService()
         service.set_enabled(True)

@@ -303,6 +303,9 @@ class RuntimeVoiceMixin:
             if not api_key:
                 self._start_local_voice_fallback("کلید معتبر Google AI در بخش اتصالات انتخاب نشده است")
                 return
+            min_interval, max_frames_per_minute = self.feature_controller(
+                "attachments_vision"
+            )._live_budget_values()
             worker = GeminiLiveWorker(
                 api_key=api_key,
                 model=page.gemini_model.currentText().strip() or "gemini-3.8-live",
@@ -313,8 +316,10 @@ class RuntimeVoiceMixin:
                     "in the user's language. You receive occasional JPEG snapshots of the entire explicitly "
                     "selected monitor, or the monitor containing the foreground window in automatic mode. "
                     "The user manually enables Live Desktop Vision or Game Mode before screen capture begins. "
-                    "Frames arrive only on meaningful visual changes and at no more than one per second. "
-                    "Use them as continuing context and connect visible events with the user's speech. Offer "
+                    f"Frames arrive only after meaningful visual changes, at least {min_interval:g} seconds apart "
+                    f"and no more than {max_frames_per_minute} per minute; the transport also enforces a hard "
+                    "ceiling of one frame per second. These are upload limits, not a promise that every second "
+                    "contains a frame. Use them as continuing context and connect visible events with the user's speech. Offer "
                     "brief helpful observations or timely warnings when useful, but do not narrate trivial changes "
                     "or interrupt unnecessarily. Only claim to see content present in received frames; never invent "
                     "unseen details or imply that other monitors are visible. "

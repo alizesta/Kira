@@ -78,6 +78,15 @@ class GeminiLiveTests(unittest.TestCase):
         }
         self.assertEqual(resolve_google_api_key(settings, "deleted-google"), "")
 
+    def test_selected_google_connection_with_empty_key_does_not_use_another_account(self):
+        settings = {
+            "providers": {
+                "selected-google": {"service": "google", "api_key": ""},
+                "other-google": {"service": "google", "api_key": "other-secret"},
+            }
+        }
+        self.assertEqual(resolve_google_api_key(settings, "selected-google"), "")
+
     def test_auto_selection_only_uses_google_service_or_google_endpoint(self):
         settings = {
             "providers": {

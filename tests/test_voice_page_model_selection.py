@@ -27,6 +27,30 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         self.assertEqual(page.voice_engine.currentData(), "gemini_live")
         self.assertEqual(page.gemini_model.currentText(), "gemini-3.8-live")
 
+    def test_removed_selected_google_connection_is_not_replaced_by_another_account(self):
+        settings = {
+            "gemini_live_provider": "deleted-google",
+            "providers": {
+                "other-google": {"service": "google", "label": "Other account", "api_key": "other-secret"},
+            },
+        }
+        page = VoicePage(settings, lambda key: key)
+        page.refresh_gemini_providers(settings)
+        self.assertEqual(page.gemini_provider.currentData(), "deleted-google")
+        self.assertEqual(settings["gemini_live_provider"], "deleted-google")
+
+    def test_empty_selected_google_key_is_not_replaced_by_another_account(self):
+        settings = {
+            "gemini_live_provider": "selected-google",
+            "providers": {
+                "selected-google": {"service": "google", "label": "Selected", "api_key": ""},
+                "other-google": {"service": "google", "label": "Other", "api_key": "other-secret"},
+            },
+        }
+        page = VoicePage(settings, lambda key: key)
+        page.refresh_gemini_providers(settings)
+        self.assertEqual(page.gemini_provider.currentData(), "selected-google")
+
     def test_local_voice_controls_are_embedded_in_stt_and_tts_sections(self):
         page = VoicePage({}, lambda key: key)
         self.assertTrue(hasattr(page, "local_asr_chk"))

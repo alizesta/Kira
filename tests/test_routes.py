@@ -142,6 +142,23 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             routes.remove_route(s, "groq")
 
+    def test_remove_custom_provider_repairs_default_manual_selection_and_notes(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        pid = routes.add_provider(s, "Temporary API", "https://temporary.example/v1", api_key="temporary-key")
+        route = routes.add_route(s, pid, "temporary-model")
+        s["default_route_id"] = route["id"]
+        s["manual_route_id"] = route["id"]
+        s.setdefault("route_notes", {})[route["id"]] = "stale status"
+        first_remaining = next(item["id"] for item in routes.get_routes(s) if item["id"] != route["id"])
+
+        removed = routes.remove_provider(s, pid)
+
+        self.assertEqual(removed, [route["id"]])
+        self.assertEqual(s["default_route_id"], first_remaining)
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertNotIn(route["id"], s["route_notes"])
+
     def test_add_edit_remove_custom_provider(self):
         s = legacy_settings()
         routes.ensure_routes(s)

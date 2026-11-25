@@ -53,14 +53,18 @@ class VisionApplicationService:
 
     def capture_allowed(self, enabled: bool, profile: str | None, *,
                         source: str = GAME_SOURCE, window_info: dict | None = None,
-                        explicit: bool = False) -> bool:
+                        explicit: bool = False,
+                        allow_partial_identity: bool = False) -> bool:
         if not self._active or self._disposed:
             return False
         if source == self.DESKTOP_SOURCE:
             privacy = self.desktop_capture_application_service
             if privacy is None:
                 return False
-            allowed, _reason = privacy.evaluate_window(window_info, explicit=explicit)
+            allowed, _reason = privacy.evaluate_window(
+                window_info, explicit=explicit,
+                allow_partial_identity=allow_partial_identity,
+            )
             return bool(allowed)
         if source != self.GAME_SOURCE or self.game_mode_service is None:
             return False
