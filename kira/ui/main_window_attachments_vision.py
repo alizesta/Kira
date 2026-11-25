@@ -263,7 +263,10 @@ class AttachmentsVisionController(WindowFeatureController):
             return False
 
         capture = self.context.adapters.game_mode.capture_service
-        current = capture.foreground_window_info()
+        allow_partial_identity = source == "desktop"
+        current = capture.foreground_window_info(
+            allow_partial_identity=allow_partial_identity
+        )
         service = self.context.services.vision_application_service
         permitted = service.capture_allowed(
             self.context.state._game_mode_enabled if source == "game" else False,
@@ -309,7 +312,9 @@ class AttachmentsVisionController(WindowFeatureController):
             self._clear_live_video_state()
             vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
             return False
-        latest = capture.foreground_window_info()
+        latest = capture.foreground_window_info(
+            allow_partial_identity=allow_partial_identity
+        )
         latest_identity = (
             int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
             str((latest or {}).get("exe") or "").casefold(),
@@ -531,7 +536,9 @@ class AttachmentsVisionController(WindowFeatureController):
             return
 
         capture = self.context.adapters.game_mode.capture_service
-        current = capture.foreground_window_info()
+        current = capture.foreground_window_info(
+            allow_partial_identity=(source == "desktop")
+        )
         same_window = (
             current is not None
             and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
@@ -879,7 +886,9 @@ class AttachmentsVisionController(WindowFeatureController):
         if not self.context.state._game_mode_enabled:
             return "Eye Mode خاموش است؛ برای فعال‌کردن دید زنده روی آیکون چشم کلیک کن."
         self._capture_desktop_frame()
-        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
+            allow_partial_identity=True
+        )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
@@ -916,7 +925,9 @@ class AttachmentsVisionController(WindowFeatureController):
                 "Do not claim to see the desktop. User-supplied image attachments remain separate."
             )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
+            allow_partial_identity=True
+        )
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
             return "eye_mode_blocked", (
@@ -1198,7 +1209,7 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         privacy = service.desktop_capture_application_service
         capture = self.context.adapters.game_mode.capture_service
-        window_info = capture.foreground_window_info()
+        window_info = capture.foreground_window_info(allow_partial_identity=True)
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
             self._clear_live_video_state()
@@ -1321,7 +1332,9 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         source = _FRAME_SOURCE.get("value") or "game"
         captured = _FRAME_WINDOW_INFO.get("value") or {}
-        current = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        current = self.context.adapters.game_mode.capture_service.foreground_window_info(
+            allow_partial_identity=(source == "desktop")
+        )
         same_window = (
             current is not None
             and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
@@ -1440,7 +1453,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if not privacy.enabled:
             return None
         capture = self.context.adapters.game_mode.capture_service
-        window_info = capture.foreground_window_info()
+        window_info = capture.foreground_window_info(allow_partial_identity=True)
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed or not service.capture_allowed(
             False, None, source="desktop", window_info=window_info
