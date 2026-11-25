@@ -128,6 +128,19 @@ class TesseractRuntime:
         return "", "", ""
 
     @staticmethod
+    def _languages_from_data_dir(directory: str) -> list[str]:
+        if not directory:
+            return []
+        try:
+            return sorted({
+                candidate.stem
+                for candidate in Path(directory).glob("*.traineddata")
+                if _LANGUAGE_RE.fullmatch(candidate.stem)
+            })
+        except OSError:
+            return []
+
+    @staticmethod
     def _state(status: dict[str, Any]) -> str:
         if status.get("ready"):
             return "Ready"
@@ -168,7 +181,14 @@ class TesseractRuntime:
             )
             python_ready = self._module_installed("pytesseract")
             pillow_ready = self._module_installed("PIL")
-            installed = bool(python_ready or pillow_ready or self._executable)
+            installed_languages = self._languages_from_data_dir(self._tessdata_dir)
+            missing_languages = [
+                language for language in self.required_languages
+                if language not in installed_languages
+            ]
+            installed = bool(
+                python_ready or pillow_ready or self._executable or self._tessdata_dir
+            )
             status = {
                 "engine": "tesseract",
                 "status": "Installed" if installed else "NotInstalled",
@@ -189,10 +209,10 @@ class TesseractRuntime:
                 "version": "",
                 "required_languages": list(self.required_languages),
                 "requested_languages": list(self.required_languages),
-                "installed_languages": [],
-                "missing_languages": list(self.required_languages),
-                "persian_ready": False,
-                "english_ready": False,
+                "installed_languages": installed_languages,
+                "missing_languages": missing_languages,
+                "persian_ready": "fas" in installed_languages,
+                "english_ready": "eng" in installed_languages,
                 "error_code": "",
                 "error_stage": "",
                 "error_message": "",

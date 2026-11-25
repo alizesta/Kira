@@ -1,5 +1,6 @@
 import subprocess
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from kira.vision_ocr import OcrResult, OcrService, TesseractOcrEngine
@@ -180,6 +181,83 @@ class VisionOcrTests(unittest.TestCase):
         self.assertFalse(status["binary_ready"])
         self.assertEqual(status["error_code"], "tesseract_executable_not_found")
         self.assertEqual(status["status"], "Degraded")
+
+    def test_native_engine_and_language_data_are_discovered_independently(self):
+        runtime = TesseractRuntime(
+            required_languages=("fas", "eng"),
+            paths_provider=lambda: {
+                "executable": "",
+                "executable_candidates": [],
+                "tessdata_dir": "/fake/tessdata",
+            },
+        )
+        with (
+            mock.patch("kira.vision_ocr_runtime.importlib.util.find_spec", return_value=None),
+            mock.patch("kira.vision_ocr_runtime.shutil.which", return_value=None),
+            mock.patch("kira.vision_ocr_runtime.Path.is_dir", return_value=True),
+            mock.patch(
+                "kira.vision_ocr_runtime.Path.glob",
+                return_value=[Path("/fake/tessdata/eng.traineddata")],
+            ),
+        ):
+            status = runtime.discover(refresh=True)
+        self.assertTrue(status["installed"])
+        self.assertFalse(status["native_engine_installed"])
+        self.assertEqual(status["installed_languages"], ["eng"])
+        self.assertEqual(status["missing_languages"], ["fas"])
+        self.assertFalse(status["persian_ready"])
+        self.assertTrue(status["english_ready"])
+        self.assertFalse(status["ready"])
+        self.assertEqual(status["status"], "Degraded")
+
+    def test_discovery_and_validation_expose_installed_and_available_states(self):
+        runtime = TesseractRuntime(
+            required_languages=("fas", "eng"),
+            paths_provider=lambda: {"executable": "/fake/tesseract", "tessdata_dir": ""},
+        )
+        with (
+            mock.patch("kira.vision_ocr_runtime.importlib.util.find_spec", return_value=object()),
+            mock.patch("kira.vision_ocr_runtime.Path.is_file", return_value=True),
+            mock.patch("kira.vision_ocr_runtime.subprocess.run", side_effect=[
+                completed(stdout="tesseract 5.4.0"),
+                completed(stdout='List of available languages:\neng\nfas\nosd\n'),
+            ]),
+        ):
+            discovered = runtime.discover(refresh=True)
+            validated = runtime.validate(refresh=True)
+        self.assertEqual(discovered["status"], "Installed")
+        self.assertFalse(discovered["ready"])
+        self.assertEqual(validated["status"], "Available")
+        self.assertTrue(validated["available"])
+        self.assertFalse(validated["ready"])
+        self.assertEqual(validated["missing_languages"], [])
+
+    def test_initialization_is_the_only_transition_to_ready_and_shutdown_releases_it(self):
+        runtime = TesseractRuntime(
+            required_languages=("fas", "eng"),
+            paths_provider=lambda: {"executable": "/fake/tesseract", "tessdata_dir": ""},
+        )
+        pytesseract = mock.Mock()
+        image_module = mock.Mock()
+        with (
+            mock.patch("kira.vision_ocr_runtime.importlib.util.find_spec", return_value=object()),
+            mock.patch("kira.vision_ocr_runtime.Path.is_file", return_value=True),
+            mock.patch("kira.vision_ocr_runtime.subprocess.run", side_effect=[
+                completed(stdout="tesseract 5.4.0"),
+                completed(stdout="List of available languages:\nfas\neng\n"),
+            ]),
+            mock.patch("kira.vision_ocr_runtime.importlib.import_module", side_effect=[
+                pytesseract, image_module,
+            ]),
+        ):
+            status = runtime.initialize()
+            self.assertTrue(status["ready"])
+            self.assertEqual(status["status"], "Ready")
+            self.assertEqual(pytesseract.pytesseract.tesseract_cmd, "/fake/tesseract")
+        self.assertTrue(runtime.shutdown())
+        stopped = runtime.diagnostics()
+        self.assertFalse(stopped["ready"])
+        self.assertEqual(stopped["status"], "Available")
 
     def test_required_language_policy_needs_every_configured_language(self):
         runtime = TesseractRuntime(
