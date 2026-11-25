@@ -24,6 +24,7 @@ _CALLBACK_OWNERS = {
     "icon_button": "session",
     "on_input_changed": "session",
     "reg": "session",
+    "sync_progress": "session",
     "send_message": "chat",
     "stop_generation": "chat",
     "toggle_image_search": "chat",
