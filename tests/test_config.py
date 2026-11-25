@@ -118,6 +118,18 @@ class ConfigTests(unittest.TestCase):
             self.assertNotIn(runtime_key, migrated)
         self.assertEqual(source["api_registry"]["groq"]["status"], "valid")
 
+    def test_save_settings_validates_nested_values_without_mutating_caller(self):
+        settings = helpers.fresh_settings()
+        settings["providers"]["ollama"]["num_ctx"] = "invalid"
+        settings["temperature"] = 99
+        config.save_settings(settings)
+
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["providers"]["ollama"]["num_ctx"], config.DEFAULTS["providers"]["ollama"]["num_ctx"])
+        self.assertEqual(saved["temperature"], config.DEFAULTS["temperature"])
+        self.assertEqual(settings["providers"]["ollama"]["num_ctx"], "invalid")
+        self.assertEqual(settings["temperature"], 99)
+
     def test_save_settings_never_persists_detected_capabilities(self):
         settings = helpers.fresh_settings()
         settings.update({

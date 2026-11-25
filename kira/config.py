@@ -552,6 +552,9 @@ def save_settings(settings):
     # Runtime and detected observations are process-local; never write them to settings.json.
     for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
         stored.pop(runtime_key, None)
+    # Every persistence boundary validates against the same schema as load-time recovery.
+    stored = _validate_settings(stored)
+    _validate_route_overrides(stored)
     stored["settings_version"] = SETTINGS_SCHEMA_VERSION
     stored["provider_order"] = normalize_provider_order(stored.get("provider_order"))
     if isinstance(stored.get("routes"), list):

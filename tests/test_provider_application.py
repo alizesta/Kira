@@ -40,7 +40,7 @@ class ProviderApplicationServiceTests(unittest.TestCase):
             self.service.update_ollama_url(self.settings, "not a url")
         self.assertEqual(self.settings, before)
 
-    def test_remove_provider_also_removes_its_api_registry_record(self):
+    def test_remove_provider_clears_its_detected_registry_record(self):
         provider_id = self.service.add_provider(
             self.settings, "Custom", "https://example.test/v1", first_model="model-a"
         )
