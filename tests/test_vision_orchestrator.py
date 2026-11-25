@@ -77,6 +77,14 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertEqual(job.context.session_id, "session-b")
         self.assertEqual(job.payload, b"private-b")
 
+    def test_session_generation_reports_in_flight_context_staleness(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("s", "desktop")
+        self.assertTrue(orchestrator.is_current(context))
+        orchestrator.cancel_session("s")
+        self.assertFalse(orchestrator.is_current(context))
+        self.assertTrue(orchestrator.is_current(orchestrator.create_context("s", "desktop")))
+
     def test_cancel_invalidates_an_already_decided_frame(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("s", "desktop")

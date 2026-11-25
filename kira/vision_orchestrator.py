@@ -105,10 +105,6 @@ class VisionFrameOrchestrator:
         with self._lock:
             return context.generation == self._generations.get(context.session_id, 0)
 
-    def is_current(self, context: FrameContext) -> bool:
-        with self._lock:
-            return context.generation == self._generations.get(context.session_id, 0)
-
     def generation(self, session_id: str) -> int:
         with self._lock:
             return self._generations.get(str(session_id or ""), 0)
