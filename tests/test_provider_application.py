@@ -44,11 +44,11 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         provider_id = self.service.add_provider(
             self.settings, "Custom", "https://example.test/v1", first_model="model-a"
         )
-        self.settings["api_registry"] = {provider_id: {"status": "valid"}}
+        self.service.registry(self.settings)[provider_id] = {"status": "valid"}
         removed = self.service.remove_provider(self.settings, provider_id)
         self.assertTrue(removed)
         self.assertNotIn(provider_id, self.settings["providers"])
-        self.assertNotIn(provider_id, self.settings["api_registry"])
+        self.assertNotIn(provider_id, self.service.registry(self.settings))
 
     def test_builtin_provider_cannot_be_removed(self):
         with self.assertRaises(ValueError):
@@ -203,6 +203,48 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertNotIn("ollama_models", settings)
         self.assertIsInstance(first.detected_capabilities, DetectedCapabilities)
         self.assertIsNot(first.detected_capabilities, second.detected_capabilities)
+
+    def test_runtime_and_detected_capabilities_have_independent_lifecycles(self):
+        from kira.app.runtime_state import RuntimeState
+        from kira.app.detected_capabilities import DetectedCapabilities
+
+        runtime = RuntimeState({"worker", "closing"})
+        capabilities = DetectedCapabilities()
+        worker = object()
+        runtime.set("worker", worker)
+        runtime.set("closing", False)
+        capabilities.set("api_registry", {"groq": {"status": "valid"}})
+        capabilities.set("ollama_models", ("qwen-local",))
+
+        self.assertIs(runtime.get("worker"), worker)
+        self.assertIn("worker", runtime.snapshot())
+        self.assertNotIn("api_registry", runtime.snapshot())
+        self.assertNotIn("worker", capabilities.snapshot())
+        self.assertEqual(capabilities.get("ollama_models"), ("qwen-local",))
+        with self.assertRaises(KeyError):
+            runtime.set("api_registry", {})
+        with self.assertRaises(KeyError):
+            capabilities.set("settings", {})
+        runtime.clear("worker")
+        capabilities.clear()
+        self.assertNotIn("worker", runtime.snapshot())
+        self.assertEqual(capabilities.snapshot(), {})
+
+    def test_model_test_results_live_in_detected_capabilities(self):
+        from kira import model_catalog
+        first = ProviderApplicationService()
+        second = ProviderApplicationService()
+        model_catalog.record_test(
+            self.settings, "groq", "model-a", True, 12, "ok",
+            capabilities=first.detected_capabilities,
+        )
+        self.assertTrue(model_catalog.test_result(
+            self.settings, "groq", "model-a", capabilities=first.detected_capabilities
+        )["ok"])
+        self.assertIsNone(model_catalog.test_result(
+            self.settings, "groq", "model-a", capabilities=second.detected_capabilities
+        ))
+        self.assertNotIn("model_tests", self.settings)
 
     def test_api_model_operations_delegate_to_existing_registry_owner(self):
         detection = object()
