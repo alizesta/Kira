@@ -46,6 +46,23 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
 
 
+def test_live_prompt_and_trace_report_the_effective_frame_budget():
+    runtime = read("kira/ui/main_window_runtime_voice.py")
+    assert "at least {min_interval_seconds:g} seconds apart" in runtime
+    assert "no more than {max_frames_per_minute} frames per rolling 60-second window" in runtime
+    assert "absolute ceiling of one frame per second" in runtime
+
+    vision = read("kira/ui/main_window_attachments_vision.py")
+    for field in (
+        "min_interval_seconds=min_interval_seconds",
+        "max_frames_per_minute=max_frames_per_minute",
+        "transport_max_fps=1",
+        "effective_max_fps=",
+    ):
+        assert field in vision
+    assert ", fps=1," not in vision
+
+
 def test_vision_controller_has_no_undefined_names():
     """A NameError inside the Live try/except is swallowed and silently stops all video."""
     import ast
