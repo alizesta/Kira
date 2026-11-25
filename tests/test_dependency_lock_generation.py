@@ -43,6 +43,21 @@ class DependencyLockGenerationTests(unittest.TestCase):
         self.assertIn("--no-deps", command)
         self.assertEqual(command.count("--constraint"), 1)
 
+    def test_core_hash_lock_is_converted_to_plain_constraints(self):
+        with tempfile.TemporaryDirectory() as temp:
+            core_lock = Path(temp) / "core.txt"
+            constraints = Path(temp) / "core-constraints.txt"
+            core_lock.write_text(
+                "PySide6==6.12.0 --hash=sha256:" + "a" * 64 + "\n"
+                "requests==2.32.5 --hash=sha256:" + "b" * 64 + "\n",
+                encoding="utf-8",
+            )
+            generator._write_core_constraints(core_lock, constraints)
+            self.assertEqual(
+                constraints.read_text(encoding="utf-8"),
+                "pyside6==6.12.0\nrequests==2.32.5\n",
+            )
+
     def test_optional_groups_are_constrained_by_the_generated_core_lock(self):
         root = Path("/repo")
         group = next(g for g in generator.GROUPS if g.name == "ocr")

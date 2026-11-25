@@ -181,6 +181,17 @@ def _reusable_locks(output_dir: Path, fingerprint: str, python_versions: Sequenc
         return False
 
 
+def _write_core_constraints(core_lock: Path, output_file: Path) -> None:
+    """Convert a hash lock to a plain pin-only constraints file for uv's resolver."""
+    stanzas = _lock_stanzas(core_lock.read_text(encoding="utf-8"))
+    if not stanzas:
+        raise LockGenerationError(f"Core lock has no package pins: {core_lock.name}.")
+    output_file.write_text(
+        "".join(f"{name}=={version}\n" for name, version, _stanza in stanzas),
+        encoding="utf-8",
+    )
+
+
 def _compile_group(
     *,
     runner: Callable,
@@ -284,6 +295,12 @@ def generate_locks(
             for version in python_versions:
                 version_name = "python" + version.replace(".", "")
                 core_lock = staged_output / version_name / "core.txt"
+                core_constraints = staging / f"core-constraints-{version_name}.txt"
+                try:
+                    _write_core_constraints(core_lock, core_constraints)
+                except (OSError, LockGenerationError) as exc:
+                    out(f"ERROR: could not derive Core constraints for Python {version}: {exc}")
+                    return 2
                 for group in (item for item in GROUPS if not item.required):
                     missing = _group_inputs(root, group)
                     if missing:
@@ -294,7 +311,7 @@ def generate_locks(
                         ok, code = _compile_group(
                             runner=runner, uv_executable=uv_executable, root=root,
                             group=group, version=version, python_platform=python_platform,
-                            output_file=target, core_lock=core_lock, env=env,
+                            output_file=target, core_lock=core_constraints, env=env,
                             snapshot_cutoff=snapshot_cutoff,
                         )
                     except (OSError, LockGenerationError) as exc:
