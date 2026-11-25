@@ -5,17 +5,12 @@ from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, wants_detail_capture
 from ..perception.events import PerceptionEvent
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
-    AttachmentTile,
     CAPTURE_JPEG_QUALITY,
     GameAudioListener,
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
     QSystemTrayIcon,
     QTimer,
     VisionAnalysisWorker,
     att,
-    front_only,
     save_settings,
     time,
 )
