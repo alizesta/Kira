@@ -1,71 +1,100 @@
-# Ai1 — Project Kira
+# Project Kira
 
-همراه دیجیتال انیمه‌ای برای Windows 11: چت با مدل‌های محلی (Ollama) و ابری (Gemini، Groq، Mistral، OpenRouter، Cloudflare)، حافظه‌ی گفتگو، صدا، تشخیص گفتار و ارسال عکس/فایل.
+Kira is a Windows 11 desktop companion and AI assistant. The application combines a character-driven chat interface with local and cloud model routing, persistent conversations, voice interaction, file and image input, desktop awareness, and a task-oriented coding agent.
 
-## نصب و اجرا
-1. فقط `install.bat` را اجرا کن. در نصب اول مسیر ذخیره‌ی داده‌ها را انتخاب می‌کنی: مسیر پیش‌فرض یا پوشه‌ی دلخواه.
-2. نصب‌کننده وابستگی‌های برنامه، موتورهای صوتی محلی و مدل‌های Qwen/Piper را آماده می‌کند؛ Ollama را نیز در صورت پشتیبانی Windows Package Manager نصب و مدل محلی Qwen3.5-9B Abliterated Q4_K_M را با SHA-256 ثابت دانلود و در Ollama نصب می‌کند.
-3. بعد از نصب، `start_kira.bat` را اجرا کن. در آپدیت‌های بعدی مسیر داده‌ی قبلی خودکار بازیابی می‌شود و دوباره سؤال نمی‌شود.
-4. برای مدل ابری: تب Route ← **Add API** ← کلید API را وارد کن. راهنما: `docs/API_MANAGER_FA.md`.
+The repository's primary documentation language is **English**. Persian translations are stored alongside their English source with the `_FA` suffix, or with `.fa.md` for the root README.
 
-## Ai1 Code (Agent داخل چت کیرا)
-- دکمه و حالت ویژه ندارد: در تب **کیرا** فقط عادی حرف بزن؛ خودش از حرفت می‌فهمد چه می‌خواهی (متن یا صدا). حرف عادی و سؤال عمومی برنامه‌نویسی همان چت معمولی کیرا است؛ تشخیص با کلمه‌ها و اسم‌های خود پروژه انجام می‌شود و اگر مبهم باشد یک سؤال کوتاه از مدل می‌پرسد (در صورت شک، چت عادی).
-- **مأموریت** («مدل دوبعدی کیرا را حذف کن و فقط VRM بماند»، «این قابلیت را اضافه کن»): بار اول پوشه‌ی پروژه را می‌پرسد (فقط یک بار؛ برای عوض‌کردن بگو «پوشه‌ی پروژه را عوض کن»). بعد خودش INSPECT → PLAN → EDIT → TEST → FIX → RETEST → PACKAGE را می‌رود: فایل‌های مرتبط را پیدا می‌کند، برنامه را در چت نشان می‌دهد، روی یک **کپی** چندفایلی تغییر می‌دهد (ویرایش، فایل جدید، حذف)، تست می‌زند، از لاگ خطا را رفع می‌کند و یک **زیپ** تحویل می‌دهد: `Project_YYYY-MM-DD_HH-MM_IRST.zip` (تاریخ میلادی و ساعت ایران) با `AI1CODE_REPORT.md` داخلش. پروژه‌ی اصلی دست‌نخورده می‌ماند و لینک «📂 باز کردن پوشه‌ی زیپ» زیر پیام می‌آید.
-- **سؤال درباره‌ی پروژه** («چرا آواتار دوبعدی قبل از VRM لود می‌شود؟»): خودش فایل‌ها را می‌گردد و فقط می‌خواند و با شماره‌ی خط جواب می‌دهد. چیزی کپی یا عوض نمی‌شود.
-- کیفیت کدنویسی: نقشه‌ی AST برای پیدا کردن importها، کلاس‌ها و توابع پایتون؛ lint خودکار Ruff/Pyflakes بعد از ویرایش؛ نوشتن تست متمرکز برای رفتار جدید؛ Diff و وضعیت Git-style نسبت به snapshot شروع مأموریت؛ و یک بازبین جدا که قبل از پایان، تغییرات را بررسی می‌کند. حافظه‌ی ماندگار قراردادها و دستور تست در `.ai1/PROJECT_MEMORY.md` همراه زیپ می‌آید. برنامه‌ریز از Route نقش `deep`، اجرا از `surface` و بازبینی از `reflection` استفاده می‌کند (از تنظیمات نقش‌های Route و با failover عادی). پاسخ‌های کد در چت عادی هم با بلوک کد خوانا نمایش داده می‌شوند.
-- ایمنی: فایل‌های حساس و پوشه‌های runtime کپی نمی‌شوند و در زیپ نیستند؛ کلیدها قبل از رسیدن به مدل پوشانده می‌شوند؛ مسیرها نمی‌توانند از کپی بیرون بزنند؛ `run` فقط تست/کامپایل پایتون و Ruff/Pyflakes را می‌پذیرد؛ هر دستور آزاد PowerShell و حذف یک پوشه **هر بار** تأیید می‌گیرد؛ مأموریت قبل از شروع یک تأیید می‌گیرد (تست‌ها کد پروژه را با دسترسی حساب ویندوز تو اجرا می‌کنند و sandbox نیستند)؛ حداکثر ۴۰ گام، هر دستور ۱۲۰ ثانیه، و Stop همه‌چیز را متوقف می‌کند؛ تغییر هم‌زمان پروژه‌ی اصلی در گزارش هشدار می‌دهد.
-- مدل: از همان مسیرهای Route Manager تب کیرا؛ برای مأموریت چندفایلی مدل API قوی‌تر از Qwen 4B محلی توصیه می‌شود.
-- میانبرها (لازم نیستند): `/auto مأموریت` · `/patch @فایل ...` (Diff یک فایل، با `/apply` و `/reject`) · `/files` · `/project` · `/run دستور` · `/help`.
-- Git-style status/diff نسبت به snapshot شروع موجود است؛ branch/commit/push و جایگزینی خودکار پروژه‌ی اصلی هنوز نیست. مأموریت بعد از ریستارت ادامه پیدا نمی‌کند.
+## Installation and first launch
 
-## مسیر هوشمند مدل‌ها
-- مکالمه‌ی عادی و درخواست‌هایی که صریحاً بدون سانسور/بدون فیلتر خواسته می‌شوند، به‌صورت محلی به Qwen3.5-9B Abliterated Q4_K_M می‌روند.
-- استدلال سنگین، تحلیل و کدنویسی پیچیده فقط به Routeهای Google Gemini می‌روند؛ در نبود Gemini، Kira به مدل محلی یا Provider دیگری نشت نمی‌کند.
-- ورودی تصویری به Route بینایی Google می‌رود؛ فایل GGUF نصب‌شده text-only است.
-- update_kira.bat پس از دریافت کد، نصب وابستگی‌ها و مدل‌ها را اجرا و تست‌های متمرکز را اجرا می‌کند. وزن GGUF با SHA-256 پین‌شده بررسی می‌شود.
+1. Run **install.bat**. On the first installation, choose the data directory or use the suggested default.
+2. The installer prepares the application dependencies and supported local speech/model components. It also installs Ollama when the Windows Package Manager is available and prepares the configured local Qwen model.
+3. Start the application with **start_kira.bat**.
+4. To configure a cloud model, open the Route settings, choose **Add API**, and enter the provider's API key. Kira validates the key and discovers models through the provider API. See the [API Manager guide](docs/API_MANAGER_FA.md) for the current provider workflow.
 
-## قابلیت‌ها
-- **API Manager + Route Manager:** کلید را وارد کن تا Provider (Groq، Mistral، Google AI Studio، Cloudflare، OpenRouter و APInex) خودکار شناسایی و اعتبارسنجی شود؛ مدل‌ها از API رسمی خوانده می‌شوند؛ چند مدل با اولویت و Failover خودکار. APInex با کلید `sk-apx-` و Base URL رسمی `https://api.apinex.bond/v1` پشتیبانی می‌شود.
-- **جست‌وجوی وب:** دکمه‌ی 🌐 کنار 📎؛ با Tavily (کلید رایگان از tavily.com را در تب عمومی وارد کن و «آزمایش جست‌وجوی وب» را بزن). نتایج شماره‌دار و با بررسی شواهد به مدل داده می‌شوند. با `/web عبارت` اجباری می‌شود.
-- **تحقیق چندمنبعی در وب (جدید):** «درباره‌ی … تحقیق کن»، «این لینک رو بخون» یا `/research …` ← Kira چند جست‌وجو و چند منبع مستقل را می‌خواند، تکراری/قدیمی/کم‌اعتبار را کنار می‌گذارد و گزارش منبع‌دار با سطح اطمینان هر ادعا، تناقض‌ها و کمبود شواهد می‌دهد؛ قابل توقف و ادامه، با حافظه‌ی موقت، محافظت در برابر تزریق دستور/SSRF/نشت کلید، و مستقل از Provider (هیچ مدلی برای خودِ تحقیق صدا زده نمی‌شود). جست‌وجوی سریع 🌐 مثل قبل است. راهنما: `docs/WEB_RESEARCH_FA.md`.
-- **ضمیمه:** دکمه‌ی 📎، کشیدن فایل روی پنجره، یا Ctrl+V برای عکس. عکس‌ها به مدل‌های بینایی (مثل Gemini) می‌روند؛ فایل‌های متنی، docx و (با `pypdf`) pdf خوانده می‌شوند.
-- **ضمیمه در حالت Tray:** وقتی پنجره‌ی اصلی در System Tray است، حباب چت کنار کیرا هم دکمه‌ی 📎، کشیدن فایل روی حباب و Ctrl+V برای عکس دارد (همان محدودیت‌ها و همان مسیر پنجره‌ی اصلی).
-- **جست‌وجوی تصویری:** دکمه‌ی 🔎 (در پنجره‌ی اصلی و حباب Tray). وقتی روشن است، عکسی که می‌فرستی در وب جست‌وجو می‌شود تا معلوم شود چیست؛ برای یک پیام هم می‌شود با `/img` شروع کرد. ترتیب: Gemini + Google Search با خودِ عکس (اگر کلید Gemini داری) ← یک مدل بینایی از روی عکس عبارت جست‌وجو می‌سازد و Tavily ← Google ← DuckDuckGo آن را جست‌وجو می‌کنند. Tavily و DuckDuckGo عکس نمی‌گیرند؛ فقط متن. اگر جست‌وجو شکست بخورد، کیرا از روی خودِ عکس جواب می‌دهد و موارد تأییدنشده را صریح می‌گوید.
-- **صدای کاملاً محلی:** ورودی میکروفن با Qwen3-ASR و در صورت نیاز faster-whisper محلی پردازش می‌شود؛ خروجی گفتار فقط با Piper محلی ساخته و از دستگاه صوتی انتخاب‌شده پخش می‌شود. هیچ صدایی به Google، Edge TTS، Windows SAPI یا Providerهای Cloud Chat ارسال نمی‌شود. دانلود اولیه‌ی بسته‌ها و وزن مدل‌ها به اینترنت نیاز دارد، اما تشخیص و تولید گفتار پس از آماده‌سازی مدل‌ها روی سیستم اجرا می‌شوند. راهنما: `docs/LOCAL_VOICE_FA.md` و `docs/VOICE_ROUTE_FA.md`.
-- **صدای جمله‌به‌جمله و استریم‌شده:** پاسخ به جمله‌های کوتاه تقسیم می‌شود؛ صدا از اولین جمله‌ی کامل شروع می‌شود (حتی وقتی مدل چت هنوز در حال نوشتن است) و ۲ جمله‌ی بعدی همزمان با پخش جمله‌ی قبل ساخته می‌شوند. تنظیم: «صدا از اولین جمله‌ی کامل شروع شود» در تب صدا. جزئیات: `docs/SENTENCE_SPEECH_FA.md`.
-- **آگاهی از کامپیوتر + ابزارها (جدید):** Kira ساعت و تاریخ، مشخصات و مصرف منابع، برنامه‌های باز، شبکه و فایل‌های مجاز را مستقیم از ویندوز می‌خواند، برنامه/فایل/پوشه باز می‌کند و برای عملیات حساس (حذف/انتقال فایل) تأیید صریح می‌گیرد. هیچ Shell آزادی وجود ندارد. جزئیات و محدودیت‌ها: `docs/TOOLS_FA.md`.
-- **ظاهر:** روی Windows 11 حالت شیشه‌ای (Acrylic/Mica) از تب «عمومی ← ظاهر پنجره» قابل تغییر است.
-- **شخصیت‌ها:** کیرا متخصص کدنویسی، میکا راهنمای اطلاعات پزشکی و رن تحلیلگر اخبار است. هر سه از Route و ابزارهای مشترک استفاده می‌کنند؛ تخصص، مجوز اضافه ایجاد نمی‌کند. پرتره‌های انیمه‌ای در تب «شخصیت» نمایش داده می‌شوند.
-- **کتابخانه‌ی احساسات و انیمیشن:** `emotion_library/` (راهنما: `emotion_library/README_EMOTION_LIBRARY.md`).
+The updater is **update_kira.bat**. It updates code and dependencies and runs the configured focused checks.
 
-## Eye Mode — مشاهده و درک زنده‌ی دسکتاپ
-Eye Mode مسیر یکپارچه‌ی مشاهده‌ی صفحه در Kira است؛ مانیتور انتخاب‌شده را به‌صورت دوره‌ای نمونه‌برداری می‌کند و از تغییرات قابل‌مشاهده، پنجره‌ی فعال و در صورت فعال بودن OCR محلی، متن قابل‌خواندن یک زمینه‌ی محدود می‌سازد. این قابلیت فقط مخصوص بازی نیست و محتوای عادی دسکتاپ را هم پوشش می‌دهد.
+## AI routing
 
-- Eye Mode باید صریحاً توسط کاربر روشن شود؛ مانیتور هدف از تنظیم Eye Mode انتخاب می‌شود.
-- خلاصه‌ی متنی در حافظه‌ی RAM و با سقف ۲٬۰۰۰ کاراکتر نگه داشته می‌شود. وضعیت آخرین مشاهده با برچسب تازگی ارائه می‌شود: تازه تا ۱۵ ثانیه، اخیر تا ۶۰ ثانیه و قدیمی پس از ۶۰ ثانیه. مشاهده‌های قدیمی جدا از وضعیت فعلی نگه داشته می‌شوند.
-- در چت عادی، خلاصه‌ی متنی DesktopContext استفاده می‌شود؛ تصویر خام صفحه خودکار به هر پیام ضمیمه نمی‌شود. ارسال فریم به Gemini Live فقط وقتی نشست Live آماده و منبع تصویری کاربر فعال باشد انجام می‌شود.
-- نمونه‌برداری ویدئویی Gemini Live حداکثر ۱ فریم در ثانیه است؛ این قابلیت ویدئوی پیوسته‌ی ۳۰/۶۰ FPS یا مشاهده‌ی تک‌تک فریم‌ها نیست.
-- Capture به مانیتور انتخاب‌شده محدود است و هویت پنجره/فرآیند و قواعد حریم خصوصی قبل و بعد از Capture دوباره بررسی می‌شوند. OCR اختیاری و محلی است؛ در Game Mode به‌طور پیش‌فرض خاموش است.
-- با خاموش‌کردن Eye Mode، توقف منبع یا ردشدن سیاست حریم خصوصی، Capture متوقف و فریم‌های صف‌شده پاک می‌شوند. تصاویر خام روی دیسک ذخیره نمی‌شوند.
-- سازگاری ارسال تصویر به Gemini Live به مدل و Provider انتخابی وابسته است. اجرای واقعی چندمانیتوره، کیفیت OCR، تأخیر و همگام‌سازی صوت/تصویر باید روی Windows بررسی شوند.
+Kira uses explicit routing boundaries rather than sending every request to whichever provider happens to be available.
 
-راهنمای فنی: [مستند Eye Mode](docs/LIVE_DESKTOP_VISION_FA.md).
+- Ordinary conversation and requests that explicitly require an uncensored local path use the configured local Qwen model.
+- Deep reasoning, demanding analysis, and complex coding tasks use the designated Google Gemini routes. They do not silently spill over to an unrelated provider when that route is unavailable.
+- Image understanding uses the configured Google vision route. The installed local GGUF chat model is text-only.
+- Provider priorities, route roles, model allowlists, and failover behavior are managed in Route settings.
 
-## راهنماها
-`docs/TOOLS_FA.md` · `docs/ROUTE_MANAGER_GUIDE_FA.md` · `docs/ADD_PROVIDER_AND_MODEL_FA.md` · `docs/WINDOWS11_CHECKLIST_FA.md` · `docs/CHARACTER_FA.md` · `docs/AGENT_FA.md` (برنامه‌ریزی و اجرای خودکار وظایف) · `docs/WEB_RESEARCH_FA.md` (تحقیق چندمنبعی در وب) · `docs/MEMORY_EVIDENCE_FA.md` (حافظه‌ی شواهدمحور) · `docs/BRAIN_FA.md` (مغز چندمرحله‌ای) · `docs/MCP_AGENTS_FA.md` (MCP و ایجنت‌های مستقل) · `docs/USAGE_FA.md` (مصرف و هزینه) · `docs/FILE_AGENT_FA.md` (عامل فایل) · `docs/DESKTOP_FA.md` (تعامل با دسکتاپ) · `docs/CHANGES_INTEGRATION_FA.md` (خلاصه‌ی تغییرات)
+Available cloud integrations include Google Gemini, Groq, Mistral, OpenRouter, Cloudflare, and APInex where configured. A provider is not active merely because it is listed: the user must configure and enable it.
 
-## تست
-`run_tests.bat` (یا `python -m unittest discover -s tests -t .`).
+## Main capabilities
 
-## میکروفون و گفتگوی صوتی (نسخه‌ی بهبودیافته)
-- **نویز محیط:** سطح صدا فقط در باند گفتار (۱۰۰–۴۰۰۰ هرتز) سنجیده می‌شود، کف نویز اتاق در ابتدا اندازه‌گیری و دنبال می‌شود، و صدای کوتاه (کلیک/ضربه) گفتار حساب نمی‌شود. اگر باز هم زیاد حساس بود: «صدا و میکروفون ← حساسیت میکروفون» را کمتر کن.
-- **تشخیص گفتار فارسی:** ابتدا Qwen3-ASR محلی اجرا می‌شود؛ اگر آماده نباشد یا متن خالی برگرداند، faster-whisper محلی به‌عنوان پشتیبان استفاده می‌شود. متن‌های ساختگی (مثل «زیرنویس...») حذف می‌شوند و «می خوام» → «می‌خوام» و حروف عربی اصلاح می‌شود. انتخاب مدل Whisper پشتیبان با توجه به سرعت و دقت انجام می‌شود.
-- **مکث بین جمله‌ها:** اگر وسط حرف مکث کنی (مخصوصاً بعد از «و / که / ولی» یا ویرگول) Kira صبر می‌کند و تکه‌ها را یک پیام می‌کند.
-- **پایان صحبت:** سکوت انتهایی بریده می‌شود و پایان جمله نسبت به بلندی صدای خودت تشخیص داده می‌شود.
-- **قطع‌کردن Kira:** وقتی Kira حرف می‌زند میکروفون گوش می‌دهد؛ اگر شروع به صحبت کنی ساکت می‌شود و حرفت به‌عنوان پیام بعدی شنیده می‌شود. گفتن «بس کن / ساکت» فقط او را ساکت می‌کند. با بلندگو ممکن است صدای خودش را اشتباه بگیرد؛ با هدفون بهترین نتیجه است یا گزینه را خاموش کن.
-- **لهجه‌ها و مدل دقیق‌تر:** در «صدا و میکروفون ← مدل Whisper» می‌توانی `large-v3-turbo` / `large-v3` یا هر مدل faster-whisper (مثلاً `parseh/whisper-fa-accuracy-ct2`) را انتخاب یا تایپ کنی؛ بار اول دانلود می‌شود و روی CPU کندتر است. این موتور فقط پشتیبان محلی Qwen است.
-- **تولید گفتار:** پاسخ‌ها جمله‌به‌جمله با Piper محلی تولید می‌شوند؛ صدا به WAV محلی تبدیل و از بلندگو/هدفون انتخاب‌شده پخش می‌شود. هیچ fallback ابری یا Windows/Edge وجود ندارد.
-- **فایل اصلاح واژه‌ها:** دکمه‌ی «باز کردن فایل اصلاح واژه‌ها» فایل `speech_fixes.json` را باز می‌کند: `hotwords` = کلمه‌هایی که Whisper باید بهشان متمایل باشد، `replace` = «اشتباهی»: «درست». با ذخیره‌ی فایل، از جمله‌ی بعد اعمال می‌شود.
-- **پیام صوتی به مدل چت:** به مدل گفته می‌شود پیام از تشخیص گفتار آمده و ممکن است غلط یا لهجه‌ای باشد، پس از روی معنی حدس بزند.
+### Chat, memory, and characters
 
-- **موتورهای گفتار محلی، Route مخصوص چت، جلوگیری از نشت متن داخلی مدل و فعال‌سازی هوشمند برنامه‌ها:** `docs/VOICE_ROUTE_FA.md`
+- Independent conversation history for the available character profiles.
+- Persistent chat storage and explicit history-management actions.
+- Evidence-oriented memory that can retain a fact together with its source context.
+- Character-specific presentation and behavior, while sharing the application's routing and safety boundaries.
+
+### Web search and research
+
+- Quick web search can be invoked from the chat composer.
+- Multi-source research can search and read independent pages, compare evidence, and produce a cited report with confidence and evidence limitations.
+- Research is separate from ordinary quick search and can be stopped or continued.
+
+See [Web Research](docs/WEB_RESEARCH_FA.md).
+
+### Files, images, and desktop tools
+
+- Attach files through the attachment button, drag and drop, or supported clipboard image input.
+- Supported text and document formats can be read; image understanding requires a compatible vision route.
+- The Tool System can inspect permitted information about the Windows computer and perform supported actions. Sensitive file operations require explicit confirmation; it is not an unrestricted shell.
+
+See [Tools and computer access](docs/TOOLS_FA.md).
+
+### Voice
+
+Kira supports a Gemini Live conversation path and local speech components. Local speech recognition uses the configured offline ASR engine with its supported fallback; local speech generation uses Piper. The local path does not send microphone audio to cloud speech services. Cloud Live interaction is a separate, explicitly configured mode.
+
+See [Local Voice](docs/LOCAL_VOICE_FA.md), [Voice Routing](docs/VOICE_ROUTE_FA.md), and [Gemini Live](docs/GEMINI_LIVE_FA.md).
+
+### Eye Mode
+
+Eye Mode is an explicit opt-in desktop perception feature. It samples the selected monitor, applies foreground-window and privacy checks, and maintains a bounded text context. It is not a high-frame-rate screen recorder. Raw frames are not retained as ordinary application history.
+
+See [Live Desktop Vision](docs/LIVE_DESKTOP_VISION_FA.md).
+
+### Kira Code
+
+Kira Code is the task-oriented coding agent available from the normal Kira chat. It can inspect a selected project, plan a bounded task, edit a working copy, run supported checks, review the resulting changes, and package its output. The original project is kept separate from the working copy. Commands that can affect the host require the applicable confirmation; the runner is not a general-purpose security sandbox.
+
+## Interface language
+
+The first-run interface language is **English**. To use Persian, open the General/Preferences settings, choose **فارسی** in the Interface language field, and save the settings. The layout switches to right-to-left for Persian.
+
+This preference affects the application interface only. Speech-recognition language, spoken voice, model language, and the language of conversation content are separate settings or model behaviors. A previously saved Persian preference is preserved when the application is updated.
+
+See [Language Settings](docs/LANGUAGE_SETTINGS.md) for the implementation and persistence contract.
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [User Guide](docs/USER_GUIDE.md)
+- [Language Settings](docs/LANGUAGE_SETTINGS.md)
+- [Architecture entry point](ARCHITECTURE.md)
+- [Architecture Master](docs/ARCHITECTURE_MASTER.md)
+- [Module Ownership](docs/MODULE_OWNERSHIP.md)
+- [Architecture Roadmap](docs/ARCHITECTURE_ROADMAP.md)
+
+Feature-specific documents are indexed in the documentation index. Existing Persian-only technical documents are retained; they are not silently replaced or removed during the documentation language transition.
+
+## Tests
+
+Run the repository test suite from the project root:
+
+```text
+python -m unittest discover -s tests -t .
+```
+
+On Windows, **run_tests.bat** is also provided. Tests that require Windows-only APIs, installed speech models, hardware, or an interactive desktop must be validated in their corresponding environment.
+
+## Platform and scope
+
+The desktop application targets Windows 11. A passing source-level test does not by itself establish that audio devices, GPU inference, desktop capture, or the full interactive GUI work on every Windows machine. Those capabilities require runtime validation on the target system.
