@@ -198,12 +198,17 @@ class ASRManager:
                         "error_code": "discovery_failed", "error_message": f"{type(exc).__name__}: {exc}"}
         with self._lock:
             active = self._active_adapter is adapter and self._active_model == model_id
-            failed = self._state == "failed"
+            error_matches_selection = bool(
+                self._last_error is not None
+                and self._last_error.engine_id == engine_id
+                and self._last_error.model_id == model_id
+            )
+            failed = self._state == "failed" and error_matches_selection
             snapshot.update(
                 initialized=active,
                 state="failed" if failed else ("ready" if active else
                        ("available" if snapshot.get("ready") else "unavailable")),
-                last_error=str(self._last_error) if self._last_error else "",
+                last_error=str(self._last_error) if error_matches_selection else "",
             )
             if failed:
                 snapshot["ready"] = False
@@ -323,7 +328,7 @@ class ASRManager:
         adapter = self._active_adapter
         if adapter is None:
             self._active_model = ""
-            self._state = "idle"
+            self._state, self._last_error = "idle", None
             return
         self._state = "shutting_down"
         try:
