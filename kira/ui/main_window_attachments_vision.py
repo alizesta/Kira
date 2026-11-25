@@ -200,13 +200,13 @@ class AttachmentsVisionController(WindowFeatureController):
         )
 
     def _perception_worker_controller(self):
-        controller = getattr(self.context.services, "perception_worker_controller", None)
+        controller = getattr(self.context.adapters, "perception_worker_controller", None)
         if controller is None:
             raise RuntimeError("Perception worker adapter was not composed by the application root")
         return controller
 
     def perception_worker(self):
-        controller = getattr(self.context.services, "perception_worker_controller", None)
+        controller = getattr(self.context.adapters, "perception_worker_controller", None)
         return controller.worker if controller is not None else None
 
     def _queue_perception_ocr(self, frame, source, window_info):
