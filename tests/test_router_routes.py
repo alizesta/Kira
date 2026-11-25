@@ -484,7 +484,8 @@ class RouterRouteTests(unittest.TestCase):
         routes.update_provider(s, google_one, quota_scope="shared-project")
         routes.update_provider(s, google_two, quota_scope="shared-project")
         first = routes.add_route(s, google_one, "gemini-3.8-flash")
-        second = routes.add_route(s, google_two, "gemini-4-hydrogen")
+        second = routes.add_route(s, google_two, "gemini-3.8-flash")
+        different_model = routes.add_route(s, google_two, "gemini-4-hydrogen", enabled=False)
         backup = routes.add_provider(
             s, "Backup API", "https://backup.example.test/v1", api_key="backup-key"
         )
@@ -504,6 +505,9 @@ class RouterRouteTests(unittest.TestCase):
         )
         self.assertIn(first["id"], router.cooldowns)
         self.assertIn(second["id"], router.cooldowns)
+        self.assertNotIn(different_model["id"], router.cooldowns)
+        self.assertEqual(router._google_quota_scope(first), router._google_quota_scope(second))
+        self.assertNotEqual(router._google_quota_scope(first), router._google_quota_scope(different_model))
         self.assertGreater(router.cooldowns[second["id"]] - time.monotonic(), 250)
 
 

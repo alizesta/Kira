@@ -369,14 +369,15 @@ class HybridRouter:
         self.cooldowns.pop(route["id"], None)
 
     def _google_quota_scope(self, route):
-        """Stable quota bucket for Google routes sharing one project or one provider key."""
+        """Google's rate limits are shared per project and model, not per API key."""
         cfg = self._provider_cfg(route)
         if not route_model.is_google(route.get("provider"), cfg):
             return None
+        model = _bare_model_id(route.get("model") or "").strip().casefold()
         project_scope = str(cfg.get("quota_scope") or "").strip().casefold()
         if project_scope:
-            return ("google-project", project_scope)
-        return ("google-provider", str(route.get("provider") or "").strip().casefold())
+            return ("google-project-model", project_scope, model)
+        return ("google-provider-model", str(route.get("provider") or "").strip().casefold(), model)
 
     def _mark_failure(self, route, exc, secrets=()):
         kind, status, retryable, retry_after = classify(exc)
@@ -395,8 +396,8 @@ class HybridRouter:
             if kind == "rate" or status == 429:
                 quota_scope = self._google_quota_scope(route)
                 if quota_scope is not None:
-                    # Google quotas are project-scoped, not model/route-scoped.
-                    # The optional quota_scope lets separate API keys share the same project bucket.
+                    # Google quota buckets are project + model scoped. quota_scope
+                    # lets separate API entries for the same project share that model bucket.
                     for sibling in self.routes():
                         if self._google_quota_scope(sibling) == quota_scope:
                             self.cooldowns[sibling["id"]] = cooldown_until
