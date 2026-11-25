@@ -40,7 +40,7 @@ class ProviderApplicationService:
         if self._router_factory is not None:
             return self._router_factory(settings)
         from ..hybrid_ai import HybridRouter
-        return HybridRouter(settings)
+        return HybridRouter(settings, detected_capabilities=self.detected_capabilities)
 
     def create_isolated_router(self, settings, previous_router=None):
         """Create an independent request/cancellation channel for background work."""
@@ -113,9 +113,8 @@ class ProviderApplicationService:
     def provider_kind(provider_id: str, config=None) -> str:
         return route_model.provider_kind(provider_id, config)
 
-    @staticmethod
-    def ensure_routes(settings: dict[str, Any]) -> dict[str, Any]:
-        return route_model.ensure_routes(settings)
+    def ensure_routes(self, settings: dict[str, Any]) -> dict[str, Any]:
+        return route_model.ensure_routes(settings, capabilities=self.detected_capabilities)
 
     @staticmethod
     def add_route(settings: dict[str, Any], provider: str, model: str, enabled: bool = True):
@@ -125,9 +124,8 @@ class ProviderApplicationService:
     def update_route(settings: dict[str, Any], route_id: str, **changes):
         return route_model.update_route(settings, route_id, **changes)
 
-    @staticmethod
-    def remove_route(settings: dict[str, Any], route_id: str) -> None:
-        route_model.remove_route(settings, route_id)
+    def remove_route(self, settings: dict[str, Any], route_id: str) -> None:
+        route_model.remove_route(settings, route_id, capabilities=self.detected_capabilities)
 
     @staticmethod
     def reorder_routes(settings: dict[str, Any], ordered_ids):
@@ -153,12 +151,13 @@ class ProviderApplicationService:
     def add_ollama_models(settings: dict[str, Any], names):
         return route_model.add_ollama_models(settings, names)
 
-    @staticmethod
-    def update_provider(settings: dict[str, Any], provider_id: str, **changes):
-        return route_model.update_provider(settings, provider_id, **changes)
+    def update_provider(self, settings: dict[str, Any], provider_id: str, **changes):
+        return route_model.update_provider(
+            settings, provider_id, capabilities=self.detected_capabilities, **changes
+        )
 
-    @staticmethod
     def add_provider(
+        self,
         settings: dict[str, Any],
         label: str,
         base_url: str,
@@ -172,7 +171,7 @@ class ProviderApplicationService:
             provider_id = route_model.add_provider(settings, label, base_url, api_key, local)
             if str(first_model or "").strip():
                 route_model.add_route(settings, provider_id, first_model)
-            route_model.ensure_routes(settings)
+            route_model.ensure_routes(settings, capabilities=self.detected_capabilities)
             return provider_id
         except Exception:
             settings.clear()
@@ -183,7 +182,9 @@ class ProviderApplicationService:
         """Remove a custom provider and its API registry entry as one settings operation."""
         before = deepcopy(settings)
         try:
-            removed_routes = route_model.remove_provider(settings, provider_id)
+            removed_routes = route_model.remove_provider(
+                settings, provider_id, capabilities=self.detected_capabilities
+            )
             api_manager.registry(self.detected_capabilities).pop(provider_id, None)
             return removed_routes
         except Exception:

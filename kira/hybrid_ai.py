@@ -15,6 +15,7 @@ import requests
 from typing import Any
 
 from . import routes as route_model
+from .app.detected_capabilities import DetectedCapabilities
 from .request_trace import trace as request_trace, set_request_id as set_trace_request_id, reset_request_id as reset_trace_request_id
 from .leak_guard import LeakGuard, clean_final
 from .ollama_client import OllamaClient, OllamaError
@@ -56,8 +57,9 @@ from .hybrid_providers import (  # noqa: F401 - re-exported for backward compati
 class HybridRouter:
     """Ordered Route router: manual choice > priority order; per-route timeout and cooldown; failover; streaming; metrics."""
 
-    def __init__(self, settings: dict):
+    def __init__(self, settings: dict, *, detected_capabilities: DetectedCapabilities | None = None):
         self.settings = settings
+        self.detected_capabilities = detected_capabilities or DetectedCapabilities()
         self.cooldowns: dict[str, float] = {}
         self.states: dict[str, dict] = {}              # route id -> health / last error / last response time (runtime only)
         self.metrics = deque(maxlen=METRICS_KEEP)       # per-request speed records (metadata only)
@@ -409,7 +411,10 @@ class HybridRouter:
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
         if getattr(exc, "quota", "") == "no_free":
             try:
-                if route_model.disable_route(self.settings, route["id"], "بدون سهمیه‌ی رایگان (limit: 0)"):
+                if route_model.disable_route(
+                    self.settings, route["id"], "بدون سهمیه‌ی رایگان (limit: 0)",
+                    capabilities=self.detected_capabilities,
+                ):
                     st["health"] = "disabled"
             except Exception:                             # noqa: BLE001
                 pass
@@ -417,7 +422,11 @@ class HybridRouter:
             st["model_failures"] = st.get("model_failures", 0) + 1
             if st["model_failures"] >= route_model.AUTO_DISABLE_AFTER:
                 try:                                      # a model the service keeps refusing is dead: switch the route off
-                    if route_model.disable_route(self.settings, route["id"], "سرویس این مدل را نمی‌پذیرد: " + str(st["last_error"])[:120]):
+                    if route_model.disable_route(
+                        self.settings, route["id"],
+                        "سرویس این مدل را نمی‌پذیرد: " + str(st["last_error"])[:120],
+                        capabilities=self.detected_capabilities,
+                    ):
                         st["health"] = "disabled"
                 except Exception:                         # noqa: BLE001 - bookkeeping must never break a failover
                     pass

@@ -122,8 +122,12 @@ class ProviderSettingsController(WindowFeatureController):
                 free = route_model.catalog_free(detection.models)
                 prefer = api_manager.SERVICES.get(service.service_of(pid, settings.get("providers", {}).get(pid)), {}).get("default_models", ())
                 removed_routes += len(route_model.reconcile_provider_models(
-                    settings, pid, route_model.catalog_ids(detection.models), free=free, prefer=prefer))
-                disabled_routes += len(route_model.disable_non_free_routes(settings, pid, free))
+                    settings, pid, route_model.catalog_ids(detection.models), free=free, prefer=prefer,
+                    capabilities=self.context.services.provider_application_service.detected_capabilities))
+                disabled_routes += len(route_model.disable_non_free_routes(
+                    settings, pid, free,
+                    capabilities=self.context.services.provider_application_service.detected_capabilities,
+                ))
                 updated += len(detection.models)
             elif detection.ok:
                 # An empty discovery response is not reliable evidence that every old model was deleted.
@@ -289,7 +293,10 @@ class ProviderSettingsController(WindowFeatureController):
         self._after_model_change(provider)
 
     def on_model_restore(self, provider, model):
-        model_catalog.restore_model(self.context.services.settings, provider, model)
+        model_catalog.restore_model(
+            self.context.services.settings, provider, model,
+            capabilities=self.context.services.provider_application_service.detected_capabilities,
+        )
         self.models_panel.status.setText(f"{model} بازگردانده شد؛ برای استفاده، کلید روشن/خاموش آن را روشن کن.")
         self._after_model_change(provider)
 
@@ -781,7 +788,10 @@ class ProviderSettingsController(WindowFeatureController):
                 parts.append(f"آخرین پاسخ {st['last_ms']} ms")
             if st.get("cooldown"):
                 parts.append(f"استراحت {st['cooldown']}s")
-            note = route_model.route_note(self.context.services.settings, rid)
+            note = route_model.route_note(
+                self.context.services.settings, rid,
+                capabilities=self.context.services.provider_application_service.detected_capabilities,
+            )
             if note:
                 parts.append("خاموش‌شده خودکار: " + note)
             if st.get("last_error"):

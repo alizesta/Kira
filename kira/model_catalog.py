@@ -63,14 +63,14 @@ def archive_model(settings, provider, model):
                 settings["manual_route_id"] = ""          # a pinned model that is archived must not stay pinned
 
 
-def restore_model(settings, provider, model):
+def restore_model(settings, provider, model, *, capabilities: DetectedCapabilities):
     """Take a model out of the archived tab. It comes back switched OFF; the user turns it on again if wanted."""
     bucket = (settings.get("model_archive") or {}).get(provider)
     if bucket and model in bucket:
         bucket.remove(model)
         if not bucket:
             settings["model_archive"].pop(provider, None)
-    (settings.get("route_notes") or {}).pop(_route_id(settings, provider, model), None)    # an auto-disable note no longer applies
+    capabilities.mapping_pop("route_notes", _route_id(settings, provider, model), None)
 
 
 def _route_id(settings, provider, model):
@@ -107,13 +107,13 @@ def _price(free):
     return "free" if free is True else "paid" if free is False else "unknown"
 
 
-def _archive_reason(settings, provider, model, meta, route):
+def _archive_reason(settings, provider, model, meta, route, *, capabilities: DetectedCapabilities):
     if is_archived(settings, provider, model):
         return "به منسوخ منتقل شده"
     if meta.get("status") == "unavailable":
         return "دیگر در سرویس نیست"
     if route is not None and not route.get("enabled", True):
-        note = route_model.route_note(settings, route["id"])
+        note = route_model.route_note(settings, route["id"], capabilities=capabilities)
         if note:
             return "خاموش‌شده خودکار: " + note
     return ""
@@ -133,7 +133,7 @@ def model_rows(settings, *, capabilities: DetectedCapabilities):
             if not is_chat_model(mid, meta):
                 continue
             route = by_key.get((pid, mid))
-            reason = _archive_reason(settings, pid, mid, meta, route)
+            reason = _archive_reason(settings, pid, mid, meta, route, capabilities=capabilities)
             enabled = bool(route and route.get("enabled", True)) and not reason
             tabs = [TAB_ARCHIVED] if reason else [TAB_FREE if meta.get("free") is True else TAB_PAID]
             if enabled:
