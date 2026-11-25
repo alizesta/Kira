@@ -303,7 +303,9 @@ def initialize_main_window(
     self.state._game_poll_timer.timeout.connect(self.adapters.game_mode.poll)
     self.state._game_poll_timer.start()
     self.state._game_capture_timer = QTimer(self.host)
-    self.state._game_capture_timer.setInterval(int(self.services.vision_application_service.policy.interval_seconds * 1000))
+    # The capture timer is stopped until Eye Mode is enabled. Its policy-specific
+    # interval is applied by the Vision controller when the feature is activated.
+    self.state._game_capture_timer.setInterval(5000)
     self.state._game_capture_timer.timeout.connect(
         lambda: self.controllers.require("attachments_vision")._capture_active_vision_frame()
     )
@@ -536,10 +538,12 @@ def initialize_main_window(
         action.triggered.connect(lambda checked=False, idx=i: self.controllers.require("session").go_tab(idx))
         self.state._menu_actions.append(action)
 
-    desktop_policy = self.services.vision_application_service.desktop_capture_application_service
-    # Eye Mode is explicit opt-in and must never inherit a stale legacy Desktop Vision state.
-    desktop_policy.set_enabled(False)
+    # Eye Mode is explicit opt-in. Keep the compatibility setting disabled without
+    # constructing the deferred Vision and desktop-capture services during composition.
     self.services.settings["desktop_vision_enabled"] = False
+
+    def _selected_desktop_monitor_id():
+        return str(self.services.settings.get("desktop_vision_monitor_id") or "").strip()
     self.views.nav_menu.addSeparator()
     # Eye Mode has exactly one on/off control in the chat composer. Keep only
     # monitor selection in navigation; the legacy second toggle is removed.
@@ -550,7 +554,7 @@ def initialize_main_window(
         "خودکار · مانیتور پنجرهٔ فعال"
     )
     self.views.desktop_vision_auto_action.setCheckable(True)
-    self.views.desktop_vision_auto_action.setChecked(not desktop_policy.selected_monitor_id)
+    self.views.desktop_vision_auto_action.setChecked(not _selected_desktop_monitor_id())
     self.views.desktop_vision_auto_action.triggered.connect(
         lambda checked=False: self.controllers.require("attachments_vision").set_desktop_monitor("")
     )
@@ -565,7 +569,7 @@ def initialize_main_window(
             label = monitor.name + (" · اصلی" if monitor.primary else "")
             action = menu.addAction(label)
             action.setCheckable(True)
-            action.setChecked(monitor.id == desktop_policy.selected_monitor_id)
+            action.setChecked(monitor.id == _selected_desktop_monitor_id())
             action.triggered.connect(
                 lambda checked=False, monitor_id=monitor.id:
                     self.controllers.require("attachments_vision").set_desktop_monitor(monitor_id)

@@ -8,6 +8,8 @@ from kira.app.dependency_container import DependencyContainer
 from kira.app.event_bus import EventBus
 from kira.app.feature_modules import (
     APPLICATION_FEATURE_DEPENDENCIES,
+    DEFERRED_REQUIRED_APPLICATION_MODULES,
+    LAZY_APPLICATION_MODULES,
     OPTIONAL_APPLICATION_MODULES,
     REQUIRED_APPLICATION_MODULES,
     register_application_modules,
@@ -173,6 +175,74 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
     def tearDown(self):
         self.manager.shutdown()
         self.event_bus.close()
+
+    def test_required_vision_and_context_services_remain_cold_until_first_use(self):
+        created = []
+
+        class DeferredService:
+            def __init__(self, name):
+                self.name = name
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+            def close(self):
+                pass
+
+            def ping(self):
+                return self.name
+
+        def factory(name):
+            def create():
+                created.append(name)
+                return DeferredService(name)
+            return create
+
+        manager = ModuleManager()
+        container = manager.container
+        register_application_modules(
+            manager,
+            container,
+            settings={},
+            event_publisher=EventPublisher(),
+            service_factories={
+                "desktop_capture_application_service": factory("desktop_capture"),
+                "desktop_context_application_service": factory("desktop_context"),
+                "vision_application_service": factory("vision"),
+            },
+        )
+        try:
+            targets = ("desktop_capture", "desktop_context", "vision")
+            self.assertTrue(set(targets).issubset(DEFERRED_REQUIRED_APPLICATION_MODULES))
+            self.assertTrue(set(targets).issubset(LAZY_APPLICATION_MODULES))
+            self.assertTrue(set(targets).issubset(REQUIRED_APPLICATION_MODULES))
+            self.assertFalse(set(targets) & OPTIONAL_APPLICATION_MODULES)
+            self.assertTrue(all(not manager._modules[key].optional for key in targets))
+
+            for key in targets:
+                manager.start(key)
+
+            self.assertEqual(created, [])
+            self.assertEqual(
+                container.resolve("desktop_capture_application_service").ping(),
+                "desktop_capture",
+            )
+            self.assertEqual(created, ["desktop_capture"])
+            self.assertEqual(
+                container.resolve("desktop_context_application_service").ping(),
+                "desktop_context",
+            )
+            self.assertEqual(
+                container.resolve("vision_application_service").ping(),
+                "vision",
+            )
+            self.assertEqual(created, ["desktop_capture", "desktop_context", "vision"])
+        finally:
+            manager.shutdown()
+            manager.event_bus.close()
 
     def test_optional_modules_are_separate_and_disablable(self):
         self.assertTrue({

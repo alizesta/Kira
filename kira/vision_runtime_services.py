@@ -12,6 +12,14 @@ from .live_video_selector import LiveFrameSelector, SelectorPolicy
 from .vision_orchestrator import FrameJob
 
 
+def _service_value(service: Any, name: str) -> Any:
+    """Read a concrete or lazily proxied non-callable service attribute."""
+    value_reader = getattr(service, "value", None)
+    if callable(value_reader):
+        return value_reader(name)
+    return getattr(service, name)
+
+
 @dataclass(frozen=True)
 class CaptureResult:
     source: str
@@ -88,7 +96,7 @@ class VisionCaptureService:
 
     @property
     def privacy(self):
-        return self._vision.desktop_capture_application_service
+        return _service_value(self._vision, "desktop_capture_application_service")
 
     def list_monitors(self):
         return self._capture.list_monitors()
@@ -122,7 +130,7 @@ class VisionCaptureService:
                 reason=reason or "window_not_permitted", stage="privacy",
             )
 
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_window(
             window_info,
             max_width=policy.max_width,
@@ -141,10 +149,10 @@ class VisionCaptureService:
                 reason=reason or "vision_service_inactive", stage="privacy",
             )
 
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
+            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
@@ -161,10 +169,10 @@ class VisionCaptureService:
                 reason=reason or "vision_service_inactive", stage="privacy",
             )
 
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_window(
             window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
+            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
@@ -172,7 +180,7 @@ class VisionCaptureService:
 
     def capture_desktop_attachment(self, *, source_enabled: bool) -> CaptureResult:
         """Capture a user-requested Eye Mode attachment after both source gates pass."""
-        if not source_enabled or not self.privacy.enabled:
+        if not source_enabled or not self._service_value(privacy, "enabled"):
             return CaptureResult(
                 "desktop", None, allowed=False,
                 reason="eye_mode_source_disabled", stage="source",
@@ -186,10 +194,10 @@ class VisionCaptureService:
                 "desktop", window_info, allowed=False,
                 reason=reason or "privacy_or_source_disabled", stage="privacy",
             )
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
+            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
@@ -257,7 +265,7 @@ class VisionAnalysisCoordinator:
         if not _valid_frame(frame):
             return None, None
 
-        orchestrator = self._vision.frame_orchestrator
+        orchestrator = _service_value(self._vision, "frame_orchestrator")
         orchestrator.configure_budget(
             max_frames_per_minute=max_frames_per_minute,
             min_interval_seconds=interval_seconds,
@@ -285,7 +293,7 @@ class VisionAnalysisCoordinator:
 
         try:
             payload, visual_sample = self._frame_encoder(
-                frame, int(self._vision.policy.jpeg_quality)
+                frame, int(_service_value(self._vision, "policy").jpeg_quality)
             )
             payload = bytes(payload or b"")
             visual_sample = bytes(visual_sample or b"")
@@ -530,10 +538,10 @@ class VisionAnalysisCoordinator:
             and int(current.get("hwnd") or 0) == int(hwnd or -1)
             and int(current.get("pid") or 0) == int(pid or -1)
         )
-        privacy = self._vision.desktop_capture_application_service
+        privacy = _service_value(self._vision, "desktop_capture_application_service")
         desktop_source_active = (
             source == "desktop" and not closing and bool(game_mode_enabled)
-            and privacy is not None and bool(privacy.enabled)
+            and privacy is not None and bool(_service_value(privacy, "enabled"))
         )
         desktop_allowed, desktop_reason = (
             privacy.evaluate_window(current)
@@ -718,9 +726,9 @@ class LiveSessionManager:
             return self._release(frame_context)
 
         max_bytes = self._max_frame_bytes()
-        privacy = self._vision.desktop_capture_application_service
+        privacy = _service_value(self._vision, "desktop_capture_application_service")
         if source == "desktop":
-            source_enabled = bool(privacy.enabled)
+            source_enabled = bool(_service_value(privacy, "enabled"))
         elif source == "game":
             permissions = self._game_mode.permissions(game_mode_profile)
             source_enabled = bool(game_mode_enabled and permissions["vision_capture"])
@@ -750,7 +758,7 @@ class LiveSessionManager:
         foreground_identity = _window_identity(current)
         expected = _window_identity(window_info)
         identity = (
-            ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
+            ("desktop-monitor", str(_service_value(privacy, "selected_monitor_id") or "auto"))
             if source == "desktop" else foreground_identity
         )
         if source == "game" and (
@@ -773,7 +781,7 @@ class LiveSessionManager:
         else:
             frame_image = self._capture.capture_live_monitor_frame(
                 current,
-                monitor_id=privacy.selected_monitor_id if source == "desktop" else None,
+                monitor_id=_service_value(privacy, "selected_monitor_id") if source == "desktop" else None,
                 max_width=480,
                 max_height=270,
             )

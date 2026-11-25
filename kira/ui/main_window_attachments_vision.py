@@ -41,6 +41,14 @@ def _game_fields(game):
     return {"exe": str(game.get("exe") or "")[:80]}
 
 
+def _service_value(service, name):
+    """Read data attributes from either a concrete service or its lazy proxy."""
+    value_reader = getattr(service, "value", None)
+    if callable(value_reader):
+        return value_reader(name)
+    return getattr(service, name)
+
+
 class AttachmentsVisionController(WindowFeatureController):
     @staticmethod
     def _vision_session_id(session):
@@ -164,7 +172,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _vision_interval_ms(self):
         base = max(
-            250, int(self.context.services.vision_application_service.policy.interval_seconds * 1000)
+            250, int(_service_value(self.context.services.vision_application_service, "policy").interval_seconds * 1000)
         )
         return 1000 if getattr(self, "_live_video_active", False) else base
 
@@ -213,9 +221,9 @@ class AttachmentsVisionController(WindowFeatureController):
         from .pages.eye_vision_page import EyeVisionPage
 
         session = self.feature_controller("session")
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         page = EyeVisionPage(session.t)
-        page.set_monitors(self._eye_monitor_choices(), privacy.selected_monitor_id or "")
+        page.set_monitors(self._eye_monitor_choices(), _service_value(privacy, "selected_monitor_id") or "")
         page.set_profile(self.context.state._game_mode_profile)
         page.set_eye_enabled(bool(self.context.state._game_mode_enabled))
         page.set_budget(*self._live_budget_values())
@@ -228,10 +236,10 @@ class AttachmentsVisionController(WindowFeatureController):
 
         def select_monitor(monitor_id):
             if not self.set_desktop_monitor(monitor_id):
-                page.select_monitor(privacy.selected_monitor_id or "")
+                page.select_monitor(_service_value(privacy, "selected_monitor_id") or "")
 
         def refresh():
-            page.set_monitors(self._eye_monitor_choices(), privacy.selected_monitor_id or "")
+            page.set_monitors(self._eye_monitor_choices(), _service_value(privacy, "selected_monitor_id") or "")
             page.set_profile(self.context.state._game_mode_profile)
             page.set_eye_enabled(bool(self.context.state._game_mode_enabled))
 
@@ -276,7 +284,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def _queue_perception_ocr(self, frame, source, window_info):
         """Update safe app context immediately; OCR only follows a changed screen."""
         context = self.context.services.desktop_context_application_service
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         allowed, reason = privacy.evaluate_window(
             window_info, explicit=(source == "game")
         )
@@ -425,12 +433,12 @@ class AttachmentsVisionController(WindowFeatureController):
             and str(current.get("title") or "").strip() == str(captured.get("title") or "").strip()
             and str(current.get("path") or "").casefold() == str(captured.get("path") or "").casefold()
         )
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         source_enabled = (
             not bool(self.context.state._closing)
             and (
                 bool(self.context.state._game_mode_enabled)
-                if source == "game" else bool(privacy.enabled)
+                if source == "game" else bool(_service_value(privacy, "enabled"))
             )
         )
         allowed, reason = privacy.evaluate_window(
@@ -630,7 +638,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self._capture_desktop_frame()
             if not self.context.state._game_capture_timer.isActive():
                 self.context.state._game_capture_timer.start()
-        elif service.desktop_capture_application_service.enabled:
+        elif _service_value(_service_value(service, "desktop_capture_application_service"), "enabled"):
             self._capture_desktop_frame()
             if not self.context.state._game_capture_timer.isActive():
                 self.context.state._game_capture_timer.start()
@@ -641,7 +649,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def _set_game_vision_capture(self, allowed):
         """Eye Mode owns the only live capture source: the selected desktop monitor."""
         allowed = bool(allowed)
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         privacy.set_enabled(allowed)
         self.context.adapters.game_mode.set_enabled(allowed)
         if not allowed:
@@ -676,7 +684,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 "system", "مانیتور انتخاب‌شده دیگر در دسترس نیست."
             )
             return False
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         privacy.set_selected_monitor(selected)
         self.context.services.settings["desktop_vision_monitor_id"] = selected
         save_settings(self.context.services.settings)
@@ -686,13 +694,13 @@ class AttachmentsVisionController(WindowFeatureController):
         self.context.views.desktop_vision_auto_action.setChecked(not selected)
         self._cancel_all_vision_workers()
         self.context.services.vision_application_service.reset()
-        if privacy.enabled:
+        if _service_value(privacy, "enabled"):
             self._capture_desktop_frame()
         return True
 
     def allow_desktop_window(self, kind, value):
         """Persist an explicit exe/title/path privacy exception."""
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         if not privacy.add_allow_rule(kind, value):
             return False
         save_settings(self.context.services.settings)
@@ -762,7 +770,7 @@ class AttachmentsVisionController(WindowFeatureController):
         window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
             allow_partial_identity=True
         )
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
             return f"Eye Mode روشن است، اما پنجرهٔ فعال به‌دلیل محدودیت حریم خصوصی مسدود شد: {reason}"
@@ -797,7 +805,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 "EYE MODE STATUS: Eye Mode is OFF. No live screen frame is available to this request. "
                 "Do not claim to see the desktop. User-supplied image attachments remain separate."
             )
-        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
         window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
             allow_partial_identity=True
         )
@@ -848,8 +856,8 @@ class AttachmentsVisionController(WindowFeatureController):
         context_started = time.monotonic()
         if source_active:
             desktop_context = format_desktop_context(context_service.summary())
-        else:
-            context_service.clear()
+        # Eye Mode deactivation clears context at its ownership boundary. Avoid
+        # materializing the deferred context service for ordinary chat turns.
         context_build_ms = (time.monotonic() - context_started) * 1000.0
         if desktop_context:
             text = text + "\n\n" + desktop_context
@@ -861,7 +869,7 @@ class AttachmentsVisionController(WindowFeatureController):
             "turn_context",
             status=code,
             game_mode=bool(self.context.state._game_mode_enabled),
-            desktop_vision=bool(self.context.services.vision_application_service.desktop_capture_application_service.enabled),
+            desktop_vision=bool(self.context.services.settings.get("desktop_vision_enabled", False)),
             live_frame_flag=code == "attached",
             frame_source=(
                 str(turn_extra.get("live_vision_frame_source") or "")
@@ -1135,7 +1143,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 interval_seconds=interval_seconds,
                 max_frames_per_minute=max_frames_per_minute,
             )
-            if decision is not None and decision.route == service.frame_orchestrator.ANALYSIS:
+            if decision is not None and decision.route == _service_value(service, "frame_orchestrator").ANALYSIS:
                 self._dispatch_next_vision_job()
             return frame_context, decision
         except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
@@ -1229,7 +1237,7 @@ class AttachmentsVisionController(WindowFeatureController):
             )
             return None
         try:
-            policy = self.context.services.vision_application_service.policy
+            policy = _service_value(self.context.services.vision_application_service, "policy")
             quality = min(int(policy.jpeg_quality), int(CAPTURE_JPEG_QUALITY))
             jpeg = self._frame_codec().encode_jpeg(frame, quality)
             if not jpeg:
