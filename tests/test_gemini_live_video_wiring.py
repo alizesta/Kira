@@ -80,6 +80,26 @@ def test_live_system_instruction_uses_the_configured_budget():
     assert "no more than {max_frames_per_minute} times in any rolling 60-second window" in source
 
 
+def test_live_window_identity_accepts_missing_optional_process_metadata():
+    from kira.ui.main_window_attachments_vision import _live_window_identity, _same_live_window
+
+    partial = {
+        "hwnd": 11, "pid": 22, "exe": "", "title": "", "path": "",
+        "rect": (0, 0, 1280, 720),
+    }
+    complete = dict(partial, exe="game.exe", title="Game", path=r"C:\Games\game.exe")
+    assert _live_window_identity(partial) == (11, 22, "", "", "")
+    assert _same_live_window(partial, complete)
+    assert not _same_live_window(partial, dict(complete, hwnd=12))
+    assert not _same_live_window(complete, dict(complete, exe="different.exe"))
+
+
+def test_game_live_monitor_stream_does_not_require_game_detector_metadata():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    assert 'source == "game" and window_info is not None' in source
+    assert "_live_window_identity(current)" in source
+
+
 def test_live_frame_decision_is_made_by_the_selector_and_committed_after_queueing():
     source = read("kira/ui/main_window_attachments_vision.py")
     assert "from ..gemini_live import MAX_VIDEO_FRAME_BYTES" in source
