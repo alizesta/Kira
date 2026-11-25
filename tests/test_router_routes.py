@@ -465,6 +465,9 @@ class RouterRouteTests(unittest.TestCase):
 
     def test_google_429_cools_down_all_routes_in_the_same_project_scope(self):
         s = helpers.fresh_settings()
+        # Remove default routes (notably the enabled local Ollama route) so this
+        # test exercises only the configured Google routes and the backup.
+        s["routes"] = []
         google_one = routes.add_provider(
             s, "Google project key one",
             "https://generativelanguage.googleapis.com/v1beta/openai",
