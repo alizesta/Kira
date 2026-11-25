@@ -173,14 +173,45 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertIs(service.create_router(self.settings), marker)
         self.assertEqual(seen, [self.settings])
 
+    def test_detected_capabilities_are_service_scoped_not_persisted_settings(self):
+        from kira.app.detected_capabilities import DetectedCapabilities
+
+        settings = {
+            "providers": {
+                "ollama": {"enabled": False},
+                "groq": {"enabled": True, "api_key": "gsk_" + "x" * 40, "model": "model-a"},
+            },
+            "routes": [
+                {"id": "groq", "provider": "groq", "model": "model-a", "enabled": True},
+            ],
+        }
+        first, second = ProviderApplicationService(), ProviderApplicationService()
+        first.ensure_registry(settings)
+        first.apply_models(settings, "groq", [{"id": "model-a", "context": 8192}])
+        first.set_ollama_models(["local-model"])
+
+        first_entry = first.registry(settings)["groq"]
+        second_rows = second.api_rows(settings)
+        second_entry = second.registry(settings)["groq"]
+
+        self.assertEqual(first_entry["models"]["model-a"]["status"], "available")
+        self.assertEqual(second_entry["models"]["model-a"]["status"], "unknown")
+        self.assertEqual(second_rows[0]["status"], "not validated yet")
+        self.assertEqual(first.ollama_models, ("local-model",))
+        self.assertEqual(second.ollama_models, ())
+        self.assertNotIn("api_registry", settings)
+        self.assertNotIn("ollama_models", settings)
+        self.assertIsInstance(first.detected_capabilities, DetectedCapabilities)
+        self.assertIsNot(first.detected_capabilities, second.detected_capabilities)
+
     def test_api_model_operations_delegate_to_existing_registry_owner(self):
         detection = object()
         with patch("kira.app.provider_application.api_manager.apply_models", return_value={"new": [], "gone": []}) as apply:
             self.service.apply_models(self.settings, "groq", [], {})
-        apply.assert_called_once_with(self.settings, "groq", [], {})
+        apply.assert_called_once_with(self.settings, "groq", [], {}, capabilities=self.service.detected_capabilities)
         with patch("kira.app.provider_application.api_manager.apply_failure") as fail:
             self.service.apply_failure(self.settings, "groq", detection)
-        fail.assert_called_once_with(self.settings, "groq", detection)
+        fail.assert_called_once_with(self.settings, "groq", detection, capabilities=self.service.detected_capabilities)
 
 
 if __name__ == "__main__":

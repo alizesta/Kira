@@ -1,7 +1,8 @@
 """Application policy for provider, model and route configuration.
 
 The UI owns form widgets and confirmation dialogs. This service owns the
-settings mutations and keeps the provider registry and route model coherent.
+settings mutations; provider/model observations live in its separate
+DetectedCapabilities store.
 """
 from __future__ import annotations
 

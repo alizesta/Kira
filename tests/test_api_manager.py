@@ -11,6 +11,7 @@ from tests import helpers
 from kira import api_manager as am
 from kira import config, discovery
 from kira import routes as rm
+from kira.app.detected_capabilities import DetectedCapabilities
 
 GROQ_KEY = "gsk_" + "a" * 40
 GOOGLE_KEY = "AIza" + "b" * 35
@@ -51,6 +52,7 @@ def groq_models():
 
 
 def fresh():
+    am._DEFAULT_CAPABILITIES = DetectedCapabilities()
     s = deepcopy(config.DEFAULTS)
     rm.ensure_routes(s)
     return s
@@ -317,7 +319,7 @@ class RegistrationTests(unittest.TestCase):
     def test_registry_never_contains_a_key(self):
         s = fresh()
         am.register(s, self.ok("groq", [{"id": "m1"}], GROQ_KEY), GROQ_KEY)
-        self.assertNotIn(GROQ_KEY, json.dumps(s["api_registry"]))
+        self.assertNotIn(GROQ_KEY, json.dumps(am.registry(s)))
         self.assertNotIn(GROQ_KEY, json.dumps(am.api_rows(s)) + json.dumps(am.api_details(s, "groq")))
         self.assertEqual(am.mask_key(GROQ_KEY), "••••••" + GROQ_KEY[-4:])
 
@@ -327,7 +329,6 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         s = fresh()
         helpers.enable(s, "groq", "mistral", "cloudflare")
         rm.reorder(s, ["cloudflare", "groq", "mistral", "openrouter", "ollama"])
-        s.pop("api_registry", None)
         return s
 
     def test_old_keys_become_registered_apis_without_network_or_changes(self):
@@ -362,13 +363,20 @@ class MigrationAndLifecycleTests(unittest.TestCase):
             config.save_settings(s)
             raw = (tmp / "settings.json").read_text(encoding="utf-8")
             self.assertNotIn(GROQ_KEY, raw)                                             # encrypted at rest (fake DPAPI)
+            self.assertNotIn("api_registry", raw)                                     # detected model data is not persisted
+            self.assertNotIn("model_catalog_refreshed_at", raw)
+            self.assertNotIn("model_tests", raw)
             loaded = config.load_settings()
+        # A new runtime starts with an empty capability store. Saved keys and routes
+        # are discovered as unchecked; model facts are reacquired instead of loaded.
+        am._DEFAULT_CAPABILITIES = DetectedCapabilities()
         rows = am.api_rows(loaded)
         self.assertEqual([r["id"] for r in rows][:2], ["mistral", "groq"])
         self.assertEqual(loaded["providers"]["groq"]["api_key"], GROQ_KEY)
-        self.assertEqual(am.api_details(loaded, "groq")["models"][0]["context"], 1000)
-        self.assertIsNot(loaded["api_registry"], config.DEFAULTS["api_registry"])       # DEFAULTS never gets polluted
-        self.assertEqual(config.DEFAULTS["api_registry"], {})
+        details = am.api_details(loaded, "groq")
+        self.assertIsNone(details["models"][0]["context"])
+        self.assertEqual(details["models"][0]["status"], "unknown")
+        self.assertNotIn("api_registry", loaded)
 
     def test_refresh_marks_new_and_vanished_models_and_keeps_routes(self):
         s = fresh()
@@ -456,7 +464,7 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         am.delete_api(s, pid)
         self.assertNotIn(pid, s["providers"])
         self.assertFalse([r for r in rm.get_routes(s) if r["provider"] == pid])
-        self.assertNotIn(pid, s["api_registry"])
+        self.assertNotIn(pid, am.registry(s))
         self.assertIn("ollama", s["providers"])                                          # local engine untouched
         with self.assertRaises(KeyError):
             am.delete_api(s, "ollama")
