@@ -184,7 +184,7 @@ class ProviderApplicationService:
         before = deepcopy(settings)
         try:
             removed_routes = route_model.remove_provider(settings, provider_id)
-            api_manager.registry(settings, self.detected_capabilities).pop(provider_id, None)
+            api_manager.registry(self.detected_capabilities).pop(provider_id, None)
             return removed_routes
         except Exception:
             settings.clear()
@@ -225,8 +225,8 @@ class ProviderApplicationService:
     def ensure_registry(self, settings):
         return api_manager.ensure_registry(settings, self.detected_capabilities)
 
-    def registry(self, settings):
-        return api_manager.registry(settings, self.detected_capabilities)
+    def registry(self):
+        return api_manager.registry(self.detected_capabilities)
 
     @staticmethod
     def detect(api_key, account=None):

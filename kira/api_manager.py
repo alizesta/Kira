@@ -234,19 +234,17 @@ def api_ids(settings) -> list[str]:
     return out
 
 
-_DEFAULT_CAPABILITIES = DetectedCapabilities()
+def registry(capabilities: DetectedCapabilities) -> dict:
+    """Return the API observations owned by the explicitly supplied service store."""
+    if not isinstance(capabilities, DetectedCapabilities):
+        raise TypeError("API registry requires the owning DetectedCapabilities store")
+    return capabilities.setdefault("api_registry", {})
 
 
-def registry(settings=None, capabilities: DetectedCapabilities | None = None) -> dict:
-    """Return the process-local API capability registry, never a settings subdocument."""
-    store = capabilities if capabilities is not None else _DEFAULT_CAPABILITIES
-    return store.setdefault("api_registry", {})
-
-
-def ensure_registry(settings, capabilities: DetectedCapabilities | None = None):
+def ensure_registry(settings, capabilities: DetectedCapabilities):
     """Idempotent migration: every API that already exists (keys saved by older versions) gets a registry entry, WITHOUT any network
     call and without touching keys, routes or priorities. Old APIs start as 'unchecked' until the user refreshes them."""
-    reg = registry(settings, capabilities)
+    reg = registry(capabilities)
     providers = settings.get("providers", {})
     for pid in api_ids(settings):
         cfg = providers[pid]
@@ -274,12 +272,12 @@ def _model_record(m, now, old=None):
             "first_seen": old.get("first_seen") or now, "last_seen": now}
 
 
-def apply_models(settings, pid, models, rate_limit=None, now=None, *, capabilities: DetectedCapabilities | None = None):
+def apply_models(settings, pid, models, rate_limit=None, now=None, *, capabilities: DetectedCapabilities):
     """Merge a fresh model list into the registry. New models appear as available; models that were known but are no longer listed
     are marked 'unavailable' (never silently dropped). Routes are NOT changed here. Returns {'new': [...], 'gone': [...]}"""
     now = int(now if now is not None else time.time())
-    ensure_registry(settings, capabilities)
-    entry = registry(settings, capabilities)[pid]
+    ensure_registry(capabilities)
+    entry = registry(capabilities)[pid]
     old = entry.get("models", {})
     fresh = {m["id"]: _model_record(m, now, old.get(m["id"])) for m in models if m.get("id")}
     new = [mid for mid in fresh if mid not in old]
@@ -294,11 +292,11 @@ def apply_models(settings, pid, models, rate_limit=None, now=None, *, capabiliti
     return {"new": new, "gone": gone}
 
 
-def apply_failure(settings, pid, detection, now=None, *, capabilities: DetectedCapabilities | None = None):
+def apply_failure(settings, pid, detection, now=None, *, capabilities: DetectedCapabilities):
     """Remember that the last check failed (the saved key, routes and models stay as they were)."""
     now = int(now if now is not None else time.time())
-    ensure_registry(settings, capabilities)
-    entry = registry(settings, capabilities)[pid]
+    ensure_registry(capabilities)
+    entry = registry(capabilities)[pid]
     entry.update({"status": "invalid" if detection.state == "invalid" else "error", "checked_at": now, "last_error": detection.message[:300]})
 
 
@@ -330,7 +328,7 @@ def _unique_label(settings, label):
     return f"{label} ({n})"
 
 
-def register(settings, detection, key, now=None, *, capabilities: DetectedCapabilities | None = None) -> str:
+def register(settings, detection, key, now=None, *, capabilities: DetectedCapabilities) -> str:
     """Store a validated API. Raises ValueError for anything that is not a clean 'ok' detection or a duplicate key.
     The first key of a service reuses its existing entry (so saved routes / priorities stay attached); another key of the same
     service becomes an additional API. Returns the provider id."""
@@ -342,7 +340,7 @@ def register(settings, detection, key, now=None, *, capabilities: DetectedCapabi
         raise ValueError(f"این کلید قبلاً به‌عنوان «{route_model.provider_label(dup, settings['providers'][dup])}» ثبت شده است.")
     service = detection.service
     providers = settings.setdefault("providers", {})
-    ensure_registry(settings, capabilities)
+    ensure_registry(capabilities)
     pid = None
     builtin = BUILTIN_FOR.get(service)
     if builtin and not str(providers.get(builtin, {}).get("api_key") or "").strip():
@@ -412,7 +410,7 @@ def set_model_enabled(settings, pid, model, enabled):
     return ""
 
 
-def delete_api(settings, pid, *, capabilities: DetectedCapabilities | None = None):
+def delete_api(settings, pid, *, capabilities: DetectedCapabilities):
     """Remove an API completely. A custom/added provider disappears with its routes. A built-in one (Groq, Mistral, Cloudflare) keeps
     its slot (the Route Engine always has it) but loses key and account, is switched off and its routes are disabled."""
     if pid not in settings.get("providers", {}) or pid == "ollama":
@@ -443,7 +441,7 @@ def delete_api(settings, pid, *, capabilities: DetectedCapabilities | None = Non
                 notes.pop(route_id, None)
     else:
         route_model.remove_provider(settings, pid)
-    registry(settings, capabilities).pop(pid, None)
+    registry(capabilities).pop(pid, None)
 
 
 def move_api(settings, pid, delta):
@@ -468,11 +466,11 @@ def move_api(settings, pid, delta):
     return apis
 
 
-def unique_models(settings, *, capabilities: DetectedCapabilities | None = None) -> dict:
+def unique_models(settings, *, capabilities: DetectedCapabilities) -> dict:
     """{model id: [api ids]} - the same model reachable through several keys is ONE model with several routes to it."""
-    ensure_registry(settings, capabilities)
+    ensure_registry(capabilities)
     out = {}
-    for pid, entry in registry(settings, capabilities).items():
+    for pid, entry in registry(capabilities).items():
         for mid, rec in entry.get("models", {}).items():
             if rec.get("status") != "unavailable":
                 out.setdefault(mid, []).append(pid)
@@ -488,10 +486,10 @@ def _tri(value):
     return "Unknown" if value is None else ("Yes" if value else "No")
 
 
-def api_row(settings, pid, *, capabilities: DetectedCapabilities | None = None) -> dict:
-    ensure_registry(settings, capabilities)
+def api_row(settings, pid, *, capabilities: DetectedCapabilities) -> dict:
+    ensure_registry(capabilities)
     cfg = settings["providers"][pid]
-    entry = registry(settings, capabilities)[pid]
+    entry = registry(capabilities)[pid]
     routes = [r for r in route_model.get_routes(settings) if r["provider"] == pid]
     discovered = bool(entry.get("discovered_at"))
     available = sum(1 for m in entry["models"].values() if m.get("status") == "available")
@@ -508,16 +506,16 @@ def api_row(settings, pid, *, capabilities: DetectedCapabilities | None = None) 
             "priority": order.index(pid) + 1, "enabled": bool(cfg.get("enabled")), "error": entry.get("last_error", "")}
 
 
-def api_rows(settings, *, capabilities: DetectedCapabilities | None = None) -> list[dict]:
-    ensure_registry(settings, capabilities)
+def api_rows(settings, *, capabilities: DetectedCapabilities) -> list[dict]:
+    ensure_registry(capabilities)
     return [api_row(settings, pid, capabilities=capabilities) for pid in api_ids(settings)]
 
 
-def api_details(settings, pid, *, capabilities: DetectedCapabilities | None = None) -> dict:
+def api_details(settings, pid, *, capabilities: DetectedCapabilities) -> dict:
     """Everything the details panel shows. Anything the provider did not report is None (shown as Unknown / Not Available)."""
-    ensure_registry(settings, capabilities)
+    ensure_registry(capabilities)
     row = api_row(settings, pid, capabilities=capabilities)
-    entry = registry(settings, capabilities)[pid]
+    entry = registry(capabilities)[pid]
     routes = {r["model"]: r for r in route_model.get_routes(settings) if r["provider"] == pid}
     shared = unique_models(settings, capabilities=capabilities)
     models = []

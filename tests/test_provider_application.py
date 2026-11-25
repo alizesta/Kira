@@ -44,11 +44,11 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         provider_id = self.service.add_provider(
             self.settings, "Custom", "https://example.test/v1", first_model="model-a"
         )
-        self.service.registry(self.settings)[provider_id] = {"status": "valid"}
+        self.service.registry()[provider_id] = {"status": "valid"}
         removed = self.service.remove_provider(self.settings, provider_id)
         self.assertTrue(removed)
         self.assertNotIn(provider_id, self.settings["providers"])
-        self.assertNotIn(provider_id, self.service.registry(self.settings))
+        self.assertNotIn(provider_id, self.service.registry())
 
     def test_builtin_provider_cannot_be_removed(self):
         with self.assertRaises(ValueError):
@@ -190,9 +190,9 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         first.apply_models(settings, "groq", [{"id": "model-a", "context": 8192}])
         first.set_ollama_models(["local-model"])
 
-        first_entry = first.registry(settings)["groq"]
+        first_entry = first.registry()["groq"]
         second_rows = second.api_rows(settings)
-        second_entry = second.registry(settings)["groq"]
+        second_entry = second.registry()["groq"]
 
         self.assertEqual(first_entry["models"]["model-a"]["status"], "available")
         self.assertEqual(second_entry["models"]["model-a"]["status"], "unknown")

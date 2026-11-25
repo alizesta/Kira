@@ -8,10 +8,31 @@ from unittest import mock
 import requests
 
 from tests import helpers
-from kira import api_manager as am
+from kira import api_manager as _api_manager
 from kira import config, discovery
 from kira import routes as rm
 from kira.app.detected_capabilities import DetectedCapabilities
+from functools import partial
+
+_TEST_CAPABILITIES = DetectedCapabilities()
+
+
+class _APIManagerTestFacade:
+    """Inject an explicit per-test capability owner into the production API contract."""
+    _CAPABILITY_METHODS = {
+        "registry", "ensure_registry", "apply_models", "apply_failure", "register",
+        "delete_api", "unique_models", "api_row", "api_rows", "api_details",
+    }
+
+    def __getattr__(self, name):
+        target = getattr(_api_manager, name)
+        if name in self._CAPABILITY_METHODS:
+            return partial(target, capabilities=_TEST_CAPABILITIES)
+        return target
+
+
+am = _APIManagerTestFacade()
+
 
 GROQ_KEY = "gsk_" + "a" * 40
 GOOGLE_KEY = "AIza" + "b" * 35
@@ -52,7 +73,7 @@ def groq_models():
 
 
 def fresh():
-    am._DEFAULT_CAPABILITIES = DetectedCapabilities()
+    _TEST_CAPABILITIES.clear()
     s = deepcopy(config.DEFAULTS)
     rm.ensure_routes(s)
     return s
@@ -319,7 +340,7 @@ class RegistrationTests(unittest.TestCase):
     def test_registry_never_contains_a_key(self):
         s = fresh()
         am.register(s, self.ok("groq", [{"id": "m1"}], GROQ_KEY), GROQ_KEY)
-        self.assertNotIn(GROQ_KEY, json.dumps(am.registry(s)))
+        self.assertNotIn(GROQ_KEY, json.dumps(am.registry()))
         self.assertNotIn(GROQ_KEY, json.dumps(am.api_rows(s)) + json.dumps(am.api_details(s, "groq")))
         self.assertEqual(am.mask_key(GROQ_KEY), "••••••" + GROQ_KEY[-4:])
 
@@ -369,7 +390,7 @@ class MigrationAndLifecycleTests(unittest.TestCase):
             loaded = config.load_settings()
         # A new runtime starts with an empty capability store. Saved keys and routes
         # are discovered as unchecked; model facts are reacquired instead of loaded.
-        am._DEFAULT_CAPABILITIES = DetectedCapabilities()
+        _TEST_CAPABILITIES.clear()
         rows = am.api_rows(loaded)
         self.assertEqual([r["id"] for r in rows][:2], ["mistral", "groq"])
         self.assertEqual(loaded["providers"]["groq"]["api_key"], GROQ_KEY)
@@ -464,7 +485,7 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         am.delete_api(s, pid)
         self.assertNotIn(pid, s["providers"])
         self.assertFalse([r for r in rm.get_routes(s) if r["provider"] == pid])
-        self.assertNotIn(pid, am.registry(s))
+        self.assertNotIn(pid, am.registry())
         self.assertIn("ollama", s["providers"])                                          # local engine untouched
         with self.assertRaises(KeyError):
             am.delete_api(s, "ollama")

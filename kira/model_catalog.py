@@ -19,6 +19,7 @@ import time
 
 from . import api_manager
 from . import routes as route_model
+from .app.detected_capabilities import DetectedCapabilities
 
 TAB_ACTIVE, TAB_FREE, TAB_PAID, TAB_ARCHIVED = "active", "free", "paid", "archived"
 TABS = (TAB_ACTIVE, TAB_FREE, TAB_PAID, TAB_ARCHIVED)
@@ -79,25 +80,25 @@ def _route_id(settings, provider, model):
     return ""
 
 
-def forget_provider(settings, provider, *, capabilities=None):
+def forget_provider(settings, provider, *, capabilities: DetectedCapabilities):
     """Drop user archive choices and process-local test observations for a deleted API."""
     (settings.get("model_archive") or {}).pop(provider, None)
-    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+    store = capabilities
     tests = store.get("model_tests") or {}
     for key in [k for k in tests if k.startswith(provider + "::")]:
         tests.pop(key, None)
 
 
 # ---------------------------------------------------------------- test results
-def record_test(settings, provider, model, ok, ms=None, message="", now=None, *, capabilities=None):
-    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+def record_test(settings, provider, model, ok, ms=None, message="", now=None, *, capabilities: DetectedCapabilities):
+    store = capabilities
     store.setdefault("model_tests", {})[_key(provider, model)] = {
         "ok": bool(ok), "ms": None if ms is None else int(ms),
         "at": int(now if now is not None else time.time()), "message": str(message or "")[:300]}
 
 
-def test_result(settings, provider, model, *, capabilities=None):
-    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+def test_result(settings, provider, model, *, capabilities: DetectedCapabilities):
+    store = capabilities
     return (store.get("model_tests") or {}).get(_key(provider, model))
 
 
@@ -118,14 +119,14 @@ def _archive_reason(settings, provider, model, meta, route):
     return ""
 
 
-def model_rows(settings, *, capabilities=None):
+def model_rows(settings, *, capabilities: DetectedCapabilities):
     """Every chat model of every registered API as a flat list of dicts (see module doc for the tab rules)."""
     api_manager.ensure_registry(settings, capabilities)
     routes = route_model.get_routes(settings)
     order = {(r["provider"], r["model"]): i for i, r in enumerate(routes)}
     by_key = {(r["provider"], r["model"]): r for r in routes}
     rows = []
-    for pid, entry in api_manager.registry(settings, capabilities).items():
+    for pid, entry in api_manager.registry(capabilities).items():
         cfg = (settings.get("providers") or {}).get(pid, {})
         label = route_model.provider_label(pid, cfg)
         for mid, meta in (entry.get("models") or {}).items():
