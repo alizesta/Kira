@@ -890,9 +890,13 @@ class AttachmentsVisionController(WindowFeatureController):
         if not self.context.state._game_mode_enabled:
             return "Eye Mode خاموش است؛ برای فعال‌کردن دید زنده روی آیکون چشم کلیک کن."
         self._capture_desktop_frame()
-        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
+            allow_partial_identity=True
+        )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        allowed, reason = privacy.evaluate_window(window_info)
+        allowed, reason = privacy.evaluate_window(
+            window_info, allow_partial_identity=True
+        )
         if not allowed:
             return f"Eye Mode روشن است، اما پنجرهٔ فعال به‌دلیل محدودیت حریم خصوصی مسدود شد: {reason}"
         frame = self.context.state._latest_game_frame
@@ -927,8 +931,12 @@ class AttachmentsVisionController(WindowFeatureController):
                 "Do not claim to see the desktop. User-supplied image attachments remain separate."
             )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
-        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
-        allowed, reason = privacy.evaluate_window(window_info)
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info(
+            allow_partial_identity=True
+        )
+        allowed, reason = privacy.evaluate_window(
+            window_info, allow_partial_identity=True
+        )
         if not allowed:
             return "eye_mode_blocked", (
                 f"EYE MODE STATUS: Capture is blocked by the privacy policy ({reason}). No current "
@@ -1209,8 +1217,12 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         privacy = service.desktop_capture_application_service
         capture = self.context.adapters.game_mode.capture_service
-        window_info = capture.foreground_window_info()
-        allowed, reason = privacy.evaluate_window(window_info)
+        # Live monitor capture does not depend on a complete window title/executable/path.
+        # Any available identity field is still checked against the privacy blocklists.
+        window_info = capture.foreground_window_info(allow_partial_identity=True)
+        allowed, reason = privacy.evaluate_window(
+            window_info, allow_partial_identity=True
+        )
         if not allowed:
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None

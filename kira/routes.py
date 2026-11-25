@@ -472,6 +472,9 @@ def remove_route(settings, route_id):
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") == route_id:
         settings["default_route_id"] = settings["routes"][0]["id"] if settings["routes"] else ""
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        notes.pop(route_id, None)
     sync_legacy(settings)
 
 

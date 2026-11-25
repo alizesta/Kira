@@ -170,7 +170,7 @@ class ChatController(WindowFeatureController):
             vision_worker.cancel_request()
         self.feature_controller("session")._ensure_session_conversation(current_session)
         result = self.context.services.chat_application_service.submit_message(
-            self.context.state.cur.session_id, text, attachments, voice,
+            current_session.session_id, text, attachments, voice,
             busy=busy,
             conversation_id=current_session.conversation_id,
             character_id=current_session.cid,
@@ -178,7 +178,7 @@ class ChatController(WindowFeatureController):
         if not result.accepted:
             return
         if result.queued:
-            count = self.context.services.chat_application_service.pending_count(self.context.state.cur.session_id)
+            count = self.context.services.chat_application_service.pending_count(current_session.session_id)
             self.context.views.status.setText(
                 f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود."
             )

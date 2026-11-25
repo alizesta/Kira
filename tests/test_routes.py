@@ -159,6 +159,22 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(s["manual_route_id"], "")
         self.assertNotIn(route["id"], s["route_notes"])
 
+    def test_remove_last_route_clears_default_manual_and_stale_note(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        only_route = dict(routes.find_route(s, "groq"))
+        s["routes"] = [only_route]
+        s["default_route_id"] = only_route["id"]
+        s["manual_route_id"] = only_route["id"]
+        s["route_notes"] = {only_route["id"]: "old failure"}
+
+        routes.remove_route(s, only_route["id"])
+
+        self.assertEqual(s["routes"], [])
+        self.assertEqual(s["default_route_id"], "")
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertEqual(s["route_notes"], {})
+
     def test_add_edit_remove_custom_provider(self):
         s = legacy_settings()
         routes.ensure_routes(s)
