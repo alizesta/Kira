@@ -605,11 +605,10 @@ class RuntimeVoiceMixin:
         if mode == "gemini_live":
             engine_label.setText("Gemini Live · Cloud")
             return
-        via = getattr(self.context.listener, "via", "") if self.context.listener else ""
-        if via == "local:shenava":
-            label = "Shenava Koochik INT8 · Local"
-        elif self.context.listener is not None and self.context.listener.isRunning():
-            label = "STT محلی"
+        listener = self.context.listener
+        if listener is not None and listener.isRunning():
+            engine_name = str(getattr(listener, "engine_name", "") or "").strip()
+            label = f"{engine_name} · Local" if engine_name else "STT محلی"
         else:
             label = "—"
         engine_label.setText(label)
