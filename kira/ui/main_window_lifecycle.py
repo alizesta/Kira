@@ -2,6 +2,7 @@
 from PySide6.QtCore import Slot
 from .companion_session import session_marker
 from .main_window_lifecycle_support import (
+    DEFAULTS,
     QApplication,
     QDesktopServices,
     QIcon,
