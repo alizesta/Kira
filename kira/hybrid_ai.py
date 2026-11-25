@@ -684,16 +684,44 @@ class HybridRouter:
                     elif not local_routes:
                         failures.append("هیچ مدل Ollama در Routeها ثبت نشده است؛ مدل‌های نصب‌شده را اسکن کن.")
                     elif not enabled_local:
-                        cloud_ready = any(
-                            route_model.provider_kind(route.get("provider"), (providers.get(route.get("provider")) or {})) == "cloud"
-                            and self.eligibility(route)[0]
-                            for route in self.routes()
-                        )
-                        failures.append(
-                            "مدل محلی خاموش است و هیچ Route ابریِ فعال و معتبری برای جایگزینی وجود ندارد؛ یک Provider ابری را همراه با حداقل یک Route و کلید معتبر فعال کن."
-                            if not cloud_ready else
-                            "هیچ Route ابریِ آماده‌ای برای مکالمه پیدا نشد؛ تنظیمات Provider را بررسی کن."
-                        )
+                        cloud_routes = [
+                            route for route in self.routes()
+                            if route_model.provider_kind(
+                                route.get("provider"),
+                                (providers.get(route.get("provider")) or {}),
+                            ) == "cloud"
+                            and self.eligibility(route, include_cooldown=False)[0]
+                        ]
+                        if not cloud_routes:
+                            failures.append(
+                                "مدل محلی خاموش است و هیچ Route ابریِ فعال و معتبری برای جایگزینی وجود ندارد؛ "
+                                "یک Provider ابری را همراه با حداقل یک Route و کلید معتبر فعال کن."
+                            )
+                        else:
+                            cloud_decisions = {
+                                item["route_id"]: item["reason"]
+                                for item in self.last_route_decisions
+                                if not item["allowed"]
+                            }
+                            cloud_block_reasons = {
+                                cloud_decisions.get(str(route.get("id") or ""))
+                                for route in cloud_routes
+                            }
+                            if normalize_network_policy(self.settings.get("network_policy")) != "cloud_permitted":
+                                failures.append(
+                                    "Provider ابری پیکربندی شده است، اما سیاست حریم خصوصی روی «فقط محلی» است؛ "
+                                    "برای استفاده از Cloud، Network Policy را صریحاً روی cloud_permitted بگذار."
+                                )
+                            elif cloud_block_reasons == {"blocked_by_role_provider_allowlist"}:
+                                failures.append(
+                                    "Provider ابری فعال است، اما فهرست مجاز Providerهای نقش مکالمهٔ عادی "
+                                    "فقط Ollama را اجازه می‌دهد؛ سیاست surface را آگاهانه اصلاح کن."
+                                )
+                            else:
+                                failures.append(
+                                    "Route ابری فعال است، اما با سیاست نقش/مدل مکالمهٔ فعلی مجاز نیست؛ "
+                                    "role_provider_allowlist و role_route_models را بررسی کن."
+                                )
                     elif not provider_allowed:
                         failures.append("سیاست نقش مکالمهٔ عادی Provider محلی Ollama را مجاز نکرده است؛ role_provider_allowlist را بررسی کن.")
                     else:
