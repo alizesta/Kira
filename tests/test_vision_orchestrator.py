@@ -27,6 +27,8 @@ class VisionOrchestratorTests(unittest.TestCase):
         orchestrator = VisionFrameOrchestrator(capacity=1)
         first = orchestrator.create_context("s", "desktop")
         second = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(first, live_ready=False).route, "analysis")
+        self.assertEqual(orchestrator.decide(second, live_ready=False).route, "analysis")
         self.assertTrue(orchestrator.enqueue(FrameJob(first, b"old")))
         self.assertTrue(orchestrator.enqueue(FrameJob(second, b"new")))
         self.assertEqual(orchestrator.take_next().context.frame_id, second.frame_id)
@@ -35,12 +37,14 @@ class VisionOrchestratorTests(unittest.TestCase):
     def test_cancelled_session_cannot_enqueue_or_dispatch_stale_frames(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("session-a", "desktop")
+        orchestrator.decide(context, live_ready=False)
         orchestrator.enqueue(FrameJob(context, b"frame"))
         orchestrator.cancel_session("session-a")
         self.assertIsNone(orchestrator.take_next())
         self.assertFalse(orchestrator.enqueue(FrameJob(context, b"late")))
         fresh = orchestrator.create_context("session-a", "desktop")
         self.assertNotEqual(fresh.generation, context.generation)
+        self.assertEqual(orchestrator.decide(fresh, live_ready=False).route, "analysis")
         self.assertTrue(orchestrator.enqueue(FrameJob(fresh, b"fresh")))
 
     def test_budget_is_shared_by_live_and_analysis_routes_per_session(self):
@@ -70,6 +74,8 @@ class VisionOrchestratorTests(unittest.TestCase):
         orchestrator = VisionFrameOrchestrator(capacity=2)
         stale = orchestrator.create_context("session-a", "desktop")
         fresh = orchestrator.create_context("session-b", "desktop")
+        orchestrator.decide(stale, live_ready=False)
+        orchestrator.decide(fresh, live_ready=False)
         orchestrator.enqueue(FrameJob(stale, b"private-a"))
         orchestrator.enqueue(FrameJob(fresh, b"private-b"))
         self.assertEqual(orchestrator.cancel_session("session-a"), 1)
@@ -119,6 +125,9 @@ class VisionOrchestratorTests(unittest.TestCase):
         a1 = orchestrator.create_context("a", "desktop")
         a2 = orchestrator.create_context("a", "desktop")
         b1 = orchestrator.create_context("b", "desktop")
+        orchestrator.decide(a1, live_ready=False)
+        orchestrator.decide(b1, live_ready=False)
+        orchestrator.decide(a2, live_ready=False)
         self.assertTrue(orchestrator.enqueue(FrameJob(a1, b"a-old")))
         self.assertTrue(orchestrator.enqueue(FrameJob(b1, b"b")))
         self.assertTrue(orchestrator.enqueue(FrameJob(a2, b"a-new")))
@@ -135,6 +144,26 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertTrue(orchestrator.release(context))
         next_context = orchestrator.create_context("s", "desktop")
         self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
+
+    def test_duplicate_frame_cannot_be_queued_again_after_dispatch(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(context, live_ready=False).route, "analysis")
+        job = FrameJob(context, b"payload")
+        self.assertTrue(orchestrator.enqueue(job))
+        self.assertEqual(orchestrator.take_next("s"), job)
+        self.assertFalse(orchestrator.enqueue(job))
+        self.assertTrue(orchestrator.commit(context))
+        self.assertFalse(orchestrator.enqueue(job))
+
+    def test_queue_rejects_frames_without_central_analysis_decision(self):
+        orchestrator = VisionFrameOrchestrator()
+        live = orchestrator.create_context("s", "desktop")
+        dropped = orchestrator.create_context("s", "desktop")
+        orchestrator.decide(live, live_ready=True)
+        orchestrator.decide(dropped, live_ready=False, analysis_allowed=False)
+        self.assertFalse(orchestrator.enqueue(FrameJob(live, b"live")))
+        self.assertFalse(orchestrator.enqueue(FrameJob(dropped, b"drop")))
 
     def test_discard_removes_pending_frame_and_returns_its_quota(self):
         orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)

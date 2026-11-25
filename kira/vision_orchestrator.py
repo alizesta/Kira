@@ -97,6 +97,7 @@ class VisionFrameOrchestrator:
         self._generations: dict[str, int] = {}
         self._sent_at: dict[str, deque[float]] = {}
         self._budget_decisions: dict[str, tuple[str, float]] = {}
+        self._in_flight: dict[str, str] = {}
         self._history_size = max(64, int(history_size))
         self.dropped_pending = 0
         self.duplicate_frames = 0
@@ -181,6 +182,16 @@ class VisionFrameOrchestrator:
                 return False
             if not job.payload:
                 return False
+            decision = self._decisions.get(job.context.frame_id)
+            if (
+                decision is None
+                or decision.route != self.ANALYSIS
+                or job.context.frame_id not in self._budget_decisions
+            ):
+                return False
+            if job.context.frame_id in self._in_flight:
+                self.duplicate_frames += 1
+                return False
             if any(item.context.frame_id == job.context.frame_id for item in self._pending):
                 self.duplicate_frames += 1
                 return False
@@ -202,6 +213,7 @@ class VisionFrameOrchestrator:
             return False
         session_id, moment = reservation
         sent = self._sent_at.get(session_id)
+        self._in_flight.pop(str(frame_id or ""), None)
         if sent is not None:
             try:
                 sent.remove(moment)
@@ -228,7 +240,9 @@ class VisionFrameOrchestrator:
     def commit(self, context: FrameContext) -> bool:
         """Finalize a dispatched frame while retaining its consumed quota timestamp."""
         with self._lock:
-            return self._budget_decisions.pop(context.frame_id, None) is not None
+            reservation = self._budget_decisions.pop(context.frame_id, None)
+            self._in_flight.pop(context.frame_id, None)
+            return reservation is not None
 
     def take_next(self, session_id: str | None = None) -> FrameJob | None:
         """Take an eligible job for one session without stealing another session's work."""
@@ -239,6 +253,7 @@ class VisionFrameOrchestrator:
                     continue
                 self._pending.remove(job)
                 if job.context.generation == self._generations.get(job.context.session_id, 0):
+                    self._in_flight[job.context.frame_id] = job.context.session_id
                     return job
                 self.cancelled_frames += 1
             return None
@@ -258,6 +273,11 @@ class VisionFrameOrchestrator:
                 for frame_id, reservation in self._budget_decisions.items()
                 if reservation[0] != key
             }
+            self._in_flight = {
+                frame_id: owner
+                for frame_id, owner in self._in_flight.items()
+                if owner != key
+            }
             return removed
 
     def cancel_all(self) -> int:
@@ -268,6 +288,7 @@ class VisionFrameOrchestrator:
                 self._generations[session_id] = self._generations.get(session_id, 0) + 1
             self._sent_at.clear()
             self._budget_decisions.clear()
+            self._in_flight.clear()
             self.cancelled_frames += removed
             return removed
 
@@ -280,4 +301,5 @@ class VisionFrameOrchestrator:
                 "duplicate_frames": self.duplicate_frames,
                 "cancelled_frames": self.cancelled_frames,
                 "sessions": len(self._generations),
+                "in_flight": len(self._in_flight),
             }

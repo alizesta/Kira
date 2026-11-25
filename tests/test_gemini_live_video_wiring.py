@@ -177,6 +177,8 @@ def test_one_frame_has_one_central_cloud_route_and_a_bounded_analysis_queue():
     assert "def take_next(self, session_id: str | None = None)" in orchestrator
     assert "if len(session_pending) >= self.capacity:" in orchestrator
     assert "self._pending.remove(session_pending[0])" in orchestrator
+    assert "job.context.frame_id not in self._budget_decisions" in orchestrator
+    assert "self._in_flight[job.context.frame_id] = job.context.session_id" in orchestrator
     assert "worker_running=False" in source
 
 
