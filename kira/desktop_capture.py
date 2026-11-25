@@ -93,7 +93,7 @@ class DesktopCaptureService:
         self._kernel32 = value
 
     def foreground_window_info(self) -> dict[str, Any] | None:
-        """Return HWND/PID/exe/path/title/bounds. Missing identity fails closed."""
+        """Return a foreground HWND/PID/bounds plus any optional process metadata."""
         if self._user32 is None or self._kernel32 is None:
             return None
         hwnd = self._user32.GetForegroundWindow()
