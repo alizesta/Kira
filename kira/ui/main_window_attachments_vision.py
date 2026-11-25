@@ -241,7 +241,7 @@ class AttachmentsVisionController(WindowFeatureController):
             if enabled:
                 self._capture_active_vision_frame()
 
-    def _maybe_stream_gemini_live_frame(self, _frame, source, window_info):
+    def _maybe_stream_gemini_live_frame(self, _frame, source, window_info, *, frame_context=None):
         """Send a full-monitor JPEG after rechecking Live readiness and foreground privacy."""
         runtime = self.feature_controller("runtime")
         if not runtime.is_gemini_live_ready():
@@ -304,11 +304,17 @@ class AttachmentsVisionController(WindowFeatureController):
             self._live_video_identity = identity
 
         monitor_id = privacy.selected_monitor_id if source == "desktop" else None
-        pixmap = capture.capture_monitor_for_window(
-            current, monitor_id=monitor_id or None,
-            max_width=LIVE_VIDEO_MAX_WIDTH, max_height=LIVE_VIDEO_MAX_HEIGHT,
-        )
-        if pixmap is None or pixmap.isNull():
+        if frame_context is not None and not self.context.services.vision_application_service.frame_orchestrator.is_current(frame_context):
+            return False
+        if _frame is not None and not _frame.isNull():
+            frame_image = _frame
+        else:
+            pixmap = capture.capture_monitor_for_window(
+                current, monitor_id=monitor_id or None,
+                max_width=LIVE_VIDEO_MAX_WIDTH, max_height=LIVE_VIDEO_MAX_HEIGHT,
+            )
+            frame_image = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
+        if frame_image is None or frame_image.isNull():
             self._clear_live_video_state()
             vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
             return False
@@ -330,7 +336,7 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
             return False
 
-        image = _quantize_live_video_image(pixmap.toImage())
+        image = _quantize_live_video_image(frame_image)
         selector = self._live_selector()
         sample = _live_gray_sample(image)
         decision = selector.evaluate(sample)
@@ -1154,7 +1160,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.feature_controller("runtime").reply_local(alert.message, alert.emotion)
 
     def _capture_game_frame(self):
-        """Capture only a supported foreground game window while Game Mode is enabled."""
+        """Capture one frame and let the orchestrator choose its sole cloud consumer."""
         service = self.context.services.vision_application_service
         if not service.capture_allowed(
             self.context.state._game_mode_enabled,
@@ -1184,16 +1190,10 @@ class AttachmentsVisionController(WindowFeatureController):
                 _allowed, reason = service.desktop_capture_application_service.evaluate_window(
                     window_info, explicit=True
                 )
-                vision_trace(
-                    "capture_blocked",
-                    exe=str(window_info.get("exe") or "")[:80],
-                    reason=reason,
-                )
+                vision_trace("capture_blocked", exe=str(window_info.get("exe") or "")[:80], reason=reason)
             self._cancel_vision_worker()
             service.reset()
             return
-        # Live Gemini receives the complete monitor independently of the foreground-window crop.
-        self._maybe_stream_gemini_live_frame(None, "game", window_info)
         capture = self.context.adapters.game_mode.capture_service
         policy = service.policy
         pixmap = capture.capture_window(
@@ -1202,10 +1202,18 @@ class AttachmentsVisionController(WindowFeatureController):
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
         _trace_capture_state(window_info, frame, "game" if frame is not None else None)
-        self._submit_vision_frame(frame, "game", window_info)
+        if frame is None:
+            return
+        frame_context, decision = self._submit_vision_frame(frame, "game", window_info)
+        if decision is not None and decision.route == "live":
+            # The game source still streams the complete monitor; route ownership is
+            # decided against the same immutable capture context as local analysis.
+            self._maybe_stream_gemini_live_frame(
+                None, "game", window_info, frame_context=frame_context
+            )
 
     def _capture_desktop_frame(self):
-        """Capture the complete privacy-approved selected monitor."""
+        """Capture the selected monitor once and share that frame across eligible routes."""
         service = self.context.services.vision_application_service
         privacy = service.desktop_capture_application_service
         capture = self.context.adapters.game_mode.capture_service
@@ -1224,8 +1232,6 @@ class AttachmentsVisionController(WindowFeatureController):
             self._cancel_vision_worker()
             service.reset()
             return
-        # The same complete selected-monitor frame feeds live Gemini and local analysis.
-        self._maybe_stream_gemini_live_frame(None, "desktop", window_info)
         policy = service.policy
         pixmap = capture.capture_monitor_for_window(
             window_info,
@@ -1244,19 +1250,23 @@ class AttachmentsVisionController(WindowFeatureController):
                 reason="selected_monitor_capture_failed",
             )
             return
-        self._submit_vision_frame(frame, "desktop", window_info)
+        frame_context, decision = self._submit_vision_frame(frame, "desktop", window_info)
+        if decision is not None and decision.route == "live":
+            self._maybe_stream_gemini_live_frame(
+                frame, "desktop", window_info, frame_context=frame_context
+            )
 
     def _submit_vision_frame(self, frame, source, window_info):
-        """Apply shared FrameGate and Worker path, retaining source/window for validation."""
+        """Create one immutable frame context and select exactly one cloud route."""
         service = self.context.services.vision_application_service
         if frame is None or frame.isNull():
-            return
-        # The local Perception path is independent of cloud/model analysis busy state.
+            return None, None
+        # Local OCR/perception is a separate on-device capability, not a cloud route.
         self._queue_perception_ocr(frame, source, window_info)
         enabled = self.context.state._game_mode_enabled if source == "game" else True
         profile = self.context.state._game_mode_profile if source == "game" else None
         worker = self.context.session._vision_worker
-        if not service.should_analyze(
+        analysis_allowed = service.should_analyze(
             enabled=enabled,
             profile=profile,
             frame_available=True,
@@ -1266,8 +1276,30 @@ class AttachmentsVisionController(WindowFeatureController):
             speech_active=self.context.services.voice_application_service.is_speaking(),
             source=source,
             window_info=window_info,
-        ):
-            return
+        )
+        runtime = self.feature_controller("runtime")
+        live_ready = bool(runtime.is_gemini_live_ready())
+        session_id = (
+            getattr(self.context.session, "session_id", None)
+            or getattr(self.context.session, "cid", None)
+            or "default"
+        )
+        orchestrator = service.frame_orchestrator
+        frame_context = orchestrator.create_context(session_id, source, window_info)
+        decision = orchestrator.decide(
+            frame_context, live_ready=live_ready, analysis_allowed=analysis_allowed
+        )
+        vision_trace(
+            "frame_route_decided",
+            frame_id=frame_context.frame_id,
+            session_id=frame_context.session_id,
+            source=source,
+            route=decision.route,
+            reason=decision.reason,
+            generation=frame_context.generation,
+        )
+        if decision.route != orchestrator.ANALYSIS:
+            return frame_context, decision
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
             data = QByteArray()
@@ -1275,7 +1307,7 @@ class AttachmentsVisionController(WindowFeatureController):
             if not buffer.open(QIODevice.WriteOnly) or not frame.save(
                 buffer, "JPEG", service.policy.jpeg_quality
             ):
-                return
+                return frame_context, decision
             jpeg = bytes(data)
             thumbnail = frame.scaled(
                 32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation
@@ -1286,7 +1318,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 for x in range(thumbnail.width())
             )
             if not service.accept_frame(jpeg, visual_sample=visual_sample):
-                return
+                return frame_context, decision
             name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
             image = att.image_attachment(jpeg, name, "image/jpeg")
             session = self.context.state.cur
@@ -1306,6 +1338,8 @@ class AttachmentsVisionController(WindowFeatureController):
             _FRAME_WINDOW_INFO["value"] = dict(window_info or {})
             vision_trace(
                 "analysis_started",
+                frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id,
                 source=source,
                 exe=str((window_info or {}).get("exe") or "")[:80] or None,
                 jpeg_bytes=len(jpeg),
@@ -1322,6 +1356,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.feature_controller("session").add_chat(
                 "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
             )
+        return frame_context, decision
 
     def _send_pending_for_session(self, session):
         if self.context.state._closing or session is None or session.cid not in self.context.state.sessions:

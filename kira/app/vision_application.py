@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..vision_pipeline import FrameGate, policy_for
+from ..vision_orchestrator import VisionFrameOrchestrator
 
 
 class VisionApplicationService:
@@ -17,6 +18,7 @@ class VisionApplicationService:
         self.game_mode_service = game_mode_service
         self.desktop_capture_application_service = desktop_capture_application_service
         self.frame_gate = FrameGate(policy_for(mode))
+        self.frame_orchestrator = VisionFrameOrchestrator(capacity=1)
         self._last_note = ""
         self._active = True
         self._disposed = False
@@ -117,4 +119,5 @@ class VisionApplicationService:
 
     def reset(self) -> None:
         self.frame_gate.reset()
+        self.frame_orchestrator.cancel_all()
         self._last_note = ""
