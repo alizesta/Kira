@@ -40,4 +40,6 @@ Each generated file contains exact package versions and hashes. The generator st
 
 Review and commit the generated \`dependency-locks/\` directory after a successful run. Do not hand-edit generated pins or hashes; change the source requirements/constraints and regenerate instead.
 
+Once the generated files are committed, `install_deps.py` automatically selects the matching Windows x64/Python lock and asks pip to enforce all recorded hashes with `--require-hashes`. Until a matching lock exists, the installer keeps using the original requirement and constraint files.
+
 The generated locks are target-specific. A different operating system, CPU architecture, or Python version requires its own resolver target and lock set.

@@ -40,4 +40,6 @@ py -3.12 scripts/generate_dependency_locks.py --index-url https://<approved-mirr
 
 پس از تولید موفق، پوشهٔ \`dependency-locks/\` را بررسی و Commit کنید. نسخه‌ها و هش‌های تولیدشده را دستی تغییر ندهید؛ تغییر را در فایل‌های requirements یا constraints اعمال و Lock را دوباره تولید کنید.
 
+پس از Commit فایل‌های تولیدشده، `install_deps.py` به‌صورت خودکار Lock متناسب با Windows x64 و نسخهٔ Python فعال را انتخاب می‌کند و با `--require-hashes` اعتبار همهٔ Hashها را به pip می‌سپارد. تا زمانی که Lock متناظر وجود نداشته باشد، نصب‌کننده همچنان از فایل‌های requirements و constraints فعلی استفاده می‌کند.
+
 این Lockها مختص محیط هدف هستند. برای سیستم‌عامل، معماری پردازنده یا نسخهٔ Python متفاوت، باید هدف Resolver و مجموعهٔ Lock جداگانه‌ای تعریف شود.
