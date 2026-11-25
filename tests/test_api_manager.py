@@ -403,6 +403,7 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         s = fresh()
         am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]), GROQ_KEY)
         am.register(s, am.Detection("ok", "mistral", "", [{"id": "mistral-small-latest"}]), MISTRAL_KEY)
+        rm.reorder(s, ["groq", "mistral", "cloudflare", "openrouter", "ollama"])
         s["default_route_id"] = "groq"
         s["manual_route_id"] = "groq"
         am.set_api_enabled(s, "groq", False)
