@@ -121,7 +121,8 @@ DEFAULTS = {
     "agent_max_replans": 3,         # how many times the plan may be revised during one task (0-5)
     # Route Manager (1.5.1): "routes" itself is created by routes.ensure_routes() on load (migrated from the old layout).
     "manual_route_id": "",          # "" = automatic by priority; otherwise the route chosen by hand
-    "failover_enabled": True,       # a manual choice may still fall back to the next route
+    "failover_enabled": True,       # manual choice may still fall back within the active network policy
+    "network_policy": "cloud_permitted",  # local_only blocks every Cloud route; cloud_permitted allows configured role fallback       # a manual choice may still fall back to the next route
     "default_route_id": "",
     "route_free_only": True,        # catalog refresh switches off routes whose model is explicitly no longer free
     "providers": {
@@ -138,6 +139,7 @@ DEFAULTS = {
 
 # Semantic constraints are part of the settings schema, not UI-only assumptions.
 SETTING_CHOICES = {
+    "network_policy": frozenset({"local_only", "cloud_permitted"}),
     "voice_engine": frozenset({"gemini_live", "local"}),
     "stt_language": frozenset(STT_LANGUAGE_OPTIONS),
     "tts_engine": frozenset({"piper", "kitten"}),
