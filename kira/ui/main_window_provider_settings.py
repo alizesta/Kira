@@ -183,7 +183,61 @@ class ProviderSettingsController(WindowFeatureController):
         )
         note.setWordWrap(True)
         form.addRow("", note)
+
+        provider_service = self.context.services.provider_application_service
+        providers = settings.get("providers", {})
+        allowed = settings.get("role_provider_allowlist", {})
+        surface_allowed = {
+            str(value).strip().lower()
+            for value in (allowed.get("surface", []) if isinstance(allowed, dict) else [])
+            if str(value).strip()
+        }
+        self.surface_provider_checks = {}
+        provider_box = QWidget(panel)
+        provider_layout = QVBoxLayout(provider_box)
+        provider_layout.setContentsMargins(0, 0, 0, 0)
+        cloud_providers = [
+            (pid, cfg) for pid, cfg in providers.items()
+            if pid != "ollama"
+            and isinstance(cfg, dict)
+            and provider_service.provider_kind(pid, cfg) == "cloud"
+        ]
+        if not cloud_providers:
+            provider_layout.addWidget(QLabel("ابتدا یک Provider ابری در همین صفحه اضافه و پیکربندی کن."))
+        for pid, cfg in cloud_providers:
+            check = QCheckBox(provider_service.provider_label(pid, cfg))
+            check.setChecked(pid.strip().lower() in surface_allowed or (
+                pid.strip().lower() == "google" and "google" in surface_allowed
+            ))
+            check.toggled.connect(
+                lambda checked, provider_id=pid: self.on_surface_provider_toggled(provider_id, checked)
+            )
+            self.surface_provider_checks[pid] = check
+            provider_layout.addWidget(check)
+        form.addRow("Providerهای مجاز برای مکالمهٔ عادی", provider_box)
         return panel
+
+    def on_surface_provider_toggled(self, provider_id, enabled):
+        """Persist an explicit per-provider permission for ordinary chat (surface)."""
+        settings = self.context.services.settings
+        allowlists = settings.get("role_provider_allowlist")
+        if not isinstance(allowlists, dict):
+            allowlists = {}
+            settings["role_provider_allowlist"] = allowlists
+        current = allowlists.get("surface")
+        values = list(current) if isinstance(current, (list, tuple, set, frozenset)) else []
+        normalized = {str(value).strip().lower() for value in values if str(value).strip()}
+        provider = str(provider_id).strip().lower()
+        if enabled:
+            normalized.add(provider)
+        else:
+            normalized.discard(provider)
+        # Keep Ollama's existing permission and stable provider ordering.
+        if "ollama" in {str(value).strip().lower() for value in values}:
+            normalized.add("ollama")
+        allowlists["surface"] = sorted(normalized)
+        self.feature_controller("runtime").save_now()
+        self.refresh_route_list()
 
     def on_network_policy_selected(self, index):
         """Persist Cloud permission only after a direct, explicit confirmation."""
