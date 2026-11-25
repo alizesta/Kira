@@ -33,3 +33,6 @@ user_settings.json
 config.local.json
 api_keys.json
 secrets.json
+
+# Generated, target-specific dependency locks (rebuilt by install.bat)
+dependency-locks/

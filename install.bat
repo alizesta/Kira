@@ -125,6 +125,27 @@ if errorlevel 1 (
 )
 
 echo.
+echo [DEPENDENCY LOCK] Preparing uv and generating reproducible Windows locks...
+if defined KIRA_PYPI_INDEX (
+  python -m pip install --upgrade uv --index-url "%KIRA_PYPI_INDEX%" --retries 10 --timeout 60
+) else (
+  python -m pip install --upgrade uv --retries 10 --timeout 60
+)
+if errorlevel 1 goto netfail
+if not exist ".venv\Scripts\uv.exe" (
+  echo ERROR: uv installation completed without creating .venv\Scripts\uv.exe.
+  goto netfail
+)
+".venv\Scripts\uv.exe" --version
+if errorlevel 1 goto netfail
+python scripts\generate_dependency_locks.py --uv ".venv\Scripts\uv.exe"
+if errorlevel 1 (
+  echo ERROR: Reproducible dependency lock generation failed. Package installation was not started.
+  goto netfail
+)
+echo [DEPENDENCY LOCK] All Python 3.11/3.12 dependency groups are locked and verified.
+
+echo.
 echo [1/6] Resolving and installing core Kira dependencies...
 python install_deps.py requirements.txt --constraints constraints.txt
 if errorlevel 1 goto netfail
