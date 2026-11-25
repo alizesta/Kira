@@ -143,7 +143,7 @@ def update_provider(settings, pid, *, label=None, base_url=None, api_key=None, a
     return changed
 
 
-def remove_provider(settings, pid):
+def remove_provider(settings, pid, *, capabilities=None):
     """Remove a custom provider and its routes, clearing every dangling route reference."""
     if pid in BUILTIN:
         raise ValueError("Providerهای پیش‌فرض حذف نمی‌شوند؛ فقط می‌توان آن‌ها را غیرفعال کرد.")
@@ -167,10 +167,8 @@ def remove_provider(settings, pid):
             settings.get("routes", [None])[0] if settings.get("routes") else None,
         )
         settings["default_route_id"] = fallback.get("id", "") if fallback else ""
-    notes = settings.get("route_notes")
-    if isinstance(notes, dict):
-        for route_id in removed:
-            notes.pop(route_id, None)
+    if capabilities is not None:
+        capabilities.mapping_remove_keys("route_notes", removed)
     settings.get("providers", {}).pop(pid, None)
     sync_legacy(settings)
     return removed
@@ -270,7 +268,7 @@ def get_routes(settings):
     return derive_routes(settings)
 
 
-def ensure_routes(settings):
+def ensure_routes(settings, *, capabilities=None):
     """Persist and repair routes, collapsing duplicate provider/model entries."""
     settings.setdefault("providers", {})
     # Remove configurations persisted by the retired browser-backed Reverse API.
@@ -331,26 +329,17 @@ def ensure_routes(settings):
             clean.append(make_route(rid, name, model, name == "ollama" and bool(cfg.get("enabled", True)), cfg.get("timeout")))
             seen.add(rid)
 
-    # Keep manual/default choices and route health notes attached to the
-    # surviving route when a duplicate ID is collapsed.
+    # Keep manual/default choices attached to the surviving route when a
+    # duplicate ID is collapsed. Runtime health notes are reconciled separately.
     for field in ("manual_route_id", "default_route_id"):
         selected = settings.get(field)
         if selected in id_remap:
             settings[field] = id_remap[selected]
-    notes = settings.get("route_notes")
-    if isinstance(notes, dict):
-        for old_id, new_id in id_remap.items():
-            if old_id in notes:
-                notes.setdefault(new_id, notes[old_id])
-                notes.pop(old_id, None)
 
     settings["routes"] = clean
     ids = {r["id"] for r in clean}
-    notes = settings.get("route_notes")
-    if isinstance(notes, dict):
-        for route_id in tuple(notes):
-            if route_id not in ids:
-                notes.pop(route_id, None)
+    if capabilities is not None:
+        capabilities.mapping_reconcile("route_notes", id_remap, ids)
     if settings.get("manual_route_id") not in ids:
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") not in ids:
@@ -478,7 +467,7 @@ def update_route(settings, route_id, **changes):
     return route
 
 
-def remove_route(settings, route_id):
+def remove_route(settings, route_id, *, capabilities=None):
     routes = _mutable(settings)
     if not any(r["id"] == route_id for r in routes):
         raise KeyError(route_id)
@@ -487,9 +476,8 @@ def remove_route(settings, route_id):
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") == route_id:
         settings["default_route_id"] = settings["routes"][0]["id"] if settings["routes"] else ""
-    notes = settings.get("route_notes")
-    if isinstance(notes, dict):
-        notes.pop(route_id, None)
+    if capabilities is not None:
+        capabilities.mapping_pop("route_notes", route_id, None)
     sync_legacy(settings)
 
 
@@ -577,8 +565,8 @@ def catalog_free(models):
 AUTO_DISABLE_AFTER = 2          # consecutive "model not available" answers before a route is switched off by itself
 
 
-def disable_route(settings, route_id, reason):
-    """Switch a route OFF (never deletes it) and remember why in settings["route_notes"].
+def disable_route(settings, route_id, reason, *, capabilities=None):
+    """Switch a route OFF (never deletes it) and retain its reason as process-local detection data.
 
     Explicitly unavailable routes must be allowed to turn off even when they are
     the last enabled route. Keeping a broken local route artificially enabled
@@ -588,16 +576,19 @@ def disable_route(settings, route_id, reason):
     if route is None or not route.get("enabled", True):
         return False
     update_route(settings, route_id, enabled=False)
-    settings.setdefault("route_notes", {})[route_id] = str(reason)[:200]
+    if capabilities is not None:
+        capabilities.mapping_set("route_notes", route_id, str(reason)[:200])
     return True
 
 
-def route_note(settings, route_id):
+def route_note(settings, route_id, *, capabilities=None):
     """Why a route was switched off automatically ('' once the user turned it back on)."""
     route = find_route(settings, route_id)
     if route is None or route.get("enabled", True):
         return ""
-    return str((settings.get("route_notes") or {}).get(route_id) or "")
+    if capabilities is None:
+        return ""
+    return str(capabilities.mapping_get("route_notes", route_id, "") or "")
 
 
 def _pick_replacement(available, prefer, free):
@@ -610,7 +601,7 @@ def _pick_replacement(available, prefer, free):
     return sorted(available)[0]
 
 
-def reconcile_provider_models(settings, provider, available_models, *, free=None, prefer=()):
+def reconcile_provider_models(settings, provider, available_models, *, free=None, prefer=(), capabilities=None):
     """Remove stale routes after a successful, non-empty provider catalog refresh.
 
     If every route for a built-in provider points at a removed model, retain the
@@ -632,13 +623,13 @@ def reconcile_provider_models(settings, provider, available_models, *, free=None
         keeper = stale.pop(0)
         update_route(settings, keeper["id"], model=_pick_replacement(available, prefer, free))
     for route in stale:
-        remove_route(settings, route["id"])
+        remove_route(settings, route["id"], capabilities=capabilities)
         removed.append(route["id"])
     sync_legacy(settings)
     return removed
 
 
-def disable_non_free_routes(settings, provider, free):
+def disable_non_free_routes(settings, provider, free, *, capabilities=None):
     """Switch off enabled routes of ``provider`` whose model the catalog now marks as NOT free (``free[model] is False``).
 
     Unknown (None) is left alone: only an explicit "paid" answer disables a route, and only while
@@ -648,7 +639,7 @@ def disable_non_free_routes(settings, provider, free):
     disabled = []
     for route in list(_mutable(settings)):
         if route.get("provider") == provider and route.get("enabled", True) and free.get(route.get("model")) is False:
-            if disable_route(settings, route["id"], "این مدل دیگر رایگان نیست"):
+            if disable_route(settings, route["id"], "این مدل دیگر رایگان نیست", capabilities=capabilities):
                 disabled.append(route["id"])
     return disabled
 

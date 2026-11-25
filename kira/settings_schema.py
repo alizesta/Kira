@@ -8,7 +8,7 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
-SETTINGS_SCHEMA_VERSION = 6
+SETTINGS_SCHEMA_VERSION = 7
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,

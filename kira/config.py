@@ -203,6 +203,17 @@ def _migrate_v5_to_v6(data, warnings=None):
     return data
 
 
+def _migrate_v6_to_v7(data, warnings=None):
+    """Move automatic route-health explanations out of persistent user settings."""
+    old_notes = data.pop("route_notes", None)
+    if old_notes and warnings is not None:
+        warnings.append(
+            "یادداشت‌های خودکار وضعیت Route به دادهٔ تشخیص موقت منتقل شدند؛ "
+            "تنظیمات انتخابی Route حفظ شد."
+        )
+    return data
+
+
 def _migrate_settings(saved, *, warnings=None):
     """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
@@ -226,6 +237,7 @@ def _migrate_settings(saved, *, warnings=None):
         3: lambda value: _migrate_v3_to_v4(value, warnings=warnings),
         4: lambda value: _migrate_v4_to_v5(value, warnings=warnings),
         5: lambda value: _migrate_v5_to_v6(value, warnings=warnings),
+        6: lambda value: _migrate_v6_to_v7(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
@@ -422,7 +434,7 @@ def load_settings():
 def save_settings(settings):
     stored = deepcopy(settings)
     # Runtime and detected observations are process-local; never write them to settings.json.
-    for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+    for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
         stored.pop(runtime_key, None)
     # Every persistence boundary validates against the same schema as load-time recovery.
     stored = _validate_settings(stored)

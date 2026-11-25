@@ -16,6 +16,7 @@ CAPABILITY_KEYS = frozenset({
     "ollama_models",
     "model_catalog_refreshed_at",
     "model_tests",
+    "route_notes",
 })
 
 
@@ -49,6 +50,59 @@ class DetectedCapabilities:
         name = self._check(key)
         with self._lock:
             return self._values.setdefault(name, default)
+
+    def mapping_get(self, key: str, item: str, default: Any = None) -> Any:
+        """Read one entry from a process-local mapping without leaking mutable state."""
+        name = self._check(key)
+        with self._lock:
+            bucket = self._values.get(name)
+            if not isinstance(bucket, dict):
+                return deepcopy(default)
+            return deepcopy(bucket.get(str(item), default))
+
+    def mapping_set(self, key: str, item: str, value: Any) -> None:
+        """Atomically update one entry in a process-local mapping capability."""
+        name = self._check(key)
+        with self._lock:
+            bucket = self._values.setdefault(name, {})
+            if not isinstance(bucket, dict):
+                raise TypeError(f"Detected capability {name} is not a mapping")
+            bucket[str(item)] = deepcopy(value)
+
+    def mapping_pop(self, key: str, item: str, default: Any = None) -> Any:
+        """Atomically remove one entry from a process-local mapping capability."""
+        name = self._check(key)
+        with self._lock:
+            bucket = self._values.get(name)
+            if not isinstance(bucket, dict):
+                return deepcopy(default)
+            return deepcopy(bucket.pop(str(item), default))
+
+    def mapping_remove_keys(self, key: str, items) -> None:
+        """Remove a collection of entries atomically."""
+        name = self._check(key)
+        keys = tuple(str(item) for item in items)
+        with self._lock:
+            bucket = self._values.get(name)
+            if isinstance(bucket, dict):
+                for item in keys:
+                    bucket.pop(item, None)
+
+    def mapping_reconcile(self, key: str, id_remap: dict[str, str], valid_keys) -> None:
+        """Move notes across route-ID normalization and discard observations for removed routes."""
+        name = self._check(key)
+        valid = {str(item) for item in valid_keys}
+        with self._lock:
+            bucket = self._values.get(name)
+            if not isinstance(bucket, dict):
+                return
+            for old_id, new_id in id_remap.items():
+                if old_id in bucket:
+                    bucket.setdefault(new_id, bucket[old_id])
+                    bucket.pop(old_id, None)
+            for item in tuple(bucket):
+                if item not in valid:
+                    bucket.pop(item, None)
 
     def pop(self, key: str, default: Any = None) -> Any:
         name = self._check(key)
