@@ -142,6 +142,28 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             routes.remove_route(s, "groq")
 
+    def test_add_route_rejects_duplicate_model_ids_case_insensitively(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        pid = routes.add_provider(s, "Local duplicate test", "http://localhost:1234/v1", local=True)
+        route = routes.add_route(s, pid, {"id": "Example-Model"})
+        self.assertEqual(route["model"], "Example-Model")
+        with self.assertRaises(ValueError):
+            routes.add_route(s, pid, "example-model")
+
+    def test_remove_provider_clears_last_route_default_and_manual_selections(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        pid = routes.add_provider(s, "Temporary provider", "http://localhost:1234/v1", local=True)
+        route = routes.add_route(s, pid, "only-model")
+        routes.set_default(s, route["id"])
+        routes.set_manual(s, route["id"])
+        removed = routes.remove_provider(s, pid)
+        self.assertEqual(removed, [route["id"]])
+        self.assertEqual(s["default_route_id"], "cloudflare")
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertNotIn(pid, s["providers"])
+
     def test_add_edit_remove_custom_provider(self):
         s = legacy_settings()
         routes.ensure_routes(s)
