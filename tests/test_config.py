@@ -97,6 +97,40 @@ class ConfigTests(unittest.TestCase):
         route = next(item for item in saved["routes"] if item["id"] == "ollama")
         self.assertNotIn("num_ctx", route)
 
+    def test_v3_migration_removes_runtime_observations_but_preserves_user_values(self):
+        source = {
+            "settings_version": 3,
+            "assistant_name": "My Kira",
+            "voice_engine": "local",
+            "providers": {"groq": {"api_key": "preserve-me"}},
+            "api_registry": {"groq": {"status": "valid"}},
+            "model_catalog_refreshed_at": 12345,
+            "model_tests": {"groq::model": {"ok": True}},
+            "user_extension": {"enabled": True},
+        }
+        migrated = config._migrate_settings(source)
+        self.assertEqual(migrated["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertEqual(migrated["assistant_name"], "My Kira")
+        self.assertEqual(migrated["voice_engine"], "local")
+        self.assertEqual(migrated["providers"]["groq"]["api_key"], "preserve-me")
+        self.assertEqual(migrated["user_extension"], {"enabled": True})
+        for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+            self.assertNotIn(runtime_key, migrated)
+        self.assertEqual(source["api_registry"]["groq"]["status"], "valid")
+
+    def test_save_settings_never_persists_detected_capabilities(self):
+        settings = helpers.fresh_settings()
+        settings.update({
+            "api_registry": {"groq": {"status": "valid"}},
+            "model_catalog_refreshed_at": 12345,
+            "model_tests": {"groq::model": {"ok": True}},
+        })
+        config.save_settings(settings)
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertNotIn("api_registry", saved)
+        self.assertNotIn("model_catalog_refreshed_at", saved)
+        self.assertNotIn("model_tests", saved)
+
     def test_settings_migration_is_idempotent(self):
         original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
         once = config._migrate_settings(original)

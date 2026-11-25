@@ -15,6 +15,7 @@ CAPABILITY_KEYS = frozenset({
     "api_registry",
     "ollama_models",
     "model_catalog_refreshed_at",
+    "model_tests",
 })
 
 

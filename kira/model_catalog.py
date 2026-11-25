@@ -4,7 +4,7 @@ A model's *enabled* state is its Route (see api_manager.set_model_enabled); the 
 reported (status, free). What this module adds:
 
 * ``settings["model_archive"]``  {provider id: [model ids]} - models the user moved to the "منسوخ / غیرفعال" tab.
-* ``settings["model_tests"]``    {"provider::model": {ok, ms, at, message}} - the last quick test of each model.
+* DetectedCapabilities ``model_tests`` stores the last quick test observation for each model.
 
 Tabs (a model is in exactly one of free / paid / archived, and also in "active" when its Route is on):
 
@@ -79,23 +79,26 @@ def _route_id(settings, provider, model):
     return ""
 
 
-def forget_provider(settings, provider):
-    """Drop the archive and test records of a deleted API."""
+def forget_provider(settings, provider, *, capabilities=None):
+    """Drop user archive choices and process-local test observations for a deleted API."""
     (settings.get("model_archive") or {}).pop(provider, None)
-    tests = settings.get("model_tests") or {}
+    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+    tests = store.get("model_tests") or {}
     for key in [k for k in tests if k.startswith(provider + "::")]:
         tests.pop(key, None)
 
 
 # ---------------------------------------------------------------- test results
-def record_test(settings, provider, model, ok, ms=None, message="", now=None):
-    settings.setdefault("model_tests", {})[_key(provider, model)] = {
+def record_test(settings, provider, model, ok, ms=None, message="", now=None, *, capabilities=None):
+    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+    store.setdefault("model_tests", {})[_key(provider, model)] = {
         "ok": bool(ok), "ms": None if ms is None else int(ms),
         "at": int(now if now is not None else time.time()), "message": str(message or "")[:300]}
 
 
-def test_result(settings, provider, model):
-    return (settings.get("model_tests") or {}).get(_key(provider, model))
+def test_result(settings, provider, model, *, capabilities=None):
+    store = capabilities if capabilities is not None else api_manager._DEFAULT_CAPABILITIES
+    return (store.get("model_tests") or {}).get(_key(provider, model))
 
 
 # ---------------------------------------------------------------- rows
@@ -139,7 +142,7 @@ def model_rows(settings, *, capabilities=None):
                 "free": meta.get("free"), "status": meta.get("status") or "unknown", "enabled": enabled,
                 "route_id": route["id"] if route else "", "reason": reason, "tabs": tabs,
                 "restorable": meta.get("status") != "unavailable",        # a model the service dropped cannot come back by hand
-                "test": test_result(settings, pid, mid),
+                "test": test_result(settings, pid, mid, capabilities=capabilities),
                 "order": order.get((pid, mid), 10 ** 6),
             })
     # Ollama models are discovered from the local daemon, not the cloud API registry.
@@ -161,7 +164,7 @@ def model_rows(settings, *, capabilities=None):
             "provider": pid, "provider_label": route_model.provider_label(pid, cfg),
             "model": mid, "price": "free", "free": True, "status": "available",
             "enabled": enabled, "route_id": route["id"], "reason": reason, "tabs": tabs,
-            "restorable": True, "test": test_result(settings, pid, mid),
+            "restorable": True, "test": test_result(settings, pid, mid, capabilities=capabilities),
             "order": order.get((pid, mid), 10 ** 6),
         })
         known.add((pid, mid))

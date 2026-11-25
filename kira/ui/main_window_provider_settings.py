@@ -335,7 +335,7 @@ class ProviderSettingsController(WindowFeatureController):
             good, message, ms = False, f"نتیجهٔ تست قابل‌خواندن نبود: {type(exc).__name__}", None
         worker._model_test_terminal = True
         try:
-            model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message)
+            model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message, capabilities=self.context.services.provider_application_service.detected_capabilities)
             self.feature_controller("runtime").save_now()
             self.models_panel.status.setText(
                 (f"✓ {key[1]}: سالم ({ms} ms)" if good else f"✕ {key[1]}: {message[:240]}")
@@ -686,7 +686,7 @@ class ProviderSettingsController(WindowFeatureController):
         if QMessageBox.question(self.window, "حذف API", f"«{self.context.services.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
             return
         self.context.services.provider_application_service.delete_api(self.context.services.settings, pid)
-        model_catalog.forget_provider(self.context.services.settings, pid)
+        model_catalog.forget_provider(self.context.services.settings, pid, capabilities=self.context.services.provider_application_service.detected_capabilities)
         self.api_status.setText("✓ API حذف شد.")
         self._api_changed()
 

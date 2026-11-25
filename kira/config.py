@@ -25,9 +25,10 @@ APP_NAME = "Project Kira"  # change this to rebrand the desktop application
 PROJECT_URL = "https://github.com/alizesta/Kira"
 RELEASES_URL = PROJECT_URL + "/releases/latest"
 VERSION = "1.2.6"
-SETTINGS_SCHEMA_VERSION = 3
+SETTINGS_SCHEMA_VERSION = 4
 
 DEFAULTS = {
+    "settings_version": SETTINGS_SCHEMA_VERSION,
     "ollama_url": DEFAULT_OLLAMA_URL,
     "model": LOCAL_UNCENSORED_MODEL,
     "assistant_name": "Kira",
@@ -142,8 +143,6 @@ DEFAULTS = {
     "failover_enabled": True,       # a manual choice may still fall back to the next route
     "default_route_id": "",
     "route_free_only": True,        # catalog refresh switches off routes whose model is explicitly no longer free
-    "model_catalog_refreshed_at": 0,  # epoch seconds of the last successful automatic/manual model catalog refresh
-    "api_registry": {},             # API Manager: what each registered API reported (status, models, time). Never contains keys.
     "providers": {
         "groq": {"enabled": False, "api_key": "", "model": "openai/gpt-oss-120b", "timeout": 18},
         "cloudflare": {"enabled": False, "api_key": "", "account_id": "", "model": "@cf/meta/llama-3.1-8b-instruct", "timeout": 18},
@@ -327,6 +326,13 @@ def _migrate_v2_to_v3(data):
     return data
 
 
+def _migrate_v3_to_v4(data):
+    """Move provider/model discovery observations out of persistent user settings."""
+    for key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+        data.pop(key, None)
+    return data
+
+
 def _migrate_settings(saved):
     """Apply each schema migration once to a private copy of persisted settings."""
     if not isinstance(saved, dict):
@@ -347,6 +353,7 @@ def _migrate_settings(saved):
         0: _migrate_v0_to_v1,
         1: _migrate_v1_to_v2,
         2: _migrate_v2_to_v3,
+        3: _migrate_v3_to_v4,
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
@@ -473,7 +480,6 @@ def load_settings():
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
             return _default_settings()
         merged = {**DEFAULTS, **saved}
-        merged["api_registry"] = deepcopy(saved["api_registry"]) if isinstance(saved.get("api_registry"), dict) else {}      # never share DEFAULTS' dict
         # Stock persona texts from earlier versions are not user customisation: Kira's character now
         # lives in kira/personality.py, so clear them. A persona the user really edited is preserved
         # and is applied as "extra notes" below the core identity.
@@ -543,6 +549,9 @@ def load_settings():
 
 def save_settings(settings):
     stored = deepcopy(settings)
+    # Runtime and detected observations are process-local; never write them to settings.json.
+    for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+        stored.pop(runtime_key, None)
     stored["settings_version"] = SETTINGS_SCHEMA_VERSION
     stored["provider_order"] = normalize_provider_order(stored.get("provider_order"))
     if isinstance(stored.get("routes"), list):
