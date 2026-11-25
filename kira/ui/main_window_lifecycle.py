@@ -56,7 +56,7 @@ class LifecycleController(WindowFeatureController):
         s = self.context.services.settings
         s.update({
             "assistant_name": self.context.views.name.text().strip() or "Kira",
-            "model": self.context.views.model.text().strip() or "qwen2.5:3b",
+            "model": self.context.views.model.text().strip() or self.context.services.settings.get("model"),
             "ollama_url": self.context.views.url.text().strip() or "http://localhost:11434",
             "persona": self.context.views.persona.toPlainText().strip(), "active_modes": self.context.views.modes_chk.isChecked(),
             "temperature": float(self.context.views.temp.currentText()),

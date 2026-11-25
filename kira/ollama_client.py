@@ -162,8 +162,9 @@ class OllamaClient:
     @classmethod
     def from_settings(cls, settings):
         cfg = (settings.get("providers") or {}).get("ollama") or {}
-        return cls(settings.get("ollama_url") or cfg.get("base_url") or "http://localhost:11434",
-                   settings.get("model") or cfg.get("model") or "qwen3.5:4b",
+        from .config import DEFAULTS
+        return cls(settings.get("ollama_url") or cfg.get("base_url") or DEFAULTS["ollama_url"],
+                   settings.get("model") or cfg.get("model") or DEFAULTS["model"],
                    cfg.get("num_ctx", DEFAULT_NUM_CTX), cfg.get("keep_alive", DEFAULT_KEEP_ALIVE),
                    cfg.get("timeout", 180), cfg.get("num_predict", DEFAULT_NUM_PREDICT))
 

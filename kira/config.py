@@ -23,6 +23,7 @@ APP_NAME = "Project Kira"  # change this to rebrand the desktop application
 PROJECT_URL = "https://github.com/alizesta/Kira"
 RELEASES_URL = PROJECT_URL + "/releases/latest"
 VERSION = "1.2.6"
+SETTINGS_SCHEMA_VERSION = 2
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
@@ -201,12 +202,66 @@ def prepare_user_data():
     return notes
 
 
+def _migrate_settings(saved):
+    """Apply deterministic, versioned migrations to a private copy of persisted settings."""
+    if not isinstance(saved, dict):
+        raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
+    migrated = deepcopy(saved)
+    raw_version = migrated.get("settings_version", 0)
+    if isinstance(raw_version, bool):
+        raise ValueError("نسخهٔ تنظیمات معتبر نیست.")
+    try:
+        version = int(raw_version)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("نسخهٔ تنظیمات معتبر نیست.") from exc
+    if version < 0 or version > SETTINGS_SCHEMA_VERSION:
+        raise ValueError(f"نسخهٔ تنظیمات پشتیبانی نمی‌شود: {version}")
+    migrations = {0: lambda data: data, 1: lambda data: data}
+    while version < SETTINGS_SCHEMA_VERSION:
+        migrated = migrations[version](migrated)
+        version += 1
+        migrated["settings_version"] = version
+    migrated["settings_version"] = SETTINGS_SCHEMA_VERSION
+    return migrated
+
+
+def _validate_settings(settings):
+    """Restore malformed known values from canonical defaults without dropping user keys."""
+    if not isinstance(settings, dict):
+        raise ValueError("ساختار تنظیمات معتبر نیست.")
+    repaired = []
+    for key, default in DEFAULTS.items():
+        value = settings.get(key)
+        valid = True
+        if isinstance(default, bool):
+            valid = isinstance(value, bool)
+        elif isinstance(default, int):
+            valid = isinstance(value, int) and not isinstance(value, bool)
+        elif isinstance(default, float):
+            valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+        elif isinstance(default, str):
+            valid = isinstance(value, str)
+        elif isinstance(default, list):
+            valid = isinstance(value, list)
+        elif isinstance(default, dict):
+            valid = isinstance(value, dict)
+        if key in settings and not valid:
+            settings[key] = deepcopy(default)
+            repaired.append(key)
+    if repaired:
+        LOAD_WARNINGS.append("مقادیر نامعتبر تنظیمات با پیش‌فرض معتبر جایگزین شدند: " + ", ".join(repaired))
+    settings["settings_version"] = SETTINGS_SCHEMA_VERSION
+    return settings
+
+
 def load_settings():
     LOAD_WARNINGS.clear()
     LOAD_WARNINGS.extend(prepare_user_data())
     if CONFIG_PATH.exists():
         try:
             saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            source_settings_version = saved.get("settings_version", 0) if isinstance(saved, dict) else 0
+            saved = _migrate_settings(saved)
             if not isinstance(saved, dict):
                 raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
         except Exception as exc:
@@ -216,13 +271,6 @@ def load_settings():
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
             return deepcopy(DEFAULTS)
         merged = {**DEFAULTS, **saved}
-        # Earlier Voice pages exposed only the local pipeline and wrote "local"
-        # automatically. That legacy value must not silently override the new
-        # Gemini Live primary + local fallback default.
-        if not bool(saved.get("voice_engine_migrated", False)):
-            if str(saved.get("voice_engine") or "").strip().lower() == "local":
-                merged["voice_engine"] = "gemini_live"
-            merged["voice_engine_migrated"] = True
         # Remove obsolete cloud TTS voice selections; Gemini Live is primary and local Piper remains fallback.
         for stale_voice_key in (
             "voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree",
@@ -279,26 +327,6 @@ def load_settings():
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
         route_model.ensure_routes(merged)
-        # 6144 tokens balance prompt capacity and KV-cache memory on 8 GB GPUs.
-        # Upgrade known bundled defaults; custom values remain user-controlled.
-        migrated_local_context = False
-        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
-        try:
-            if int(ollama_cfg.get("num_ctx") or 0) in (2048, 8192):
-                ollama_cfg["num_ctx"] = 6144
-                migrated_local_context = True
-        except (TypeError, ValueError):
-            pass
-        for local_route in route_model.get_routes(merged):
-            if local_route.get("provider") != "ollama":
-                continue
-            try:
-                if int(local_route.get("num_ctx") or 0) in (2048, 8192):
-                    route_model.update_route(merged, local_route["id"], num_ctx=6144)
-                    migrated_local_context = True
-            except (TypeError, ValueError):
-                continue
-
         # Repair configurations written by versions where a local Route could be
         # switched on while the Ollama Provider master switch stayed off.
         migrated_local_route_state = False
@@ -358,12 +386,12 @@ def load_settings():
             LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
         if migrated_local_route_state:
             LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
-        if migrated_local_context:
-            LOAD_WARNINGS.append("ظرفیت Context مدل محلی از مقدار قدیمی ۲۰۴۸ به ۸۱۹۲ افزایش یافت.")
-        if migrated_local_model or migrated_local_route_state or migrated_local_context:
+        merged = _validate_settings(merged)
+        if int(source_settings_version or 0) < SETTINGS_SCHEMA_VERSION or migrated_local_model or migrated_local_route_state:
             save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)
+    fresh["settings_version"] = SETTINGS_SCHEMA_VERSION
     route_model.ensure_routes(fresh)
     save_settings(fresh)
     return fresh
@@ -371,6 +399,7 @@ def load_settings():
 
 def save_settings(settings):
     stored = deepcopy(settings)
+    stored["settings_version"] = SETTINGS_SCHEMA_VERSION
     stored["provider_order"] = normalize_provider_order(stored.get("provider_order"))
     if isinstance(stored.get("routes"), list):
         route_model.sync_legacy(stored)

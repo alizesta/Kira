@@ -43,17 +43,35 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["model"], "qwen2.5:3b")            # user's model is NOT overwritten
         self.assertEqual(s["assistant_name"], "Mina")
         self.assertEqual(s["providers"]["groq"]["api_key"], "plain-old-key-123")
-        self.assertEqual(s["providers"]["ollama"]["num_ctx"], 4096)   # new key got its default
+        self.assertEqual(s["providers"]["ollama"]["num_ctx"], 6144)   # new key got its default
         self.assertEqual(s["providers"]["ollama"]["keep_alive"], "2m")
         self.assertEqual(s["provider_order"], ["cloudflare", "groq", "mistral", "openrouter", "ollama"])
-        self.assertEqual(config.VERSION, "1.1")
+        self.assertEqual(s["settings_version"], config.SETTINGS_SCHEMA_VERSION)
 
-    def test_01a_legacy_local_voice_default_migrates_to_gemini_live(self):
+    def test_01a_unversioned_explicit_local_voice_choice_is_preserved(self):
         self.path.write_text(json.dumps({"voice_engine": "local"}), encoding="utf-8")
         settings = config.load_settings()
-        self.assertEqual(settings["voice_engine"], "gemini_live")
-        self.assertTrue(settings["voice_local_fallback"])
-        self.assertTrue(settings["voice_engine_migrated"])
+        self.assertEqual(settings["voice_engine"], "local")
+        self.assertEqual(settings["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+
+    def test_settings_migration_is_idempotent(self):
+        original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
+        once = config._migrate_settings(original)
+        twice = config._migrate_settings(once)
+        self.assertEqual(once, twice)
+        self.assertEqual(original["voice_engine"], "local")
+        self.assertEqual(once["providers"]["ollama"]["num_ctx"], 8192)
+
+    def test_user_num_ctx_values_survive_load_without_migration(self):
+        for value in (2048, 8192):
+            self.path.write_text(json.dumps({"providers": {"ollama": {"num_ctx": value}}}), encoding="utf-8")
+            self.assertEqual(config.load_settings()["providers"]["ollama"]["num_ctx"], value)
+
+    def test_invalid_known_setting_is_repaired_from_schema_default(self):
+        self.path.write_text(json.dumps({"temperature": "hot"}), encoding="utf-8")
+        settings = config.load_settings()
+        self.assertEqual(settings["temperature"], config.DEFAULTS["temperature"])
+        self.assertTrue(any("temperature" in warning for warning in config.LOAD_WARNINGS))
 
     def test_01aa_intentional_local_voice_selection_survives_migration(self):
         self.path.write_text(
