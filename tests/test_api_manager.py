@@ -399,6 +399,27 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         self.assertEqual(router.eligibility(rm.find_route(s, "groq")), (False, "provider_off"))
         self.assertEqual(am.api_row(s, "groq")["status"], "disabled")
 
+    def test_disabling_default_api_selects_an_enabled_fallback_route(self):
+        s = fresh()
+        am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]), GROQ_KEY)
+        am.register(s, am.Detection("ok", "mistral", "", [{"id": "mistral-small-latest"}]), MISTRAL_KEY)
+        s["default_route_id"] = "groq"
+        s["manual_route_id"] = "groq"
+        am.set_api_enabled(s, "groq", False)
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertEqual(s["default_route_id"], "mistral")
+
+    def test_deleting_default_custom_api_repairs_route_selection(self):
+        s = fresh()
+        am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]), GROQ_KEY)
+        pid = am.register(s, am.Detection("ok", "google", "", [{"id": "gemini-2.5-flash"}]), GOOGLE_KEY)
+        google_route = next(r for r in rm.get_routes(s) if r["provider"] == pid)
+        s["default_route_id"] = google_route["id"]
+        am.delete_api(s, pid)
+        self.assertNotIn(pid, s["providers"])
+        self.assertEqual(s["default_route_id"], "groq")
+        self.assertEqual(s["manual_route_id"], "")
+
     def test_model_toggle_creates_and_disables_routes(self):
         s = fresh()
         am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}, {"id": "llama-x"}]), GROQ_KEY)
