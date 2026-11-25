@@ -163,3 +163,44 @@ def test_live_reuses_the_captured_frame_and_preserves_live_resolution_limit():
     assert "frame_image = _frame.scaled(" in live
     assert "LIVE_VIDEO_MAX_WIDTH, LIVE_VIDEO_MAX_HEIGHT" in live
     assert "frame_context=frame_context" in source
+
+
+def test_one_frame_has_one_central_cloud_route_and_a_bounded_analysis_queue():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    orchestrator = read("kira/vision_orchestrator.py")
+    assert "decision = orchestrator.decide(" in source
+    assert "if decision.route != orchestrator.ANALYSIS:" in source
+    assert "FrameJob(frame_context, jpeg, visual_sample)" in source
+    assert "service.enqueue_frame(" in source
+    assert "def _dispatch_next_vision_job(self):" in source
+    assert "job = service.take_next_frame()" in source
+    assert "while len(self._pending) >= self.capacity:" in orchestrator
+    assert "self._pending.popleft()" in orchestrator
+    assert "worker_running=False" in source
+
+
+def test_frame_result_and_cancellation_are_bound_to_owning_session_generation():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    relay = read("kira/ui/main_window_support.py")
+    orchestrator = read("kira/vision_orchestrator.py")
+    assert "session._vision_frame_context = frame_context" in source
+    assert "service.frame_orchestrator.is_current(frame_context)" in source
+    assert "service.frame_orchestrator.cancel_session(session_id)" in source
+    assert 'self._run("_dispatch_next_vision_job")' in relay
+    assert "def is_current(self, context: FrameContext)" in orchestrator
+    assert "generation=self._generations.setdefault(key, 0)" in orchestrator
+
+
+def test_desktop_live_and_analysis_reuse_the_same_capture_result():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    capture = source.split("def _capture_desktop_frame(self):", 1)[1].split(
+        "def _submit_vision_frame(self, frame, source, window_info):", 1
+    )[0]
+    live = source.split("def _maybe_stream_gemini_live_frame", 1)[1].split(
+        "def _queue_perception_ocr", 1
+    )[0]
+    assert "frame_context, decision = self._submit_vision_frame(frame, \"desktop\", window_info)" in capture
+    assert "self._maybe_stream_gemini_live_frame(" in capture
+    assert "frame, \"desktop\", window_info, frame_context=frame_context" in capture
+    assert "frame_image = _frame.scaled(" in live
+    assert "capture.capture_monitor_for_window(" in live
