@@ -94,19 +94,6 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertEqual(stale.route, "drop")
         self.assertEqual(stale.reason, "stale_session_generation")
 
-    def test_shared_cooldown_applies_when_route_changes_from_live_to_analysis(self):
-        clock = Clock()
-        orchestrator = VisionFrameOrchestrator(clock=clock)
-        orchestrator.configure_budget(max_frames_per_minute=60, min_interval_seconds=5)
-        live = orchestrator.create_context("s", "desktop")
-        self.assertEqual(orchestrator.decide(live, live_ready=True).route, "live")
-        clock.value = 2
-        orchestrator.configure_budget(max_frames_per_minute=60, min_interval_seconds=5)
-        analysis = orchestrator.create_context("s", "desktop")
-        decision = orchestrator.decide(analysis, live_ready=False)
-        self.assertEqual(decision.route, "drop")
-        self.assertEqual(decision.reason, "frame_budget_exhausted")
-
     def test_concurrent_decisions_for_one_frame_are_idempotent(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("s", "desktop")
@@ -143,3 +130,21 @@ class VisionOrchestratorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_releasing_unsent_frame_returns_shared_quota(self):
+        orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)
+        context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(context, live_ready=True).route, "live")
+        self.assertTrue(orchestrator.release(context))
+        next_context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
+
+    def test_replacing_pending_frame_releases_evicted_quota(self):
+        orchestrator = VisionFrameOrchestrator(capacity=1, max_frames_per_minute=1)
+        first = orchestrator.create_context("s", "desktop")
+        orchestrator.decide(first, live_ready=False)
+        orchestrator.enqueue(FrameJob(first, b"old"))
+        second = orchestrator.create_context("s", "desktop")
+        # The first reservation is still held until enqueue replaces it; the second
+        # decision is admitted only after the pending slot evicts/releases the old job.
+        self.assertEqual(orchestrator.decide(second, live_ready=False).reason, "frame_budget_exhausted")

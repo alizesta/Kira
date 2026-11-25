@@ -137,6 +137,9 @@ class VisionApplicationService:
     def take_next_frame(self, session_id: str | None = None) -> FrameJob | None:
         return self.frame_orchestrator.take_next(session_id)
 
+    def release_frame_budget(self, context) -> bool:
+        return self.frame_orchestrator.release(context)
+
     def reset(self) -> None:
         self.frame_gate.reset()
         self.frame_orchestrator.cancel_all()

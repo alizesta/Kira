@@ -96,6 +96,7 @@ class VisionFrameOrchestrator:
         self._decisions: OrderedDict[str, FrameRoute] = OrderedDict()
         self._generations: dict[str, int] = {}
         self._sent_at: dict[str, deque[float]] = {}
+        self._budget_decisions: dict[str, tuple[str, float]] = {}
         self._history_size = max(64, int(history_size))
         self.dropped_pending = 0
         self.duplicate_frames = 0
@@ -168,6 +169,7 @@ class VisionFrameOrchestrator:
                 decision = FrameRoute(context.frame_id, self.DROP, "no_eligible_route")
             if decision.route != self.DROP:
                 self._sent_at.setdefault(context.session_id, deque()).append(moment)
+                self._budget_decisions[context.frame_id] = (context.session_id, moment)
             self._remember(decision)
             return decision
 
@@ -187,10 +189,32 @@ class VisionFrameOrchestrator:
                 if item.context.session_id == job.context.session_id
             ]
             if len(session_pending) >= self.capacity:
-                self._pending.remove(session_pending[0])
+                dropped = session_pending[0]
+                self._pending.remove(dropped)
+                self._release_budget(dropped.context.frame_id)
                 self.dropped_pending += 1
             self._pending.append(job)
             return True
+
+    def _release_budget(self, frame_id: str) -> bool:
+        reservation = self._budget_decisions.pop(str(frame_id or ""), None)
+        if reservation is None:
+            return False
+        session_id, moment = reservation
+        sent = self._sent_at.get(session_id)
+        if sent is not None:
+            try:
+                sent.remove(moment)
+            except ValueError:
+                pass
+            if not sent:
+                self._sent_at.pop(session_id, None)
+        return True
+
+    def release(self, context: FrameContext) -> bool:
+        """Return a reserved quota token when a frame was not dispatched."""
+        with self._lock:
+            return self._release_budget(context.frame_id)
 
     def take_next(self, session_id: str | None = None) -> FrameJob | None:
         """Take an eligible job for one session without stealing another session's work."""
@@ -215,6 +239,11 @@ class VisionFrameOrchestrator:
             self._pending = kept
             self.cancelled_frames += removed
             self._sent_at.pop(key, None)
+            self._budget_decisions = {
+                frame_id: reservation
+                for frame_id, reservation in self._budget_decisions.items()
+                if reservation[0] != key
+            }
             return removed
 
     def cancel_all(self) -> int:
@@ -224,6 +253,7 @@ class VisionFrameOrchestrator:
             for session_id in set(self._generations) | set(self._sent_at):
                 self._generations[session_id] = self._generations.get(session_id, 0) + 1
             self._sent_at.clear()
+            self._budget_decisions.clear()
             self.cancelled_frames += removed
             return removed
 

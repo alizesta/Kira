@@ -1332,6 +1332,7 @@ class AttachmentsVisionController(WindowFeatureController):
             if not buffer.open(QIODevice.WriteOnly) or not frame.save(
                 buffer, "JPEG", service.policy.jpeg_quality
             ):
+                service.release_frame_budget(frame_context)
                 return frame_context, decision
             jpeg = bytes(data)
             thumbnail = frame.scaled(
@@ -1343,6 +1344,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 for x in range(thumbnail.width())
             )
             if not service.enqueue_frame(FrameJob(frame_context, jpeg, visual_sample)):
+                service.release_frame_budget(frame_context)
                 return frame_context, decision
             self._dispatch_next_vision_job()
         except Exception as exc:  # noqa: BLE001 - Vision must never interrupt chat
@@ -1374,6 +1376,7 @@ class AttachmentsVisionController(WindowFeatureController):
             return
         frame_context = job.context
         if session_id != frame_context.session_id or not service.frame_context_is_current(frame_context):
+            service.release_frame_budget(frame_context)
             vision_trace(
                 "analysis_discarded", frame_id=frame_context.frame_id,
                 session_id=frame_context.session_id, source=frame_context.source,
@@ -1396,8 +1399,10 @@ class AttachmentsVisionController(WindowFeatureController):
             speech_active=self.context.services.voice_application_service.is_speaking(),
             source=source, window_info=window_info,
         ):
+            service.release_frame_budget(frame_context)
             return
         if not service.accept_frame(job.payload, visual_sample=job.visual_sample):
+            service.release_frame_budget(frame_context)
             return
         image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
         image = att.image_attachment(job.payload, image_name, "image/jpeg")
@@ -1426,6 +1431,7 @@ class AttachmentsVisionController(WindowFeatureController):
             worker.finished.connect(session.relay.game_vision_finished)
             worker.start()
         except Exception as exc:
+            service.release_frame_budget(frame_context)
             vision_trace(
                 "analysis_error", frame_id=frame_context.frame_id,
                 session_id=frame_context.session_id, source=source,
