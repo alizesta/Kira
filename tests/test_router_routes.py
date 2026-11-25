@@ -70,12 +70,23 @@ class RouterRouteTests(unittest.TestCase):
 
     def test_surface_falls_back_to_explicitly_enabled_cloud_when_local_is_disabled(self):
         s, r = make("groq", ollama=False)
+        s["network_policy"] = "cloud_permitted"
         f = dispatch({"groq": ok_openai("cloud-fallback")})
         with r.role_scope("surface"):
             with mock.patch("requests.post", f):
                 self.assertEqual(r.chat(MSGS, SYS), "cloud-fallback")
         self.assertEqual(len(f.calls), 1)
         self.assertIn("groq", f.calls[0]["url"])
+
+    def test_surface_never_uses_cloud_when_network_policy_is_local_only(self):
+        s, r = make("groq", ollama=False)
+        self.assertEqual(s["network_policy"], "local_only")
+        f = dispatch({"groq": AssertionError("local_only must never send a request to cloud")})
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                with self.assertRaises(RuntimeError):
+                    r.chat(MSGS, SYS)
+        self.assertEqual(f.calls, [])
 
     def test_surface_never_uses_cloud_when_local_route_is_ready(self):
         s, r = make("groq", ollama=True)
