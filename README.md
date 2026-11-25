@@ -11,7 +11,7 @@ The repository's primary documentation language is **English**. Persian translat
 1. Run **install.bat**. On the first installation, choose the data directory or use the suggested default.
 2. The installer prepares the application dependencies and supported local speech/model components. It also installs Ollama when the Windows Package Manager is available and prepares the configured local Qwen model.
 3. Start the application with **start_kira.bat**.
-4. To configure a cloud model, open the Route settings, choose **Add API**, and enter the provider's API key. Kira validates the key and discovers models through the provider API. See the [API Manager guide](docs/API_MANAGER_FA.md) for the current provider workflow.
+4. To configure a cloud model, open the Route settings, choose **Add API**, and enter the provider's API key. Kira validates the key and discovers models through the provider API. See the [API Manager guide](docs/API_MANAGER.md) for the current provider workflow.
 
 The updater is **update_kira.bat**. It updates code and dependencies and runs the configured focused checks.
 
@@ -41,7 +41,7 @@ Available cloud integrations include Google Gemini, Groq, Mistral, OpenRouter, C
 - Multi-source research can search and read independent pages, compare evidence, and produce a cited report with confidence and evidence limitations.
 - Research is separate from ordinary quick search and can be stopped or continued.
 
-See [Web Research](docs/WEB_RESEARCH_FA.md).
+See [Web Research](docs/WEB_RESEARCH.md).
 
 ### Files, images, and desktop tools
 
@@ -49,19 +49,19 @@ See [Web Research](docs/WEB_RESEARCH_FA.md).
 - Supported text and document formats can be read; image understanding requires a compatible vision route.
 - The Tool System can inspect permitted information about the Windows computer and perform supported actions. Sensitive file operations require explicit confirmation; it is not an unrestricted shell.
 
-See [Tools and computer access](docs/TOOLS_FA.md).
+See [Tools and computer access](docs/TOOLS.md).
 
 ### Voice
 
 Kira supports a Gemini Live conversation path and local speech components. Local speech recognition uses the configured offline ASR engine with its supported fallback; local speech generation uses Piper. The local path does not send microphone audio to cloud speech services. Cloud Live interaction is a separate, explicitly configured mode.
 
-See [Local Voice](docs/LOCAL_VOICE_FA.md), [Voice Routing](docs/VOICE_ROUTE_FA.md), and [Gemini Live](docs/GEMINI_LIVE_FA.md).
+See [Local Voice](docs/LOCAL_VOICE.md), [Voice Routing](docs/VOICE_ROUTE.md), and [Gemini Live](docs/GEMINI_LIVE.md).
 
 ### Eye Mode
 
 Eye Mode is an explicit opt-in desktop perception feature. It samples the selected monitor, applies foreground-window and privacy checks, and maintains a bounded text context. It is not a high-frame-rate screen recorder. Raw frames are not retained as ordinary application history.
 
-See [Live Desktop Vision](docs/LIVE_DESKTOP_VISION_FA.md).
+See [Live Desktop Vision](docs/LIVE_DESKTOP_VISION.md).
 
 ### Kira Code
 
@@ -85,7 +85,7 @@ See [Language Settings](docs/LANGUAGE_SETTINGS.md) for the implementation and pe
 - [Module Ownership](docs/MODULE_OWNERSHIP.md)
 - [Architecture Roadmap](docs/ARCHITECTURE_ROADMAP.md)
 
-Feature-specific documents are indexed in the documentation index. Existing Persian-only technical documents are retained; they are not silently replaced or removed during the documentation language transition.
+Feature-specific English sources and Persian translations are paired in the documentation index. The index also identifies legacy English-only engineering references whose Persian translations remain outstanding.
 
 ## Tests
 
