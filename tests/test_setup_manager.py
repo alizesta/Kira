@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 import requests
-from kira.setup_manager import HardwareProfile,ModelManifest,OllamaSetupManager,SetupError,_model_parts,registry_manifest
+from kira.setup_manager import HardwareProfile,ModelManifest,OllamaSetupManager,SetupError,_model_parts,configured_local_model,registry_manifest
 
 class Response:
     def __init__(self,payload=None,status=200,lines=()):
@@ -41,6 +41,28 @@ class SetupManagerTests(unittest.TestCase):
         manager=OllamaSetupManager(session=session,selected_model="qwen3.5:4b")
         manager.pull_model("qwen3.5:4b")
         session.post.assert_not_called()
+    def test_effective_model_comes_from_canonical_route_not_legacy_mirror(self):
+        settings={
+            "model":"stale-legacy-model",
+            "providers":{"ollama":{"enabled":True,"model":"stale-provider-model"}},
+            "routes":[
+                {"id":"local-old","provider":"ollama","model":"route-model","enabled":True},
+                {"id":"cloud","provider":"groq","model":"cloud-model","enabled":True},
+            ],
+            "role_route_models":{"surface":["route-model"]},
+            "manual_route_id":"cloud",
+        }
+        self.assertEqual(configured_local_model(settings),"route-model")
+
+    def test_pull_checks_disk_before_requesting_download(self):
+        session=mock.Mock()
+        session.get.return_value=Response({"models":[]})
+        manager=OllamaSetupManager(session=session)
+        with mock.patch.object(manager,"preflight",side_effect=SetupError("فضای آزاد کافی نیست")):
+            with self.assertRaises(SetupError):
+                manager.pull_model("qwen3.5:4b")
+        session.post.assert_not_called()
+
     def test_incomplete_pull_does_not_change_selected_model(self):
         session=mock.Mock()
         session.get.side_effect=[Response({"models":[]}),Response({"models":[]})]

@@ -228,7 +228,7 @@ class OllamaSetupManager:
         settings=config.load_settings()
         candidates=[r for r in routes.get_routes(settings) if r.get("provider")=="ollama"]
         if not candidates: raise SetupError("Route محلی Ollama در تنظیمات پیدا نشد.")
-        current=str(settings.get("model") or "")
+        current=configured_local_model(settings)
         target=next((r for r in candidates if r.get("model")==current),candidates[0])
         routes.update_route(settings,target["id"],model=model)
         settings["model"]=model
@@ -241,10 +241,26 @@ class OllamaSetupManager:
 
 def _gb(value): return f"{value/1_000_000_000:.2f} GB"
 
+def configured_local_model(settings):
+    """Resolve the effective surface-role Ollama model from canonical Routes, not legacy mirrors."""
+    from . import routes
+    candidates=[r for r in routes.get_routes(settings)
+        if r.get("provider")=="ollama" and r.get("enabled",True)]
+    allowed=settings.get("role_route_models",{}).get("surface")
+    if isinstance(allowed,(list,tuple)) and allowed:
+        candidates=[r for r in candidates if r.get("model") in allowed]
+    manual=str(settings.get("manual_route_id") or "")
+    selected=next((r for r in candidates if r.get("id")==manual),None)
+    if selected is None and candidates:
+        selected=candidates[0]
+    if selected and selected.get("model"):
+        return str(selected["model"])
+    return str((settings.get("providers",{}).get("ollama") or {}).get("model")
+        or settings.get("model") or "")
+
 def _load_selected_model():
     from .config import load_settings
-    settings=load_settings()
-    return str(settings.get("model") or (settings.get("providers",{}).get("ollama") or {}).get("model") or "")
+    return configured_local_model(load_settings())
 
 def _interactive():
     selected=_load_selected_model()
