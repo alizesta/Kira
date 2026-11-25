@@ -7,7 +7,6 @@ from ..chat import attachments as att
 from ..companion import CompanionWindow, CompanionBubble
 from ..emotion.backend_png import EmotionFaceAnimator
 from ..emotion.director import EmotionDirector
-from ..voice import Speaker
 from ..ui_icons import make_icon
 from ..ui_widgets import AttachmentTile
 from ..chat_sessions import ChatSession, session_property, front_only_property
