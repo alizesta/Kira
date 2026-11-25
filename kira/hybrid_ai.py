@@ -18,6 +18,7 @@ from . import routes as route_model
 from .app.detected_capabilities import DetectedCapabilities
 from .request_trace import trace as request_trace, set_request_id as set_trace_request_id, reset_request_id as reset_trace_request_id
 from .leak_guard import LeakGuard, clean_final
+from .route_policy import RoutePolicyEngine
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
 from .hybrid_providers import (  # noqa: F401 - re-exported for backward compatibility
@@ -76,6 +77,8 @@ class HybridRouter:
         self._cancel = threading.Event()
         self._active = None
         self._vision_capability_cache = {}
+        self.route_policy = RoutePolicyEngine()
+        self.last_route_decisions = []
 
     # ---------- logging ----------
     @staticmethod
@@ -105,7 +108,7 @@ class HybridRouter:
         return {"route_id": route["id"], "provider": route["provider"], "label": route_model.provider_label(route["provider"], cfg),
                 "model": route["model"], "kind": route_model.provider_kind(route["provider"], cfg)}
 
-    def eligibility(self, route):
+    def eligibility(self, route, *, include_cooldown=True):
         """(ok, reason). reason: ok | disabled | no_provider | provider_off | no_key | no_model | cooldown."""
         provider = route["provider"]
         cfg = self._provider_cfg(route)
@@ -123,7 +126,7 @@ class HybridRouter:
                 return False, "no_key"
         if not route.get("model") and provider != "ollama":
             return False, "no_model"
-        if self.cooldowns.get(route["id"], 0) - time.monotonic() > 0:
+        if include_cooldown and self.cooldowns.get(route["id"], 0) - time.monotonic() > 0:
             return False, "cooldown"
         return True, "ok"
 
@@ -151,91 +154,29 @@ class HybridRouter:
             _ROLE.reset(role_token)
 
     def _candidates(self):
-        """Routes in priority order, constrained to the provider class assigned to this brain role."""
-        routes = self.routes()
-        role = _ROLE.get()
-        role_allowlist = self.settings.get("role_provider_allowlist")
-        allowed = role_allowlist.get(role) if isinstance(role_allowlist, dict) else None
-        # Keep ordinary chat local-first. If all local routes are unavailable,
-        # permit explicitly enabled cloud routes as a fallback. eligibility()
-        # still enforces provider/route switches and valid API credentials.
-        surface_local_ready = False
-        if role == "surface" and not _VISION_ONLY.get():
-            surface_local_ready = any(
-                route.get("provider") == "ollama" and self.eligibility(route)[0]
-                for route in routes
-            )
-            if not surface_local_ready:
-                routes = [
-                    route for route in routes
-                    if route_model.provider_kind(
-                        route.get("provider"), self._provider_cfg(route)
-                    ) == "cloud"
-                ]
-                allowed = None
-        # Images require a vision-capable cloud route; this local GGUF is text-only.
-        if _VISION_ONLY.get() and role in ("surface", "deep"):
-            allowed = ["google"]
-        if isinstance(allowed, (list, tuple)):
-            allowed = {str(value).strip().lower() for value in allowed if str(value).strip()}
-            routes = [
-                route for route in routes
-                if (
-                    ("google" in allowed and route_model.is_google(
-                        route.get("provider"), self._provider_cfg(route)
-                    ))
-                    or str(route.get("provider") or "").lower() in allowed
-                )
-            ]
-        model_allowlist = self.settings.get("role_route_models")
-        allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
-        if _VISION_ONLY.get():
-            allowed_models = None
-        if isinstance(allowed_models, (list, tuple)) and not (
-            role == "surface" and not surface_local_ready
-        ):
-            model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-            # Let the user choose any enabled local model instead of hard-locking
-            # ordinary chat to the bundled default model ID.
-            local_surface_routes = (
-                role == "surface" and isinstance(allowed, set) and "ollama" in allowed
-            )
-            routes = [
-                route for route in routes
-                if (
-                    local_surface_routes
-                    and str(route.get("provider") or "").strip().lower() == "ollama"
-                ) or str(route.get("model") or "").strip().lower() in model_ids
-            ]
-        manual = self.settings.get("manual_route_id") or ""
-        chosen = next((r for r in routes if r["id"] == manual), None) if manual else None
-        if chosen is None:
-            base = routes
-        elif not self.settings.get("failover_enabled", True):
-            base = [chosen]
-        else:
-            base = [chosen] + [r for r in routes if r["id"] != chosen["id"]]
-        prefer = _PREFER.get()
-        try:
-            from . import usage as _usage
-            if prefer and not _usage.role_allowed(role):
-                prefer = ""                                            # an expensive role over its blocking limit goes back to the normal path
-            base = _usage.apply_limits(base, lambda r: self.eligibility(r)[0])
-        except Exception:                                              # noqa: BLE001
-            pass
-        if _VISION_ONLY.get():
-            base = [r for r in base if self._route_supports_vision(r, self._provider_cfg(r))]
-        preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
-        # A manual selection is only honored inside this role's allowed provider class.
-        pinned = preferred or (chosen if chosen in base else None)
-        now = time.monotonic()
-        if pinned is not None and self.cooldowns.get(pinned["id"], 0) > now:
-            pinned = None
+        """Return the ordered plan produced by RoutePolicyEngine.
 
-        # Preserve the user's configured order. Cooldowns are checked by eligibility()
-        # when a route is attempted; latency measurements must never change failover priority.
-        tail = [route for route in base if pinned is None or route["id"] != pinned["id"]]
-        return ([pinned] if pinned is not None else []) + tail
+        Network permission, role allowlists, vision constraints and manual priority
+        are policy. Provider health and cooldown are runtime state and are evaluated
+        separately when a candidate is actually considered.
+        """
+        ordered, decisions = self.route_policy.select(
+            self.routes(),
+            self.settings,
+            role=_ROLE.get(),
+            preferred_route_id=_PREFER.get(),
+            vision_only=_VISION_ONLY.get(),
+            provider_cfg=self._provider_cfg,
+            provider_kind=route_model.provider_kind,
+            is_google=route_model.is_google,
+            is_eligible=lambda route: self.eligibility(route, include_cooldown=False)[0],
+            supports_vision=self._route_supports_vision,
+        )
+        self.last_route_decisions = [
+            {"route_id": item.route_id, "allowed": item.allowed, "reason": item.reason}
+            for item in decisions
+        ]
+        return ordered
 
     def vision_route_id(self):
         """Return an eligible vision route, independent of the active text-role allowlist.
@@ -409,27 +350,10 @@ class HybridRouter:
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
-        if getattr(exc, "quota", "") == "no_free":
-            try:
-                if route_model.disable_route(
-                    self.settings, route["id"], "بدون سهمیه‌ی رایگان (limit: 0)",
-                    capabilities=self.detected_capabilities,
-                ):
-                    st["health"] = "disabled"
-            except Exception:                             # noqa: BLE001
-                pass
+        # Quota exhaustion and permanent model/configuration errors affect runtime
+        # health only. They must never rewrite route.enabled or any other user setting.
         if kind == "model":
             st["model_failures"] = st.get("model_failures", 0) + 1
-            if st["model_failures"] >= route_model.AUTO_DISABLE_AFTER:
-                try:                                      # a model the service keeps refusing is dead: switch the route off
-                    if route_model.disable_route(
-                        self.settings, route["id"],
-                        "سرویس این مدل را نمی‌پذیرد: " + str(st["last_error"])[:120],
-                        capabilities=self.detected_capabilities,
-                    ):
-                        st["health"] = "disabled"
-                except Exception:                         # noqa: BLE001 - bookkeeping must never break a failover
-                    pass
         else:
             st["model_failures"] = 0
         return kind, status, cooldown
@@ -470,7 +394,9 @@ class HybridRouter:
                        "result": None, "chars": 0, "role": _ROLE.get() or None}
             trace_token = set_trace_request_id(metrics["request_id"])
             candidates = self._candidates()
-            request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat", candidates=len(candidates))
+            request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat",
+                          candidates=len(candidates), network_policy=self.settings.get("network_policy", "cloud_permitted"),
+                          route_decisions=self.last_route_decisions)
             failures = []
             emit = on_event or (lambda e: None)
             # Record every skipped cooldown route up front. Cooldown routes are
@@ -519,7 +445,9 @@ class HybridRouter:
                     continue
                 attempted_route_targets.add(target_key)
                 secrets = (route_cfg.get("api_key"),)
-                request_trace("route_selected", route_id=rid, provider=route.get("provider"), model=route.get("model"), stream=bool(stream), failover_index=metrics["failovers"])
+                request_trace("route_selected", route_id=rid, provider=route.get("provider"), model=route.get("model"),
+                              stream=bool(stream), failover_index=metrics["failovers"],
+                              decision=next((d["reason"] for d in self.last_route_decisions if d["route_id"] == rid), "policy_selected"))
                 emit({"phase": "connecting" if not failures and metrics["failovers"] == 0 else "failover",
                       "failovers": metrics["failovers"], **info})
                 attempt_started = time.monotonic()
