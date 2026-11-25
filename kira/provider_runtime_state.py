@@ -1,8 +1,9 @@
 """Router-scoped health, cooldown and quota state for hybrid provider execution.
 
-Each HybridRouter owns one instance. Nothing in this module is process-global or
-persisted: independent routers/sessions cannot inherit one another's transient
-provider state unless a higher-level owner explicitly shares this object.
+Each HybridRouter owns one instance by default. Nothing in this module is
+process-global or persisted. A higher-level application owner may explicitly
+share individual maps across a related group of routers; independent groups
+remain isolated unless such sharing is deliberately configured.
 """
 from __future__ import annotations
 

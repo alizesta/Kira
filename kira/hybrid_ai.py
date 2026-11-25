@@ -66,10 +66,6 @@ class HybridRouter:
         self.detected_capabilities = detected_capabilities or DetectedCapabilities()
         # Runtime state is owned by this router instance, never a process-wide singleton.
         self.runtime_state = ProviderRuntimeState()
-        # Backwards-compatible views for existing status/UI integrations.
-        self.cooldowns = self.runtime_state.cooldowns
-        self.quota_blocks = self.runtime_state.quota_blocks
-        self.states = self.runtime_state.states
         self.retry_policy = ProviderRetryPolicy()
         self.metrics = deque(maxlen=METRICS_KEEP)       # per-request speed records (metadata only)
         self.benchmarks = deque(maxlen=50)
@@ -87,6 +83,39 @@ class HybridRouter:
         self._vision_capability_cache = {}
         self.route_policy = RoutePolicyEngine()
         self.last_route_decisions = []
+
+    @property
+    def cooldowns(self):
+        """Compatibility view; explicit application owners may share this map across related routers."""
+        return self.runtime_state.cooldowns
+
+    @cooldowns.setter
+    def cooldowns(self, value):
+        if not isinstance(value, dict):
+            raise TypeError("cooldowns must be a dictionary")
+        self.runtime_state.cooldowns = value
+
+    @property
+    def quota_blocks(self):
+        """Compatibility view for the explicitly scoped quota ledger."""
+        return self.runtime_state.quota_blocks
+
+    @quota_blocks.setter
+    def quota_blocks(self, value):
+        if not isinstance(value, dict):
+            raise TypeError("quota_blocks must be a dictionary")
+        self.runtime_state.quota_blocks = value
+
+    @property
+    def states(self):
+        """Compatibility view for route health records shared by an application owner."""
+        return self.runtime_state.states
+
+    @states.setter
+    def states(self, value):
+        if not isinstance(value, dict):
+            raise TypeError("states must be a dictionary")
+        self.runtime_state.states = value
 
     # ---------- logging ----------
     @staticmethod
@@ -587,7 +616,7 @@ class HybridRouter:
                                         on_chunk(chunk)
                                 if cancel_token.is_set():
                                     break
-                            if not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
+                            if not cancel_token.is_set():
                                 tail = guard.finish()
                                 if tail:
                                     parts.append(tail)
@@ -595,7 +624,7 @@ class HybridRouter:
                                         on_chunk(tail)
                         finally:
                             gen.close()                                   # closes the HTTP stream even after Stop
-                        if not parts and not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
+                        if not parts and not cancel_token.is_set():
                             raise ProviderError(route["provider"], ("مدل فقط متن تحلیل داخلی برگرداند و چیزی برای نمایش نبود؛ Route بعدی امتحان می‌شود."
                                                                     if guard.leaked else "مدل پاسخ خالی برگرداند."), True, kind="empty")
                 except Exception as exc:                                  # noqa: BLE001 - every provider failure is contained here

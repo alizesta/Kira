@@ -312,8 +312,10 @@ class OllamaClient:
             if event is not None and event.is_set():
                 raise RuntimeError("درخواست لغو شده است.")
         try:
-            response = requests.post(f"{self.base_url}{path}", json=payload, timeout=timeout,
-                                     stream=bool(cancellable))
+            request_options = {"timeout": timeout}
+            if cancellable:
+                request_options["stream"] = True
+            response = requests.post(f"{self.base_url}{path}", json=payload, **request_options)
             if cancellable:
                 self._chat_resp = response
                 if event is not None and event.is_set():

@@ -4,7 +4,7 @@
 
 - `RoutePolicyEngine` is the deterministic policy boundary. It selects and orders candidates from network permission, role allowlists, vision constraints, and manual priority. It does not own provider health or transport.
 - `HybridRouter` coordinates a logical turn and preserves the public chat, stream, tools, route-status, and benchmark APIs.
-- `ProviderRuntimeState` is instantiated once per router. Route cooldowns and health therefore belong to that router/session. Google quota blocks are keyed by configured project scope plus normalized model; without an explicit project scope, they are isolated by provider ID and model. No process-global or persisted cooldown/quota state is used.
+- `ProviderRuntimeState` is instantiated once per router by default. The application may explicitly share health, cooldown, or quota maps across a related set of session routers; this ownership is visible in `ProviderApplicationService.rebuild_session_routers`, rather than being an implicit singleton. Separate router groups do not inherit those maps. Google quota blocks are keyed by configured project scope plus normalized model; without an explicit project scope, they are isolated by provider ID and model. No process-global or persisted cooldown/quota state is used.
 - `ProviderRegistry` resolves adapter factories by stable provider ID. The `ChatProvider` protocol remains the minimum common transport contract; optional native tool calling is capability-detected rather than required of every adapter.
 
 ## Execution, retry and cancellation

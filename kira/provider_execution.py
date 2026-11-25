@@ -1,7 +1,6 @@
 """Small Event-compatible cancellation view shared by provider adapters."""
 from __future__ import annotations
 
-from collections.abc import Iterable
 from threading import Event
 
 

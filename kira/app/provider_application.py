@@ -54,6 +54,9 @@ class ProviderApplicationService:
             previous_cooldowns = getattr(previous_router, "cooldowns", None)
             if isinstance(previous_cooldowns, dict):
                 router.cooldowns = dict(previous_cooldowns)
+            previous_quota_blocks = getattr(previous_router, "quota_blocks", None)
+            if isinstance(previous_quota_blocks, dict):
+                router.quota_blocks = dict(previous_quota_blocks)
         return router
 
     def create_ollama_client(self, settings):
@@ -76,12 +79,17 @@ class ProviderApplicationService:
         )
 
     def rebuild_session_routers(self, settings, sessions, previous_router=None):
-        """Share route health across replacements while resetting their cooldown map."""
+        """Share health and scoped quota observations across this related session set.
+
+        Cooldown maps are shared only by the routers in this explicit rebuild group;
+        they are not stored globally or reused by separately-created router groups.
+        """
         sessions = tuple(sessions)
         if not sessions:
             return ()
         old_states = getattr(previous_router, "states", None)
         shared_cooldowns = {}
+        shared_quota_blocks = {}
         # Build every replacement before mutating any Session; a failed factory
         # must not leave the character set with a mixture of old and new routers.
         routers = [self.create_router(settings) for _session in sessions]
@@ -89,6 +97,7 @@ class ProviderApplicationService:
             if old_states is not None:
                 router.states = old_states
             router.cooldowns = shared_cooldowns
+            router.quota_blocks = shared_quota_blocks
         for session, router in zip(sessions, routers):
             session.client = router
         return tuple(routers)
