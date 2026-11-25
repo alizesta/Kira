@@ -106,10 +106,13 @@ class ASRManagerTests(unittest.TestCase):
 
     def test_initialization_and_inference_failures_are_distinct(self):
         with self.subTest(stage="initialization"):
-            manager = ASRManager(adapters=[FakeAdapter(fail="initialization")])
+            adapter = FakeAdapter(fail="initialization")
+            manager = ASRManager(adapters=[adapter])
             with self.assertRaises(ASRError) as caught:
                 manager.initialize({"local_voice_asr_backend": "fixture"})
             self.assertEqual(caught.exception.code, "initialization_failed")
+            self.assertEqual([call[0] for call in adapter.calls],
+                             ["validate", "initialize", "shutdown"])
         with self.subTest(stage="inference"):
             manager = ASRManager(adapters=[FakeAdapter(fail="inference")])
             with self.assertRaises(ASRError) as caught:

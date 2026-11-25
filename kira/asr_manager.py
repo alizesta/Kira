@@ -246,8 +246,16 @@ class ASRManager:
             try:
                 adapter.initialize(model_id)
             except Exception as exc:
-                error = ASRError("initialization_failed",
-                                 f"بارگذاری ASR ناموفق بود: {type(exc).__name__}: {exc}",
+                cleanup_error = None
+                try:
+                    # Adapters may allocate native/runtime resources before initialization fails.
+                    adapter.shutdown()
+                except Exception as cleanup_exc:
+                    cleanup_error = cleanup_exc
+                message = f"بارگذاری ASR ناموفق بود: {type(exc).__name__}: {exc}"
+                if cleanup_error is not None:
+                    message += f"؛ آزادسازی منابع پس از خطا نیز ناموفق بود: {type(cleanup_error).__name__}: {cleanup_error}"
+                error = ASRError("initialization_failed", message,
                                  engine_id=engine_id, model_id=model_id)
                 self._state, self._last_error = "failed", error
                 raise error from exc
