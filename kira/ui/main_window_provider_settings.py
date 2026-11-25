@@ -289,10 +289,9 @@ class ProviderSettingsController(WindowFeatureController):
             return False
         for pid, checkbox in getattr(self, "surface_provider_checks", {}).items():
             checkbox.setChecked(pid.strip().lower() in allowed)
-        if hasattr(self.context.views, "network_policy_combo"):
-            self.network_policy_combo.setCurrentIndex(
-                self.network_policy_combo.findData("cloud_permitted")
-            )
+        self.network_policy_combo.setCurrentIndex(
+            self.network_policy_combo.findData("cloud_permitted")
+        )
         self.refresh_route_list()
         runtime = self.feature_controller("runtime")
         if not self.context.session.busy:
