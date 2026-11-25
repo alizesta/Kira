@@ -14,6 +14,7 @@ import time
 
 from PySide6.QtCore import QThread, Signal
 
+from .asr_manager import ASRManager, ASRError
 from .speech_fixes import SpeechFixes
 from .speech_text import clean_transcript, grace_for, is_hallucination, merge_text
 from .vad import BLOCK, RATE, Segmenter
@@ -32,7 +33,7 @@ class Listener(QThread):
     interrupted = Signal()  # the person started talking while Kira was speaking
     note = Signal(str)      # non-fatal information from local speech engines
 
-    def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None):
+    def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None, asr_manager=None):
         super().__init__(parent)
         self.language = None if language in ("", "auto") else language
         self.sensitivity = sensitivity
@@ -43,11 +44,21 @@ class Listener(QThread):
         self.kira_level = 0.0           # her current output level 0..1 (the lip-sync envelope), used to tell her echo from a person
         self.barge_capturing = False    # an interruption is being recorded right now (the mic must not be muted under it)
         self._run = True
-        self.engine = None
+        self.asr_manager = asr_manager if asr_manager is not None else ASRManager()
+        self.engine = ""
+        self.engine_name = ""
+        self._asr_initialized = False
+        try:
+            selected_engine, _selected_model = self.asr_manager.select(self.settings)
+            self.engine = selected_engine
+            self.engine_name = self.asr_manager.selected_engine_label(self.settings)
+            self.via = f"local:{selected_engine}"
+        except ASRError:
+            # Preserve unsupported saved choices; never select an implicit fallback.
+            self.via = ""
         self._sr = None
         self._seg = None
         self.fixes = SpeechFixes()      # the user's dictionary (hotwords + word fixes), re-read when the file changes
-        self.via = "local:shenava"
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
         self._partial_last_at = 0.0
         self._partial_last_samples = 0
@@ -98,33 +109,37 @@ class Listener(QThread):
         try:
             import numpy as np
             import sounddevice as sd
-        except ImportError as e:
-            self.error.emit(f"بسته‌ی لازم نصب نیست: {e.name}. دوباره install.bat را اجرا کن.")
+        except ImportError as exc:
+            self.error.emit(f"بسته‌ی لازم نصب نیست: {exc.name}. دوباره install.bat را اجرا کن.")
             return
-        except OSError as e:                                 # sounddevice raises OSError when PortAudio is missing
-            self.error.emit(f"کتابخانه‌ی صوتی PortAudio پیدا نشد: {e}")
+        except OSError as exc:
+            self.error.emit(f"کتابخانه‌ی صوتی PortAudio پیدا نشد: {exc}")
             return
+
         self.state.emit("loading")
-        self.engine = None
         if not self._run:
             return
-        from . import local_voice
-        if not local_voice.shenava_ready():
-            self.error.emit("موتور شنوا نصب نیست. از بخش تشخیص گفتار، شنوا را نصب کن.")
-            return
-        selected_asr = str(self.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
         try:
-            local_voice.load_shenava(selected_asr)
+            state = self.asr_manager.initialize(self.settings)
+            self.engine = str(state.get("engine_id") or self.asr_manager.active_engine_id)
+            self.engine_name = str(state.get("engine_name") or self.asr_manager.selected_engine_label(self.settings))
+            self.via = f"local:{self.engine}"
+            self._asr_initialized = True
+        except ASRError as exc:
+            self.error.emit(f"آماده‌سازی ASR ناموفق بود [{exc.code}]: {exc}")
+            return
         except Exception as exc:
-            self.error.emit(f"بارگذاری شنوا ناموفق بود: {type(exc).__name__}: {exc}")
+            self.error.emit(f"آماده‌سازی ASR ناموفق بود [initialization_failed]: {type(exc).__name__}: {exc}")
             return
+
         if not self._run:
+            try:
+                self.asr_manager.shutdown()
+            finally:
+                self._asr_initialized = False
             return
-        self.engine = "shenava"
-        model = None
 
-        q = queue.Queue(maxsize=64)  # bounded: partial ASR must not create an ever-growing audio backlog
-
+        q = queue.Queue(maxsize=64)  # bounded: partial ASR cannot create an ever-growing audio backlog
         try:
             gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0))
         except (TypeError, ValueError):
@@ -132,7 +147,7 @@ class Listener(QThread):
 
         def callback(indata, frames, t, status):
             block = indata[:, 0].copy()
-            if gain != 1.0:                                  # microphone gain is independent of the speaker volume
+            if gain != 1.0:
                 block = np.clip(block * gain, -1.0, 1.0)
             try:
                 q.put_nowait(block)
@@ -148,50 +163,59 @@ class Listener(QThread):
 
         stream = None
         try:
-            device = self._input_device(sd)
-            stream = sd.InputStream(
-                samplerate=RATE, channels=1, dtype="float32",
-                blocksize=BLOCK, callback=callback, device=device,
-            )
-            stream.start()
-        except Exception as exc:
-            if stream is not None:
-                self._close_stream(stream)
-            self.error.emit(f"میکروفون باز نشد: {exc}")
-            return
+            try:
+                device = self._input_device(sd)
+                stream = sd.InputStream(
+                    samplerate=RATE, channels=1, dtype="float32",
+                    blocksize=BLOCK, callback=callback, device=device,
+                )
+                stream.start()
+            except Exception as exc:
+                self.error.emit(f"میکروفون باز نشد: {type(exc).__name__}: {exc}")
+                return
 
-        if not self._run:
-            self._close_stream(stream)
-            return
-
-        seg = self._seg = Segmenter(self.sensitivity)
-        try:
-            while self._run:                                             # ~0.38 s: measure room noise first
-                first = self._next_block(q)
-                if first is None or not seg.calibrate(first):
-                    break
             if not self._run:
                 return
-            self.state.emit("listening")
-            while self._run:
-                try:
-                    blk = q.get(timeout=0.2)
-                except queue.Empty:
+
+            seg = self._seg = Segmenter(self.sensitivity)
+            try:
+                while self._run:
+                    first = self._next_block(q)
+                    if first is None or not seg.calibrate(first):
+                        break
+                if not self._run:
+                    return
+                self.state.emit("listening")
+                while self._run:
+                    try:
+                        blk = q.get(timeout=0.2)
+                    except queue.Empty:
+                        self._flush_pending()
+                        continue
                     self._flush_pending()
-                    continue
-                self._flush_pending()
-                if self.muted:
-                    seg.reset()
-                    self.barge_capturing = False
-                    self._flush_pending(force=True)             # never lose text that was waiting when Kira started to talk
-                    continue
-                for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
-                    self._on_event(ev, model)
-                if seg.speaking:
-                    self._maybe_emit_partial(seg, model)
+                    if self.muted:
+                        seg.reset()
+                        self.barge_capturing = False
+                        self._flush_pending(force=True)
+                        continue
+                    for event in seg.feed(blk, self.kira_speaking, self.kira_level):
+                        self._on_event(event, None)
+                    if seg.speaking:
+                        self._maybe_emit_partial(seg, None)
+            finally:
+                self._seg = None
         finally:
-            self._close_stream(stream)
-            self._seg = None
+            if stream is not None:
+                self._close_stream(stream)
+            if self._asr_initialized:
+                self._asr_initialized = False
+                try:
+                    self.asr_manager.shutdown()
+                except ASRError as exc:
+                    self.error.emit(f"بستن موتور ASR ناموفق بود [{exc.code}]: {exc}")
+                except Exception as exc:
+                    self.error.emit(f"بستن موتور ASR ناموفق بود: {type(exc).__name__}: {exc}")
+
 
     def _next_block(self, q):
         while self._run:
@@ -293,7 +317,7 @@ class Listener(QThread):
 
     # ---- local recognition: return the transcript or an empty string ----
     def _transcribe(self, model, audio):
-        """Delegate hypotheses to the selected ASR adapter."""
+        """Delegate all transcript hypotheses to the selected ASR adapter."""
         try:
             return self.asr_manager.transcribe(audio, RATE, self.settings)
         except ASRError as exc:
