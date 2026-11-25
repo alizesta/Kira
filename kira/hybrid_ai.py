@@ -597,7 +597,7 @@ class HybridRouter:
                             request_trace("response_headers_received", route_id=rid, provider=route.get("provider"), model=route.get("model"), elapsed_ms=int((time.monotonic()-attempt_started)*1000))
                             emit({"phase": "waiting", "failovers": metrics["failovers"], **info})
                         gen = provider.stream(messages, system_prompt, temperature, on_connect=on_connect)
-                        if cancel_event is not None and cancel_event.is_set():
+                        if cancel_token.is_set():
                             gen.close()
                             return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                                                 stopped=True, failures=failures)
