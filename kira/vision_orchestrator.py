@@ -176,16 +176,24 @@ class VisionFrameOrchestrator:
             if any(item.context.frame_id == job.context.frame_id for item in self._pending):
                 self.duplicate_frames += 1
                 return False
-            while len(self._pending) >= self.capacity:
-                self._pending.popleft()
+            session_pending = [
+                item for item in self._pending
+                if item.context.session_id == job.context.session_id
+            ]
+            if len(session_pending) >= self.capacity:
+                self._pending.remove(session_pending[0])
                 self.dropped_pending += 1
             self._pending.append(job)
             return True
 
-    def take_next(self) -> FrameJob | None:
+    def take_next(self, session_id: str | None = None) -> FrameJob | None:
+        """Take an eligible job for one session without stealing another session's work."""
+        key = None if session_id is None else str(session_id or "")
         with self._lock:
-            while self._pending:
-                job = self._pending.popleft()
+            for job in tuple(self._pending):
+                if key is not None and job.context.session_id != key:
+                    continue
+                self._pending.remove(job)
                 if job.context.generation == self._generations.get(job.context.session_id, 0):
                     return job
                 self.cancelled_frames += 1

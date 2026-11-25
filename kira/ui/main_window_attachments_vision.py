@@ -308,7 +308,10 @@ class AttachmentsVisionController(WindowFeatureController):
         if frame_context is not None and not self.context.services.vision_application_service.frame_orchestrator.is_current(frame_context):
             return False
         if _frame is not None and not _frame.isNull():
-            frame_image = _frame
+            frame_image = _frame.scaled(
+                LIVE_VIDEO_MAX_WIDTH, LIVE_VIDEO_MAX_HEIGHT,
+                Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            )
         else:
             pixmap = capture.capture_monitor_for_window(
                 current, monitor_id=monitor_id or None,
@@ -1352,15 +1355,15 @@ class AttachmentsVisionController(WindowFeatureController):
         active = getattr(session, "_vision_worker", None)
         if active is not None and active.isRunning():
             return
-        job = service.take_next_frame()
-        if job is None:
-            return
-        frame_context = job.context
         session_id = str(
             getattr(session, "session_id", None)
             or getattr(session, "cid", None)
             or str(id(session))
         )
+        job = service.take_next_frame(session_id)
+        if job is None:
+            return
+        frame_context = job.context
         if session_id != frame_context.session_id or not service.frame_context_is_current(frame_context):
             vision_trace(
                 "analysis_discarded", frame_id=frame_context.frame_id,

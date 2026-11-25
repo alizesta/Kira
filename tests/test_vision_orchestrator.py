@@ -116,3 +116,16 @@ class VisionOrchestratorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_pending_capacity_and_dispatch_are_scoped_per_session(self):
+        orchestrator = VisionFrameOrchestrator(capacity=1)
+        a1 = orchestrator.create_context("a", "desktop")
+        a2 = orchestrator.create_context("a", "desktop")
+        b1 = orchestrator.create_context("b", "desktop")
+        self.assertTrue(orchestrator.enqueue(FrameJob(a1, b"a-old")))
+        self.assertTrue(orchestrator.enqueue(FrameJob(b1, b"b")))
+        self.assertTrue(orchestrator.enqueue(FrameJob(a2, b"a-new")))
+        self.assertEqual(orchestrator.take_next("b").context.frame_id, b1.frame_id)
+        self.assertEqual(orchestrator.take_next("a").context.frame_id, a2.frame_id)
+        self.assertIsNone(orchestrator.take_next("a"))
+        self.assertEqual(orchestrator.snapshot()["dropped_pending"], 1)

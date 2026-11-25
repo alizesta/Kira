@@ -153,3 +153,13 @@ def test_eye_mode_eye_icon_asset_exists():
     assert '<svg' in source
     assert 'viewBox="0 0 24 24"' in source
     assert '<circle cx="12" cy="12" r="3"/>' in source
+
+
+def test_live_reuses_the_captured_frame_and_preserves_live_resolution_limit():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    live = source.split("def _maybe_stream_gemini_live_frame", 1)[1].split(
+        "def _queue_perception_ocr", 1
+    )[0]
+    assert "frame_image = _frame.scaled(" in live
+    assert "LIVE_VIDEO_MAX_WIDTH, LIVE_VIDEO_MAX_HEIGHT" in live
+    assert "frame_context=frame_context" in source
