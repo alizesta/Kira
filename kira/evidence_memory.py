@@ -27,13 +27,23 @@ import json
 import logging
 import math
 import re
-import sqlite3
 import threading
 import time
-from collections import Counter
 from pathlib import Path
 
 from .config import DATA_DIR
+from .evidence_memory_embeddings import (
+    EMBED_BATCH, EMBED_FAIL_COOLDOWN, QUERY_FAIL_COOLDOWN, EMBED_TIMEOUT, QUERY_TIMEOUT,
+    EmbeddingService, build_embedding_config, cosine_similarity, pack_vector, unpack_vector,
+)
+from .evidence_memory_index import (
+    _EXPLICIT_MEANING_RX, _SMALLTALK, _WORD, EvidenceIndexer, is_definition as _is_definition,
+    norm, quote_in, needs_recall, tokens, query_terms, query_tokens as _query_tokens,
+    bm25 as _bm25, rank_texts,
+)
+from .evidence_memory_models import EmbeddingIndex
+from .evidence_memory_retrieval import EvidenceRetriever
+from .evidence_memory_storage import DB_NAME, SCHEMA as _SCHEMA, SQLiteEvidenceStorage
 
 _log = logging.getLogger(__name__)
 
@@ -73,70 +83,13 @@ _query_fail_until = 0.0
 _backfill_running = False
 _vector_job_running = False
 _tok_cache: dict[str, tuple[float, list[str]]] = {}
-usage_hook = None                     # optional callable(dict) set by kira.usage: receives one record per embedding request
+usage_hook = None
 
-# ----------------------------------------------------------------------------------------------- normalisation / tokens
-_CHAR_MAP = str.maketrans({"ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "أ": "ا", "إ": "ا", "ٱ": "ا", "ؤ": "و", "ئ": "ی"})
-_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-_MARKS = re.compile("[ً-ٰٟـ‍‎‏]")        # Arabic diacritics, tatweel, joiners, direction marks
-_WORD = re.compile(r"\w+", re.U)
-_STOP = frozenset("""و در به از که را این آن با برای من تو او ما شما هم یا اما اگر هست است بود می رو ها های یه یک تا بر
-the a an is are was were to of and in on for it i you he she my me that this be do does did""".split())
-_SMALLTALK = re.compile(
-    r"^(?:سلام|درود|هی|های|صبح\s*بخیر|شب\s*بخیر|خوبی|چطوری|چه\s*خبر|ممنون|مرسی|مچکر|باشه|اوکی|آره|اره|نه|خب|خوب|عالی|بای|خداحافظ|"
-    r"hi|hello|hey|thanks|thank\s*you|ok|okay|yes|yeah|no|nope|bye|good\s*(?:morning|night)|how\s*are\s*you)[\s.!?؟،,]*$", re.I)
-_UNCERTAIN_RX = re.compile(r"شاید|فکر\s*کنم|احتمالا|احتمالاً|مطمئن\s*نیستم|یادم\s*نیست|\bmaybe\b|\bperhaps\b|i\s+think\b|not\s+sure|\bprobably\b", re.I)
-_CORRECTION_RX = re.compile(r"^(?:نه|نخیر|اشتباه|در\s*واقع|راستش|ببخشید|درستش|correction|actually|no)\b|اشتباه\s*گفتم|منظورم\s*این\s*بود|\bi\s+meant\b", re.I)
-_EXPLICIT_MEANING_RX = re.compile(r"(?P<term>[^\s،,؛.!؟?\n]+(?:\s+[^\s،,؛.!؟?\n]+)?)\s+یعنی\s+(?P<meaning>[^،,؛.!؟?\n]{2,60})")
+_STORAGE = SQLiteEvidenceStorage(DB_NAME)
+_INDEX = EvidenceIndexer(_tok_cache)
+_EMBEDDING_SERVICE = EmbeddingService()                     # optional callable(dict) set by kira.usage: receives one record per embedding request
 
-
-_MEANING_QUESTION_RX = re.compile(r"^(?:چی|چیه|چیست|چه|چطور|چگونه|what|why|how)\b", re.I)
-_MEANING_TERM_STOP = frozenset({
-    "من", "تو", "او", "ما", "شما", "اونا", "این", "اون", "آن", "همین", "همون", "که", "پس", "خب", "حالا", "ولی",
-    "اگه", "اگر", "وقتی", "یعنی", "هم", "همه", "هیچی", "اینکه", "آیا", "i", "you", "it", "this", "that",
-})
-_MEANING_TERM_COND = frozenset({"اگه", "اگر", "وقتی", "هر", "تا", "چون", "if", "when", "because"})
-
-
-def _is_definition(term: str, meaning: str, tail: str) -> bool:
-    """Guard for 'X یعنی Y': ignore questions ('X یعنی چی؟'), filler/discourse use ('من یعنی ...') and conditionals."""
-    words = term.split()
-    if not words or any(w.lower() in _MEANING_TERM_STOP for w in words[-1:]) or words[0].lower() in _MEANING_TERM_COND:
-        return False
-    if _MEANING_QUESTION_RX.match(meaning) or tail.lstrip().startswith(("؟", "?")):
-        return False
-    return True
-
-
-def norm(text) -> str:
-    """Persian-aware normalisation: Arabic letter variants, digits, diacritics, ZWNJ -> space, lower case, single spaces."""
-    t = str(text or "").lower().translate(_CHAR_MAP).translate(_DIGITS).replace("‌", " ")
-    return " ".join(_MARKS.sub("", t).split())
-
-
-def tokens(text) -> list[str]:
-    """Search features: words (stop words removed) plus character trigrams of longer words (Persian prefixes / suffixes still match)."""
-    words = [w for w in _WORD.findall(norm(text)) if w not in _STOP and (len(w) >= 2 or w.isdigit())]
-    feats = list(words)
-    for w in words:
-        if len(w) >= 4:
-            feats.extend("#" + w[i:i + 3] for i in range(len(w) - 2))
-    return feats
-
-
-def quote_in(quote, source) -> bool:
-    """True when `quote` is a literal substring of `source` (whitespace / Persian-variant insensitive) and long enough to mean something."""
-    q = norm(quote)
-    return len(q) >= 3 and q in norm(source)
-
-
-def needs_recall(text) -> bool:
-    """Memory-decision gate: greetings and one-word replies never trigger a lookup (nothing to look up, no extra cost)."""
-    t = " ".join(str(text or "").split())
-    if not t or _SMALLTALK.match(t):
-        return False
-    return len([w for w in _WORD.findall(norm(t)) if w not in _STOP]) >= 1 and len(t) >= 4
-
+# ----------------------------------------------------------------------------------------------- indexing primitives are implemented in evidence_memory_index.py
 
 # ----------------------------------------------------------------------------------------------- settings / storage
 def configure(settings) -> None:
@@ -158,85 +111,26 @@ def enabled() -> bool:
 
 
 def _path() -> Path:
-    return Path(DATA_DIR) / DB_NAME
+    return _STORAGE.path(DATA_DIR)
 
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS facts (
-    id TEXT PRIMARY KEY, subject TEXT NOT NULL, predicate TEXT NOT NULL, value TEXT NOT NULL, text TEXT NOT NULL,
-    category TEXT NOT NULL, status TEXT NOT NULL, source_kind TEXT NOT NULL, valid_from REAL, valid_to REAL,
-    supersedes TEXT NOT NULL DEFAULT '[]', legacy INTEGER NOT NULL DEFAULT 0, persona_id TEXT,
-    created_at REAL NOT NULL, updated_at REAL NOT NULL);
-CREATE INDEX IF NOT EXISTS facts_sp ON facts(subject, predicate, status);
-CREATE INDEX IF NOT EXISTS facts_persona ON facts(persona_id);
-CREATE TABLE IF NOT EXISTS evidence (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, fact_id TEXT NOT NULL, message_id INTEGER, speaker TEXT NOT NULL, quote TEXT NOT NULL,
-    created_at REAL NOT NULL, UNIQUE(fact_id, quote));
-CREATE TABLE IF NOT EXISTS vectors (fact_id TEXT NOT NULL, model TEXT NOT NULL, dim INTEGER NOT NULL, blob BLOB NOT NULL, PRIMARY KEY(fact_id, model));
-CREATE TABLE IF NOT EXISTS quarantine (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at REAL NOT NULL, reason TEXT NOT NULL, payload TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-"""
+def _mark_ready(path: str) -> None:
+    global _ready_path
+    _ready_path = path
 
 
 def _quarantine_file(path: Path, why: str) -> None:
-    """A damaged evidence database is only an index (it can be rebuilt from the chat history): move it aside, never delete it."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    target = path.with_name(f"{path.stem}.corrupt-{stamp}{path.suffix}")
-    n = 1
-    while target.exists():
-        n += 1
-        target = path.with_name(f"{path.stem}.corrupt-{stamp}-{n}{path.suffix}")
-    with contextlib.suppress(OSError):
-        path.replace(target)
-        for suffix in ("-journal", "-wal", "-shm"):
-            side = Path(str(path) + suffix)
-            if side.exists():
-                side.replace(Path(str(target) + suffix))
+    _STORAGE.quarantine_file(path, why)
 
 
 def _ensure() -> None:
-    """Initialize one evidence database exactly once per active data path.
-
-    The dedicated lock protects concurrent first-use calls without serializing
-    normal reads/writes through the main evidence lock.
-    """
-    global _ready_path
-    path = _path()
-    key = str(path)
-    with _ensure_lock:
-        if _ready_path == key:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            try:
-                con = sqlite3.connect(str(path), timeout=10)
-                try:
-                    ok = con.execute("PRAGMA quick_check").fetchone()
-                finally:
-                    con.close()
-                if not ok or ok[0] != "ok":
-                    _quarantine_file(path, "quick_check failed")
-            except sqlite3.DatabaseError:
-                _quarantine_file(path, "not a database")
-        con = sqlite3.connect(str(path), timeout=10)
-        try:
-            with con:
-                con.executescript(_SCHEMA)
-        finally:
-            con.close()
-        _ready_path = key
+    _STORAGE.ensure(_path(), lambda: _ready_path, _mark_ready)
 
 
 @contextlib.contextmanager
 def _db():
-    _ensure()
-    con = sqlite3.connect(str(_path()), timeout=15)
-    con.row_factory = sqlite3.Row
-    try:
-        with con:
-            yield con
-    finally:
-        con.close()
+    with _STORAGE.database(_path(), _ensure) as connection:
+        yield connection
 
 
 def _start_background(fn, *args) -> None:
@@ -407,6 +301,8 @@ def add_manual(text, now=None, persona_id=None, predicate="note") -> bool:
         with _lock, _db() as con:
             stored = _ingest(con, subject="user", predicate=predicate, value=text, text=text, category="permanent", quote=text, speaker="user",
                              message_id=None, source_kind="manual", now=now, persona_id=persona_id) is not None
+        if stored and _embedding_config():
+            schedule_vector_backfill()
         return stored
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not store manually edited evidence memory")
@@ -482,6 +378,8 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
             )
             if stored_id is None:
                 raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
+        if _embedding_config():
+            schedule_vector_backfill()
         return True
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not atomically update persona-backed evidence memory")
@@ -496,12 +394,12 @@ def forget_all() -> None:
         # cause the forgotten history to be imported again on the next startup.
         history_watermark = _chat_max_id()
         with _lock, _db() as con:
-            for table in ("vectors", "evidence", "facts", "quarantine"):
+            for table in ("vectors", "embedding_indexes", "evidence", "facts", "quarantine"):
                 con.execute(f"DELETE FROM {table}")
             _meta_set(con, "backfilled", "1")
             _meta_set(con, "seen_upto", history_watermark)
             _meta_set(con, "writer_upto", history_watermark)
-        _tok_cache.clear()
+        _INDEX.clear()
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not clear evidence memory")
         raise
@@ -636,95 +534,44 @@ def _backfill_once() -> None:
             _backfill_running = False
 
 
-# ----------------------------------------------------------------------------------------------- embeddings (optional)
+# ----------------------------------------------------------------------------------------------- embedding provider boundary
 def _embedding_config() -> dict | None:
-    """{'kind': 'ollama'|'provider', 'model', 'tag', ...} or None when embeddings are off / not configured."""
-    s = _settings
-    backend, model = str(s.get("embedding_backend", "off")).lower(), str(s.get("embedding_model", "")).strip()
-    if backend not in ("ollama", "provider") or not model:
-        return None
-    if backend == "ollama":
-        cfg = (s.get("providers") or {}).get("ollama") or {}
-        base = str(cfg.get("base_url") or s.get("ollama_url") or "http://localhost:11434").rstrip("/")
-        return {"kind": "ollama", "model": model, "url": base + "/api/embed", "tag": f"ollama::{model}", "provider": "ollama"}
-    pid = str(s.get("embedding_provider", "")).strip()
-    return {"kind": "provider", "model": model, "pid": pid, "tag": f"provider:{pid}:{model}", "provider": pid} if pid else None
+    return build_embedding_config(_settings)
 
 
 def _report(cfg, started, ok, tokens=None, error=None) -> None:
-    hook = usage_hook
-    if hook is None:
-        return
-    with contextlib.suppress(Exception):
-        hook({"role": "embedding", "provider": cfg.get("provider"), "model": cfg.get("model"), "status": "success" if ok else "failed",
-              "total_ms": int((time.monotonic() - started) * 1000), "tokens_in": tokens, "error_kind": error,
-              "kind": "local" if cfg.get("kind") == "ollama" else "cloud"})
+    _EMBEDDING_SERVICE.report(cfg, started, ok, usage_hook=usage_hook, tokens=tokens, error=error)
 
 
 def _embed(texts: list[str], query=False):
-    """Embedding vectors for `texts`, or None (and a cool-down) on any failure. Secrets never appear in errors or logs.
-    query=True is the chat path (short timeouts, short cool-down); False is the background vector pass."""
-    global _embed_fail_until, _query_fail_until
-    cfg = _embedding_config()
-    until = _query_fail_until if query else _embed_fail_until
-    if cfg is None or not texts or time.time() < until:
-        return None
-    timeout = QUERY_TIMEOUT if query else EMBED_TIMEOUT
-    started = time.monotonic()
-    try:
-        import requests
-        if cfg["kind"] == "ollama":
-            resp = requests.post(cfg["url"], json={"model": cfg["model"], "input": texts, "keep_alive": "2m"}, timeout=timeout)
-            resp.raise_for_status()
-            body = resp.json()
-            vectors, tokens = body.get("embeddings"), body.get("prompt_eval_count")
-        else:
-            from .hybrid_ai import provider_class
-            pcfg = (_settings.get("providers") or {}).get(cfg["pid"]) or {}
-            cls = provider_class(cfg["pid"], pcfg)
-            if cls is None or not pcfg.get("enabled", True):
-                raise RuntimeError("embedding provider is not usable")
-            provider = cls(pcfg, cfg["pid"])
-            base = provider._base() if hasattr(provider, "_base") else ""
-            if not base or (provider.needs_key and not provider.secret):
-                raise RuntimeError("embedding provider has no endpoint or key")
-            headers = {"Content-Type": "application/json"}
-            if provider.secret:
-                headers["Authorization"] = f"Bearer {provider.secret}"
-            resp = requests.post(base + "/embeddings", json={"model": cfg["model"], "input": texts}, headers=headers, timeout=timeout)
-            resp.raise_for_status()
-            body = resp.json()
-            data = sorted(body.get("data") or [], key=lambda x: x.get("index", 0))
-            vectors = [x.get("embedding") for x in data]
-            tokens = (body.get("usage") or {}).get("prompt_tokens")
-        if (not isinstance(vectors, list) or len(vectors) != len(texts)
-                or any(not isinstance(v, list) or not v or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in v) for v in vectors)):
-            raise ValueError("unexpected embedding response")
-        _report(cfg, started, True, tokens if isinstance(tokens, int) else None)
-        return vectors
-    except Exception as exc:                                           # noqa: BLE001
+    def set_cooldown(until):
+        global _embed_fail_until, _query_fail_until
         if query:
-            _query_fail_until = time.time() + QUERY_FAIL_COOLDOWN
+            _query_fail_until = until
         else:
-            _embed_fail_until = time.time() + EMBED_FAIL_COOLDOWN
-        _report(cfg, started, False, error=type(exc).__name__)
-        return None
+            _embed_fail_until = until
+
+    return _EMBEDDING_SERVICE.embed(
+        texts,
+        config=_embedding_config(),
+        settings=_settings,
+        query=query,
+        cooldown_until=_query_fail_until if query else _embed_fail_until,
+        set_cooldown=set_cooldown,
+        usage_hook=usage_hook,
+    )
 
 
 def _pack(vector) -> bytes:
-    import array
-    return array.array("f", [float(x) for x in vector]).tobytes()
+    return pack_vector(vector)
 
 
 def _unpack(blob) -> list[float]:
-    import array
-    arr = array.array("f")
-    arr.frombytes(blob)
-    return list(arr)
+    return unpack_vector(blob)
 
 
 def schedule_vector_backfill() -> None:
-    """Compute missing fact vectors in the background (a small batch per pass); one pass at a time, never on the chat's critical path."""
+    """Compute missing vectors in the background; a successful batch schedules the next batch."""
     global _vector_job_running
     with _lock:
         if _vector_job_running or _embedding_config() is None or time.time() < _embed_fail_until:
@@ -733,222 +580,92 @@ def schedule_vector_backfill() -> None:
     try:
         _start_background(_vector_pass)
     except RuntimeError:
-        # A process shutting down may reject a new thread. Do not leave the
-        # single-flight flag stuck, or future embedding backfills will never run.
         with _lock:
             _vector_job_running = False
 
 
 def _vector_pass() -> None:
     global _vector_job_running
+    reschedule = False
     try:
-        cfg = _embedding_config()
-        if cfg is None:
+        config = _embedding_config()
+        if config is None:
             return
-        with _lock, _db() as con:
-            rows = con.execute("SELECT f.id, f.text, f.value FROM facts f WHERE f.status IN ('active','uncertain') AND NOT EXISTS "
-                               "(SELECT 1 FROM vectors v WHERE v.fact_id=f.id AND v.model=?) ORDER BY f.created_at DESC LIMIT ?",
-                               (cfg["tag"], EMBED_BATCH)).fetchall()
+        rows = _STORAGE.next_vector_batch(_db, config["tag"], EMBED_BATCH, config.get("index_version", 1))
         if not rows:
             return
-        vectors = _embed([f"{r['text']} {r['value']}" for r in rows])
+        vectors = _embed([f"{row['text']} {row['value']}" for row in rows])
         if vectors is None:
             return
-        with _lock, _db() as con:
-            for r, v in zip(rows, vectors):
-                con.execute("INSERT OR REPLACE INTO vectors(fact_id, model, dim, blob) VALUES (?,?,?,?)", (r["id"], cfg["tag"], len(v), _pack(v)))
-    except Exception:                                                  # noqa: BLE001
+        index = EmbeddingIndex.from_config(config)
+        with _lock:
+            _STORAGE.save_vectors(_db, index, [row["id"] for row in rows], vectors)
+        reschedule = True
+    except Exception:  # noqa: BLE001 - vector index is disposable; fact storage is not
         _log.debug("Optional evidence-memory vector backfill failed; lexical retrieval remains available", exc_info=True)
     finally:
         with _lock:
             _vector_job_running = False
+        if reschedule and time.time() >= _embed_fail_until:
+            schedule_vector_backfill()
 
 
-# ----------------------------------------------------------------------------------------------- retrieval
+# ----------------------------------------------------------------------------------------------- retrieval policy
 def _doc_tokens(row, evidence_quote) -> list[str]:
-    cached = _tok_cache.get(row["id"])
-    if cached and cached[0] == row["updated_at"]:
-        return cached[1]
-    toks = tokens(f"{row['text']} {row['value']} {evidence_quote}")
-    _tok_cache[row["id"]] = (row["updated_at"], toks)
-    return toks
-
-
-
-_QUERY_SYNONYMS = {
-    "امتحان": ("آزمون",),
-    "آزمون": ("امتحان",),
-    "سفر": ("مسافرت",),
-    "مسافرت": ("سفر",),
-    "دکتر": ("پزشک",),
-    "پزشک": ("دکتر",),
-    "نگرانی": ("اضطراب",),
-    "اضطراب": ("نگرانی", "استرس"),
-    "استرس": ("اضطراب", "نگرانی"),
-    "گرافیک": ("gpu",),
-    "gpu": ("گرافیک",),
-}
-
-
-def query_terms(text) -> list[str]:
-    """Return normalized query words plus their conservative Persian synonyms."""
-    words = [word for word in _WORD.findall(norm(text)) if word not in _STOP and (len(word) >= 2 or word.isdigit())]
-    expanded = list(words)
-    seen = set(words)
-    for word in words:
-        for synonym in _QUERY_SYNONYMS.get(word, ()):
-            if synonym not in seen:
-                seen.add(synonym)
-                expanded.append(synonym)
-    return expanded
-
-
-def _query_tokens(text) -> list[str]:
-    """Expand only the query with a small, conservative Persian synonym set."""
-    expanded = []
-    seen = set()
-    for term in query_terms(text):
-        for feature in tokens(term):
-            if feature not in seen:
-                seen.add(feature)
-                expanded.append(feature)
-    return expanded
-
-
-def _bm25(docs: dict[str, list[str]], query: list[str]) -> dict[str, float]:
-    n = len(docs)
-    if not n or not query:
-        return {}
-    avgdl = sum(len(t) for t in docs.values()) / n or 1.0
-    df = Counter()
-    for toks in docs.values():
-        df.update(set(toks))
-    scores = {}
-    for fid, toks in docs.items():
-        tf, dl, s = Counter(toks), len(toks), 0.0
-        for term in set(query):
-            f = tf.get(term)
-            if f:
-                idf = math.log(1 + (n - df[term] + 0.5) / (df[term] + 0.5))
-                s += idf * f * (BM25_K1 + 1) / (f + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
-        if s > 0:
-            scores[fid] = s
-    return scores
-
-
-
-def rank_texts(texts, query, min_ratio=MIN_BM25_RATIO):
-    """Return indices ranked by Persian-aware BM25 relevance to one query."""
-    if not needs_recall(query):
-        return []
-    query_tokens = _query_tokens(query)
-    if not query_tokens:
-        return []
-    docs = {str(index): tokens(text) for index, text in enumerate(texts or [])}
-    if not docs:
-        return []
-    scores = _bm25(docs, query_tokens)
-    if not scores:
-        return []
-    best = max(scores.values())
-    ratio = max(0.0, min(1.0, float(min_ratio)))
-    threshold = best * ratio
-    return sorted(
-        (int(index) for index, score in scores.items() if score >= threshold),
-        key=lambda index: (-scores[str(index)], index),
-    )
+    return _INDEX.document_tokens(row, evidence_quote)
 
 
 def _semantic(query_text, ids, cfg) -> dict[str, float]:
-    """Cosine similarity of the query to the stored vectors of `ids` (empty when embeddings are off, failing or not computed yet)."""
-    if cfg is None:
+    """Return compatible cosine scores; provider/index failures leave lexical ranking available."""
+    if cfg is None or not ids:
         return {}
-    qv = _embed([query_text], query=True)
-    if not qv:
+    query_vectors = _embed([query_text], query=True)
+    if not query_vectors:
         return {}
     try:
-        with _lock, _db() as con:
-            marks = ",".join("?" for _ in ids)
-            rows = con.execute(f"SELECT fact_id, blob FROM vectors WHERE model=? AND fact_id IN ({marks})", (cfg["tag"], *ids)).fetchall()
-        q = qv[0]
-        out = {}
-        try:
-            import numpy as np
-            qa = np.asarray(q, dtype=np.float32)
-            qn = float(np.linalg.norm(qa)) or 1.0
-            for r in rows:
-                va = np.frombuffer(r["blob"], dtype=np.float32)
-                if va.shape == qa.shape:
-                    out[r["fact_id"]] = float(va @ qa) / ((float(np.linalg.norm(va)) or 1.0) * qn)
-        except ImportError:
-            qn = math.sqrt(sum(x * x for x in q)) or 1.0
-            for r in rows:
-                v = _unpack(r["blob"])
-                if len(v) == len(q):
-                    out[r["fact_id"]] = sum(a * b for a, b in zip(v, q)) / ((math.sqrt(sum(x * x for x in v)) or 1.0) * qn)
-        return out
-    except Exception:                                                  # noqa: BLE001
+        index = EmbeddingIndex.from_config(cfg)
+        with _lock:
+            stored = _STORAGE.fetch_vectors(_db, index, ids)
+        scores = {}
+        for vector in stored:
+            score = cosine_similarity(query_vectors[0], vector.values)
+            if score is not None:
+                scores[vector.fact_id] = score
+        return scores
+    except Exception:  # noqa: BLE001
         return {}
 
 
 def _live_rows(con, now):
-    return con.execute("SELECT * FROM facts WHERE status IN ('active','uncertain') AND (valid_to IS NULL OR valid_to > ?)", (now,)).fetchall()
+    return con.execute(
+        "SELECT * FROM facts WHERE status IN ('active','uncertain') AND (valid_to IS NULL OR valid_to > ?)",
+        (now,),
+    ).fetchall()
+
+
+_RETRIEVER = EvidenceRetriever(
+    db_factory=lambda: _db(),
+    lock=_lock,
+    is_enabled=lambda: _enabled,
+    settings_getter=lambda: _settings,
+    document_tokens=lambda row, quote: _doc_tokens(row, quote),
+    query_tokens=lambda value: _query_tokens(value),
+    bm25=lambda documents, query: _bm25(documents, query),
+    semantic_search=lambda query, ids, config: _semantic(query, ids, config),
+    embedding_config=lambda: _embedding_config(),
+    logger=_log,
+    default_top_k=DEFAULT_TOP_K,
+    pinned_max=PINNED_MAX,
+    min_bm25_ratio=MIN_BM25_RATIO,
+    embedding_min_cosine=EMBED_MIN_COS,
+    rrf_k=RRF_K,
+    single_valued=SINGLE_VALUED,
+    pinned_predicates=PINNED,
+)
 
 
 def retrieve(query, limit=None, now=None) -> list[dict]:
-    """Facts relevant to `query`, best first: [{'id','text','predicate','category','status','created_at','pinned','earlier'}].
-    Pinned identity facts come first; the rest only when they match the message (lexically, or semantically when embeddings are on).
-    The database lock is never held during an embedding request."""
-    if not _enabled:
-        return []
-    now = time.time() if now is None else now
-    limit = int(limit or _settings.get("memory_top_k") or DEFAULT_TOP_K)
-    query = " ".join(str(query or "").split())[:500]
-    try:
-        with _lock, _db() as con:                                       # 1) read everything needed, then release the lock
-            rows = [dict(r) for r in _live_rows(con, now)]
-            if not rows:
-                return []
-            quotes = {r["fact_id"]: r["quote"] for r in con.execute("SELECT fact_id, MIN(quote) AS quote FROM evidence GROUP BY fact_id")}
-            changed = {}
-            for r in con.execute("SELECT subject, predicate, value FROM facts WHERE status='superseded' AND updated_at > ? ORDER BY updated_at", (now - 14 * DAY,)):
-                changed[(r["subject"], r["predicate"])] = r["value"]
-        active_preds = {(r["subject"], r["predicate"]) for r in rows if r["status"] == "active"}
-        rows = [r for r in rows if not (r["status"] == "uncertain" and r["predicate"] in SINGLE_VALUED and (r["subject"], r["predicate"]) in active_preds)]
-        pinned = sorted((r for r in rows if r["predicate"] in PINNED and r["status"] == "active"), key=lambda r: -r["created_at"])[:PINNED_MAX]
-        chosen: list = []
-        if needs_recall(query):                                         # 2) rank (an embedding request may happen here, without any lock)
-            by_id = {r["id"]: r for r in rows}
-            docs = {r["id"]: _doc_tokens(r, quotes.get(r["id"], "")) for r in rows}
-            lex = _bm25(docs, _query_tokens(query))
-            lex_rank = sorted(lex, key=lex.get, reverse=True)
-            best = lex[lex_rank[0]] if lex_rank else 0.0
-            lex_rank = [i for i in lex_rank if lex[i] >= MIN_BM25_RATIO * best][:limit * 2]
-            sem = _semantic(query, list(by_id), _embedding_config())
-            sem_rank = []
-            if sem:
-                floor = max(EMBED_MIN_COS, max(sem.values()) - 0.15)
-                sem_rank = [i for i in sorted(sem, key=sem.get, reverse=True) if sem[i] >= floor][:limit * 2]
-            fused: dict[str, float] = {}
-            for ranking in (lex_rank, sem_rank):
-                for pos, fid in enumerate(ranking):
-                    fused[fid] = fused.get(fid, 0.0) + 1.0 / (RRF_K + pos + 1)
-            for fid in fused:
-                if by_id[fid]["status"] == "uncertain":
-                    fused[fid] *= 0.7                                   # a hedged fact ranks lower than a certain one
-            chosen = [by_id[f] for f in sorted(fused, key=fused.get, reverse=True)]
-        out, seen = [], set()
-        for r in list(pinned) + chosen:
-            if r["id"] in seen or len(out) >= limit + len(pinned):
-                continue
-            seen.add(r["id"])
-            earlier = changed.get((r["subject"], r["predicate"])) if r["predicate"] in SINGLE_VALUED and now - r["created_at"] < 14 * DAY else None
-            out.append({"id": r["id"], "text": r["text"], "predicate": r["predicate"], "category": r["category"], "status": r["status"],
-                        "created_at": r["created_at"], "pinned": r["predicate"] in PINNED, "earlier": earlier})
-        return out
-    except Exception:                                                  # noqa: BLE001
-        _log.warning("Evidence-memory retrieval failed", exc_info=True)
-        return []
+    return _RETRIEVER.retrieve(query, limit=limit, now=now)
 
 
 def current_value(predicate, subject="user"):
@@ -1167,6 +884,8 @@ def update_extra(item_id, text, now=None) -> bool:
             )
             if new_id is None:
                 raise RuntimeError("Edited evidence-memory item could not be reinserted")
+        if _embedding_config():
+            schedule_vector_backfill()
         return True
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not update an evidence-only memory item")
