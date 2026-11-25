@@ -98,7 +98,8 @@ class DesktopCaptureApplicationService:
         return True
 
     def evaluate_window(self, window_info: dict[str, Any] | None, *,
-                        explicit: bool = False) -> tuple[bool, str]:
+                        explicit: bool = False,
+                        allow_partial_identity: bool = False) -> tuple[bool, str]:
         if not explicit and not self.enabled:
             return False, "desktop_vision_disabled"
         if not isinstance(window_info, dict):
@@ -108,9 +109,13 @@ class DesktopCaptureApplicationService:
             "title": self._normal(window_info.get("title")),
             "path": self._normal(window_info.get("path")),
         }
-        if (not window_info.get("hwnd") or not window_info.get("pid")
-                or not identity["exe"] or not identity["title"] or not identity["path"]
-                or not window_info.get("rect")):
+        # A monitor capture is anchored to the live HWND/PID and a valid desktop
+        # rectangle. exe/title/path may be unavailable for shell windows and
+        # overlays; inspect every value we do have, but do not block the monitor
+        # solely because Windows could not resolve optional process metadata.
+        has_anchor = bool(window_info.get("hwnd") and window_info.get("pid") and window_info.get("rect"))
+        has_full_identity = bool(identity["exe"] and identity["title"] and identity["path"])
+        if not has_anchor or (not allow_partial_identity and not has_full_identity):
             return False, "foreground_window_identity_incomplete"
         blocked = [
             (kind, pattern)
