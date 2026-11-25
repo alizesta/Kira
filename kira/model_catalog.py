@@ -155,7 +155,7 @@ def model_rows(settings, *, capabilities: DetectedCapabilities):
         if pid != "ollama" or not mid or not is_chat_model(mid) or (pid, mid) in known:
             continue
         meta = {"free": True, "status": "available"}
-        reason = _archive_reason(settings, pid, mid, meta, route)
+        reason = _archive_reason(settings, pid, mid, meta, route, capabilities=capabilities)
         enabled = bool(route.get("enabled", True)) and not reason
         tabs = [TAB_ARCHIVED] if reason else [TAB_FREE]
         if enabled:
