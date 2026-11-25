@@ -5,7 +5,7 @@ from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
 from ..live_video_selector import LiveFrameSelector, SAMPLE_HEIGHT, SAMPLE_WIDTH, SelectorPolicy
 from ..vision_orchestrator import FrameJob
-from ..vision_ocr import OcrResult, TesseractOcrEngine
+from ..vision_ocr import OcrResult, OcrService
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
     AttachmentTile,
@@ -100,11 +100,24 @@ class AttachmentsVisionController(WindowFeatureController):
     def _perception_engine(self):
         engine = getattr(self, "_desktop_perception_engine", None)
         if engine is None:
+            ocr_service = OcrService()
             engine = PerceptionEngine(
                 self.context.services.desktop_context_application_service,
-                TesseractOcrEngine(),
+                ocr_service,
             )
             self._desktop_perception_engine = engine
+            status = ocr_service.diagnostics()
+            selected = status["engines"][status["selected_engine"]]
+            vision_trace(
+                "ocr_runtime_diagnostics",
+                engine=status["selected_engine"],
+                ready=status["ready"],
+                python_bindings_ready=selected.get("python_bindings_ready", False),
+                binary_ready=selected.get("binary_ready", False),
+                persian_ready=status["languages"]["fas"],
+                english_ready=status["languages"]["eng"],
+                error=selected.get("error_code") or None,
+            )
         return engine
 
     @staticmethod
@@ -514,7 +527,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
         started = time.monotonic()
         worker = TaskWorker(
-            lambda cancelled, payload=jpeg, engine=engine: engine.recognize(payload, cancelled),
+            lambda cancelled, payload=jpeg, engine=engine, frame_id=sample_key: engine.recognize(payload, cancelled, source_frame_id=frame_id),
             cancellable=True,
         )
         self.context.state._perception_window_info = dict(normalized)

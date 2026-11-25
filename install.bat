@@ -120,12 +120,20 @@ python -m pip install --upgrade pip --retries 10 --timeout 60
 if errorlevel 1 goto netfail
 
 echo.
-echo [1/4] Installing core Kira dependencies...
+echo [1/5] Installing core Kira dependencies...
 python install_deps.py requirements.txt
 if errorlevel 1 goto netfail
 
 echo.
-echo [2/4] Installing microphone and speech support...
+echo [2/5] Installing optional local OCR Python dependencies...
+python -m pip install --upgrade --retries 10 --timeout 60 -r requirements-ocr.txt
+if errorlevel 1 (
+  echo WARNING: Python OCR dependencies are unavailable; OCR remains disabled.
+  set "OCR_SETUP_FAILED=1"
+)
+python -m kira.vision_ocr
+echo.
+echo [3/5] Installing microphone and speech support...
 if exist voice_failed.txt del voice_failed.txt
 set "PKGS=sounddevice PyAudioWPatch miniaudio"
 for %%P in (%PKGS%) do (
@@ -135,7 +143,7 @@ for %%P in (%PKGS%) do (
 )
 
 echo.
-echo [3/4] Installing local Persian STT/TTS and downloading their models...
+echo [4/5] Installing local Persian STT/TTS and downloading their models...
 echo Installing only Shenava INT8 for offline speech recognition.
 .venv\Scripts\python.exe scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
@@ -144,7 +152,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] Ollama model installation is currently disabled.
+echo [5/5] Ollama model installation is currently disabled.
 echo No Ollama application, server, or chat model will be installed or downloaded.
 echo You can select and install a local model later when ready.
 
@@ -156,6 +164,9 @@ echo ============================================================
 echo Data folder: %KIRA_DATA_DIR%
 echo Future updates will reuse this folder automatically.
 if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
+if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention.
+echo OCR native engine and language data are detected, not silently installed.
+echo Persian OCR requires the Tesseract fas language pack; English requires eng.
 if exist voice_failed.txt (
   echo Some optional audio packages failed:
   type voice_failed.txt
