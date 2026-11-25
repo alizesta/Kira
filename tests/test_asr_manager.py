@@ -10,6 +10,7 @@ class FakeAdapter:
         self.default_model = "fixture-model"
         self.capabilities = frozenset({"offline", "test"})
         self.fail = fail
+        self.fail_shutdown = False
         self.calls = []
 
     def catalog_entry(self):
@@ -42,7 +43,7 @@ class FakeAdapter:
         return "/models/fixture"
     def shutdown(self):
         self.calls.append(("shutdown",))
-        if self.fail == "shutdown":
+        if self.fail == "shutdown" or self.fail_shutdown:
             raise RuntimeError("release failed")
 
 
@@ -118,6 +119,48 @@ class ASRManagerTests(unittest.TestCase):
             with self.assertRaises(ASRError) as caught:
                 manager.transcribe([], 16000, {"local_voice_asr_backend": "fixture"})
             self.assertEqual(caught.exception.code, "inference_failed")
+
+    def test_shutdown_failure_retains_adapter_and_blocks_engine_switch_until_retry(self):
+        first, second = FakeAdapter("first"), FakeAdapter("second")
+        manager = ASRManager(adapters=[first, second])
+        first_settings = {"local_voice_asr_backend": "first"}
+        second_settings = {"local_voice_asr_backend": "second"}
+        manager.initialize(first_settings)
+
+        first.fail_shutdown = True
+        with self.assertRaises(ASRError) as caught:
+            manager.shutdown()
+        self.assertEqual(caught.exception.code, "shutdown_failed")
+        self.assertEqual(manager.active_engine_id, "first")
+
+        blocked = manager.discover(second_settings)
+        self.assertFalse(blocked["ready"])
+        self.assertEqual(blocked["state"], "failed")
+        self.assertEqual(blocked["error_code"], "shutdown_failed")
+
+        first.fail_shutdown = False
+        self.assertEqual(manager.transcribe([], 16000, second_settings), "transcript")
+        self.assertEqual(manager.active_engine_id, "second")
+        self.assertEqual([call[0] for call in first.calls].count("shutdown"), 2)
+
+    def test_initialization_cleanup_failure_retains_adapter_for_retry(self):
+        adapter = FakeAdapter(fail="initialization")
+        adapter.fail_shutdown = True
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture"}
+
+        with self.assertRaises(ASRError) as caught:
+            manager.initialize(settings)
+        self.assertEqual(caught.exception.code, "initialization_cleanup_failed")
+        self.assertEqual(manager.active_engine_id, "fixture")
+        self.assertFalse(manager.discover(settings)["ready"])
+
+        adapter.fail = None
+        adapter.fail_shutdown = False
+        manager.shutdown()
+        self.assertEqual(manager.active_engine_id, "")
+        self.assertEqual(manager.state, "idle")
+        self.assertEqual([call[0] for call in adapter.calls].count("shutdown"), 2)
 
     def test_discovery_does_not_leak_another_selection_failure(self):
         first, second = FakeAdapter("first", fail="inference"), FakeAdapter("second")
