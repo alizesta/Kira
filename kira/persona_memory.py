@@ -29,6 +29,7 @@ import threading
 import time
 
 from . import evidence_memory as _evidence      # facts with provenance + relevance-based recall (this module stays the owner of the editable list)
+from .evidence_memory_index import _CORRECTION_RX, _UNCERTAIN_RX, norm as _evidence_norm
 from .config import DATA_DIR
 
 FILE_NAME = "kira_persona_memory.json"
@@ -280,7 +281,8 @@ def extract_facts_detailed(text: str) -> list[dict]:
             continue                                           # questions (the mark is checked BEFORE the text is split) are never facts
         if _QUESTION_RX.search(_norm_part(part)):
             continue                                           # a question written without the mark
-        flags = {"uncertain": bool(_evidence._UNCERTAIN_RX.search(_evidence.norm(part))), "correction": bool(_evidence._CORRECTION_RX.search(_evidence.norm(part)))}
+        normalized_part = _evidence_norm(part)
+        flags = {"uncertain": bool(_UNCERTAIN_RX.search(normalized_part)), "correction": bool(_CORRECTION_RX.search(normalized_part))}
         pref = False
         for rx, kind, template in _PREF_RULES:
             m = rx.search(_norm_part(part))
