@@ -10,6 +10,7 @@ class FakeAdapter:
         self.default_model = "fixture-model"
         self.capabilities = frozenset({"offline", "test"})
         self.fail = fail
+        self.fail_shutdown = False
         self.calls = []
 
     def catalog_entry(self):
@@ -42,7 +43,7 @@ class FakeAdapter:
         return "/models/fixture"
     def shutdown(self):
         self.calls.append(("shutdown",))
-        if self.fail == "shutdown":
+        if self.fail == "shutdown" or self.fail_shutdown:
             raise RuntimeError("release failed")
 
 
@@ -118,6 +119,115 @@ class ASRManagerTests(unittest.TestCase):
             with self.assertRaises(ASRError) as caught:
                 manager.transcribe([], 16000, {"local_voice_asr_backend": "fixture"})
             self.assertEqual(caught.exception.code, "inference_failed")
+
+    def test_shutdown_failure_retains_adapter_and_blocks_engine_switch_until_retry(self):
+        first, second = FakeAdapter("first"), FakeAdapter("second")
+        manager = ASRManager(adapters=[first, second])
+        first_settings = {"local_voice_asr_backend": "first"}
+        second_settings = {"local_voice_asr_backend": "second"}
+        manager.initialize(first_settings)
+
+        first.fail_shutdown = True
+        with self.assertRaises(ASRError) as caught:
+            manager.shutdown()
+        self.assertEqual(caught.exception.code, "shutdown_failed")
+        self.assertEqual(manager.active_engine_id, "first")
+
+        blocked = manager.discover(second_settings)
+        self.assertFalse(blocked["ready"])
+        self.assertEqual(blocked["state"], "failed")
+        self.assertFalse(blocked["initialized"])
+        self.assertEqual(blocked["error_code"], "shutdown_failed")
+
+        first.fail_shutdown = False
+        self.assertEqual(manager.transcribe([], 16000, second_settings), "transcript")
+        self.assertEqual(manager.active_engine_id, "second")
+        self.assertEqual([call[0] for call in first.calls].count("shutdown"), 2)
+
+    def test_pending_cleanup_is_retried_before_unsupported_engine_rejection(self):
+        adapter = FakeAdapter("first")
+        manager = ASRManager(adapters=[adapter])
+        manager.initialize({"local_voice_asr_backend": "first"})
+
+        adapter.fail_shutdown = True
+        with self.assertRaises(ASRError) as shutdown_error:
+            manager.shutdown()
+        self.assertEqual(shutdown_error.exception.code, "shutdown_failed")
+
+        adapter.fail_shutdown = False
+        with self.assertRaises(ASRError) as selection_error:
+            manager.transcribe([], 16000, {"local_voice_asr_backend": "qwen3"})
+        self.assertEqual(selection_error.exception.code, "unsupported_engine")
+        self.assertEqual(manager.active_engine_id, "")
+        self.assertEqual([call[0] for call in adapter.calls].count("shutdown"), 2)
+
+    def test_initialization_cleanup_failure_retains_adapter_for_retry(self):
+        adapter = FakeAdapter(fail="initialization")
+        adapter.fail_shutdown = True
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture"}
+
+        with self.assertRaises(ASRError) as caught:
+            manager.initialize(settings)
+        self.assertEqual(caught.exception.code, "initialization_cleanup_failed")
+        self.assertEqual(manager.active_engine_id, "fixture")
+        self.assertFalse(manager.discover(settings)["ready"])
+
+        adapter.fail = None
+        adapter.fail_shutdown = False
+        manager.shutdown()
+        self.assertEqual(manager.active_engine_id, "")
+        self.assertEqual(manager.state, "idle")
+        self.assertEqual([call[0] for call in adapter.calls].count("shutdown"), 2)
+
+    def test_discovery_does_not_leak_another_selection_failure(self):
+        first, second = FakeAdapter("first", fail="inference"), FakeAdapter("second")
+        manager = ASRManager(adapters=[first, second])
+        first_settings = {"local_voice_asr_backend": "first"}
+        second_settings = {"local_voice_asr_backend": "second"}
+
+        with self.assertRaises(ASRError):
+            manager.transcribe([], 16000, first_settings)
+
+        state = manager.discover(second_settings)
+        self.assertTrue(state["ready"])
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
+
+    def test_discovery_does_not_leak_failure_to_another_model_on_same_engine(self):
+        adapter = FakeAdapter(fail="inference")
+        manager = ASRManager(adapters=[adapter])
+        failed_settings = {
+            "local_voice_asr_backend": "fixture",
+            "local_voice_asr_model": "fixture-model",
+        }
+        other_model_settings = {
+            "local_voice_asr_backend": "fixture",
+            "local_voice_asr_model": "another-model",
+        }
+
+        with self.assertRaises(ASRError):
+            manager.transcribe([], 16000, failed_settings)
+
+        state = manager.discover(other_model_settings)
+        self.assertTrue(state["ready"])
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
+
+    def test_shutdown_clears_error_after_failed_initialization(self):
+        adapter = FakeAdapter(fail="initialization")
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture"}
+
+        with self.assertRaises(ASRError):
+            manager.initialize(settings)
+        self.assertEqual(manager.state, "failed")
+
+        manager.shutdown()
+        state = manager.discover(settings)
+        self.assertEqual(manager.state, "idle")
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
 
     def test_engine_switch_shuts_down_old_adapter_before_loading_new(self):
         first, second = FakeAdapter("first"), FakeAdapter("second")

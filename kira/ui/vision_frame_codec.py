@@ -26,6 +26,21 @@ class QtVisionFrameCodec:
     def encode_jpeg(self, frame, quality: int) -> bytes:
         return self._write_jpeg(frame, quality)
 
+    @staticmethod
+    def encode_perception_sample(frame) -> bytes:
+        """Create the low-cost grayscale signature used by local change detection."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QImage
+
+        thumbnail = frame.scaled(
+            32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation
+        ).convertToFormat(QImage.Format_Grayscale8)
+        return bytes(
+            thumbnail.pixelColor(x, y).red()
+            for y in range(thumbnail.height())
+            for x in range(thumbnail.width())
+        )
+
     def encode_analysis_frame(self, frame, quality: int) -> tuple[bytes, bytes]:
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QImage

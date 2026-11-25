@@ -165,8 +165,10 @@ class ConfigTests(unittest.TestCase):
             "local_voice_tts_model": "user-selected-tts-model",
             "providers": {"groq": {"api_key": "preserve-me"}},
             "api_registry": {"groq": {"status": "valid"}},
+            "ollama_models": ["model-a"],
             "model_catalog_refreshed_at": 12345,
             "model_tests": {"groq::model": {"ok": True}},
+            "route_notes": {"groq": "transient route health"},
             "user_extension": {"enabled": True},
         }
         migrated = config._migrate_settings(source)
@@ -182,7 +184,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(migrated["local_voice_tts_model"], "user-selected-tts-model")
         self.assertEqual(migrated["providers"]["groq"]["api_key"], "preserve-me")
         self.assertEqual(migrated["user_extension"], {"enabled": True})
-        for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+        for runtime_key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes"):
             self.assertNotIn(runtime_key, migrated)
         self.assertEqual(source["api_registry"]["groq"]["status"], "valid")
         self.assertEqual(config._migrate_settings(migrated), migrated)
@@ -205,6 +207,7 @@ class ConfigTests(unittest.TestCase):
                 "settings_version": config.SETTINGS_SCHEMA_VERSION,
                 "assistant_name": "Persisted User Name",
                 "api_registry": {"groq": {"status": "valid"}},
+                "ollama_models": ["model-a"],
                 "model_catalog_refreshed_at": 12345,
                 "model_tests": {"groq::model": {"ok": True}},
                 "route_notes": {"groq": "automatic failure"},
@@ -216,10 +219,11 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(settings["assistant_name"], "Persisted User Name")
         self.assertEqual(settings["user_extension"], {"keep": True})
-        for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+        from kira.app.detected_capabilities import CAPABILITY_KEYS
+        for key in CAPABILITY_KEYS:
             self.assertNotIn(key, settings)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
-        for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+        for key in CAPABILITY_KEYS:
             self.assertNotIn(key, saved)
         self.assertTrue(any("داده‌های موقت تشخیص" in warning for warning in config.LOAD_WARNINGS))
 
@@ -245,19 +249,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config._migrate_settings(migrated), migrated)
 
     def test_save_settings_never_persists_detected_capabilities(self):
+        from kira.app.detected_capabilities import CAPABILITY_KEYS
+
         settings = helpers.fresh_settings()
-        settings.update({
-            "api_registry": {"groq": {"status": "valid"}},
-            "model_catalog_refreshed_at": 12345,
-            "model_tests": {"groq::model": {"ok": True}},
-            "route_notes": {"groq": "model was auto-disabled"},
-        })
+        settings.update({key: {"probe": "transient"} for key in CAPABILITY_KEYS})
         config.save_settings(settings)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertNotIn("api_registry", saved)
-        self.assertNotIn("model_catalog_refreshed_at", saved)
-        self.assertNotIn("model_tests", saved)
-        self.assertNotIn("route_notes", saved)
+        for key in CAPABILITY_KEYS:
+            self.assertNotIn(key, saved)
+        # Serialization operates on a detached copy; callers keep their live state.
+        self.assertTrue(all(key in settings for key in CAPABILITY_KEYS))
 
     def test_v4_migration_removes_only_obsolete_voice_metadata(self):
         source = {

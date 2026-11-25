@@ -1,8 +1,7 @@
 """Qt-free chat persistence and history.
 
-The persistence boundary owns conversation/message lifecycle, SQLite transactions,
-schema migration, ordering, metadata, stream completion and recovery. UI and chat
-application code consume ChatPersistence and never need to know the DB schema.
+The repository owns message and conversation SQL. Connection policy, schema
+migration, snapshots, crash recovery and pending replay are composed services.
 """
 from __future__ import annotations
 
@@ -19,18 +18,17 @@ from typing import Any, Callable
 from ..config import DB_PATH
 from .sqlite_schema import SqliteSchemaManager
 from .repository_contracts import ChatRepository
-from .sqlite_connection import SqliteConnectionManager
+from .sqlite_connection import SQLITE_BUSY_TIMEOUT_SECONDS, SqliteConnectionManager  # noqa: F401
 from .sqlite_recovery import SqliteRecoveryManager
 from .sqlite_pending_queue import SqlitePendingMessageQueue
+from .sqlite_snapshot import SqliteSnapshotManager
 
 DB_NAME = "kira_memory.sqlite3"
 DEFAULT_CHARACTER = "kira"
 SCHEMA_VERSION = 2
 SNAPSHOTS_KEEP = 5
 MAX_PENDING_MESSAGES = 500
-# Keep a bounded in-memory read cache; the durable JSONL spool carries overflow.
-# Interactive chat persistence must fail fast instead of freezing the Qt event loop.
-SQLITE_BUSY_TIMEOUT_SECONDS = 0.25
+# Connection timeout policy is owned by sqlite_connection.SqliteConnectionManager.
 
 
 class PersistenceError(RuntimeError):
@@ -78,15 +76,33 @@ class SqliteChatRepository:
         self._lock = threading.RLock()
         self._pending: list[tuple] = []
         self._active_conversations: dict[str, str] = {}
+        self.last_error: str | None = None
+        self.startup_notes: list[str] = []
+        self._snapshots = SqliteSnapshotManager(
+            self._db_path, self._connections, db_name=DB_NAME, keep=SNAPSHOTS_KEEP,
+        )
         self._recovery = SqliteRecoveryManager(
-            self, db_name=DB_NAME, snapshots_keep=SNAPSHOTS_KEEP,
+            db_path_provider=self._db_path,
+            connection_manager=self._connections,
+            read_rows=self._read_rows_full,
+            read_conversations=self._read_conversations,
+            merge_rows=self._merge,
+            write_recovery_state=self._write_recovery_state,
+            db_name=DB_NAME,
             persistence_error=PersistenceError,
         )
         self._pending_queue = SqlitePendingMessageQueue(
-            self, max_pending=MAX_PENDING_MESSAGES, persistence_error=PersistenceError,
+            db_path_provider=self._db_path,
+            pending_getter=lambda: self._pending,
+            pending_clearer=self._pending.clear,
+            unit_of_work=self._db,
+            migrate_schema=self._migrate_schema,
+            ensure_conversation_row=self._ensure_conversation_row,
+            set_error=lambda message: setattr(self, "last_error", message),
+            note_error=self._note_error,
+            max_pending=MAX_PENDING_MESSAGES,
+            persistence_error=PersistenceError,
         )
-        self.last_error: str | None = None
-        self.startup_notes: list[str] = []
         self._schema_manager = SqliteSchemaManager(
             has_table=self._has_table,
             columns=self._columns,
@@ -120,7 +136,7 @@ class SqliteChatRepository:
         return self._recovery.healthy(path)
 
     def _snapshot(self, kind: str) -> Path:
-        return self._recovery.snapshot(kind)
+        return self._snapshots.create(kind)
 
     def _read_rows_full(self, path) -> list[tuple]:
         """Read legacy/current DB rows, including metadata and stream state; salvage readable rows."""
@@ -303,7 +319,11 @@ class SqliteChatRepository:
         return self._schema_manager.migrate(con)
 
     def _write_all(self, rows):
-        """Transactional recovery rewrite that preserves non-conflicting message IDs."""
+        """Transactional message rewrite preserving non-conflicting IDs."""
+        self._write_recovery_state(rows, ())
+
+    def _write_recovery_state(self, rows, conversations):
+        """Atomically restore message rows and their conversation metadata."""
         with self._db() as con:
             self._migrate_schema(con)
             con.execute("DELETE FROM messages")
@@ -323,6 +343,21 @@ class SqliteChatRepository:
                         "VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
                         (message_id, *fields),
                     )
+            for row in conversations:
+                existing = con.execute(
+                    "SELECT character_id FROM conversations WHERE id=?", (row["id"],)
+                ).fetchone()
+                if existing is not None and _character_id(existing["character_id"]) != _character_id(row["character_id"]):
+                    raise PersistenceError("شناسه گفتگو در فایل پشتیبان به شخصیت دیگری تعلق دارد.")
+                con.execute(
+                    "INSERT INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                    "title=excluded.title, metadata=excluded.metadata, status=excluded.status, "
+                    "created_at=excluded.created_at, updated_at=excluded.updated_at",
+                    (row["id"], row["character_id"], row["title"],
+                     json.dumps(_json_object(row.get("metadata")), ensure_ascii=False),
+                     row["status"], row["created_at"], row["updated_at"]),
+                )
 
     def _backup_dirs(self):
         return self._recovery.backup_dirs()
@@ -1066,11 +1101,7 @@ class SqliteChatRepository:
                 return len(self._pending)
 
     def list_snapshots(self, kind="cleared"):
-        root = self.db_path.parent / "snapshots"
-        try:
-            return sorted((p for p in root.iterdir() if p.is_dir() and p.name.startswith(kind + "-")), reverse=True)
-        except OSError:
-            return []
+        return self._snapshots.list(kind)
 
     def clear_memory(self, character_id=None):
         """Snapshot first, then delete only the requested character's messages."""

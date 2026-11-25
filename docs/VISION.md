@@ -127,3 +127,24 @@ encoding, rejected queue, or rejected transport paths. Session cancellation
 invalidates its generation before requesting worker cancellation, so late
 results cannot become current again. During window shutdown, each session is
 cancelled through the same coordinator before the Vision services are disposed.
+
+
+## Perception/OCR runtime ownership (Task 14)
+
+PerceptionApplicationService owns local perception policy, active-window validation,
+change detection, OCR request identity, cancellation generations, result validation,
+and applying OCR to the bounded desktop context. It has no Qt imports.
+
+PerceptionWorkerController is the Qt adapter only: it encodes the QImage sample/JPEG,
+creates the cancellable TaskWorker, forwards result/finished signals, and schedules
+QObject deletion. The Vision MainWindow controller only delegates frame, cancel and
+shutdown calls; the old perception state fields have been removed from MainWindow state.
+
+Each OCR job carries a stable frame fingerprint and generation. Results are applied
+only after source, privacy and complete window identity are revalidated. Cancellation
+invalidates the generation before stopping the worker, preventing late OCR from
+repopulating cleared or superseded desktop context.
+
+PerceptionEngine now forwards source_frame_id through the replaceable OCR engine
+contract. This fixes the previous signature mismatch where the runtime passed that
+keyword to PerceptionEngine.recognize although the method did not accept it.

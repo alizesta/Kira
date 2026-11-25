@@ -552,7 +552,8 @@ class VoiceSettingsController(WindowFeatureController):
             return
         from .. import local_voice
         if value not in local_voice.SHENAVA_MODEL_FILENAMES:
-            value = local_voice.SHENAVA_INT8_REPO_ID
+            # A stale/foreign model ID must not silently switch the user's backend.
+            return
         self.context.services.settings["local_voice_asr_backend"] = "shenava"
         self.context.services.settings["local_voice_asr_model"] = value
         self.feature_controller("runtime").save_now()

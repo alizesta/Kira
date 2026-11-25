@@ -42,6 +42,38 @@ RETIRED_GROQ_MODELS = {
 LOAD_WARNINGS: list[str] = []
 
 
+def ocr_runtime_paths():
+    """Return the single supported source of native OCR executable/data paths.
+
+    KIRA_TESSERACT_CMD and KIRA_TESSDATA_DIR are Kira-specific overrides.
+    TESSERACT_CMD and TESSDATA_PREFIX remain supported as standard fallbacks.
+    No native OCR binary or language pack is downloaded by the application.
+    """
+    def configured_path(*names):
+        for name in names:
+            value = str(os.environ.get(name) or "").strip().strip('"').strip("'")
+            if value:
+                return str(Path(os.path.expandvars(value)).expanduser())
+        return ""
+
+    executable = configured_path("KIRA_TESSERACT_CMD", "TESSERACT_CMD")
+    tessdata_dir = configured_path("KIRA_TESSDATA_DIR", "TESSDATA_PREFIX")
+    candidates = []
+    if not executable:
+        for variable in ("ProgramFiles", "ProgramFiles(x86)"):
+            root = str(os.environ.get(variable) or "").strip()
+            if root:
+                candidates.append(str(Path(root) / "Tesseract-OCR" / "tesseract.exe"))
+        local = str(os.environ.get("LOCALAPPDATA") or "").strip()
+        if local:
+            candidates.append(str(Path(local) / "Programs" / "Tesseract-OCR" / "tesseract.exe"))
+    return {
+        "executable": executable,
+        "executable_candidates": tuple(candidates),
+        "tessdata_dir": tessdata_dir,
+    }
+
+
 def normalize_provider_order(order):
     """Keep a stable priority order for every cloud and local route."""
     valid = (*CLOUD_PROVIDERS, "ollama")
@@ -185,7 +217,7 @@ def _migrate_v2_to_v3(data, warnings=None):
 
 def _migrate_v3_to_v4(data, warnings=None):
     """Move provider/model discovery observations out of persistent user settings."""
-    for key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+    for key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests"):
         data.pop(key, None)
     return data
 
@@ -359,7 +391,7 @@ def load_settings():
                 raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
             # These names are reserved for process-local observations even when a
             # file claims to be at the current schema version.
-            runtime_keys = ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes")
+            runtime_keys = ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes")
             stripped_runtime_keys = [key for key in runtime_keys if key in saved]
             for key in stripped_runtime_keys:
                 saved.pop(key, None)
@@ -445,7 +477,7 @@ def load_settings():
 def save_settings(settings):
     stored = deepcopy(settings)
     # Runtime and detected observations are process-local; never write them to settings.json.
-    for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+    for runtime_key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes"):
         stored.pop(runtime_key, None)
     # Every persistence boundary validates against the same schema as load-time recovery.
     stored = _validate_settings(stored)

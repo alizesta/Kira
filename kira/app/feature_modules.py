@@ -52,6 +52,15 @@ OPTIONAL_APPLICATION_MODULES = frozenset({
     "brain_application",
     "reflection_application",
 })
+# Optional controls whether a feature may be disabled. Lazy controls only when
+# its implementation is constructed; required capabilities may still be deferred
+# until first use when startup does not need them.
+DEFERRED_REQUIRED_APPLICATION_MODULES = frozenset({
+    "desktop_capture",
+    "desktop_context",
+    "vision",
+})
+LAZY_APPLICATION_MODULES = OPTIONAL_APPLICATION_MODULES | DEFERRED_REQUIRED_APPLICATION_MODULES
 REQUIRED_APPLICATION_MODULES = (
     frozenset(APPLICATION_FEATURE_DEPENDENCIES) - OPTIONAL_APPLICATION_MODULES
 )
@@ -280,7 +289,7 @@ def register_application_modules(
         module_manager.register(
             module_id,
             lambda key=service_key, factory=factories[service_key],
-            lazy=module_id in OPTIONAL_APPLICATION_MODULES:
+            lazy=module_id in LAZY_APPLICATION_MODULES:
                 ServiceModule(key, factory, lazy=lazy),
             dependencies=APPLICATION_FEATURE_DEPENDENCIES[module_id],
             optional=module_id in OPTIONAL_APPLICATION_MODULES,

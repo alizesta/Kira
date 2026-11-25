@@ -125,6 +125,27 @@ if errorlevel 1 (
 )
 
 echo.
+echo [DEPENDENCY LOCK] Preparing uv and generating reproducible Windows locks...
+if defined KIRA_PYPI_INDEX (
+  python -m pip install --upgrade uv --index-url "%KIRA_PYPI_INDEX%" --retries 10 --timeout 60
+) else (
+  python -m pip install --upgrade uv --retries 10 --timeout 60
+)
+if errorlevel 1 goto netfail
+if not exist ".venv\Scripts\uv.exe" (
+  echo ERROR: uv installation completed without creating .venv\Scripts\uv.exe.
+  goto netfail
+)
+".venv\Scripts\uv.exe" --version
+if errorlevel 1 goto netfail
+python scripts\generate_dependency_locks.py --uv ".venv\Scripts\uv.exe"
+if errorlevel 1 (
+  echo ERROR: Reproducible dependency lock generation failed. Package installation was not started.
+  goto netfail
+)
+echo [DEPENDENCY LOCK] Core locks are verified; optional locks are generated where resolvable.
+
+echo.
 echo [1/6] Resolving and installing core Kira dependencies...
 python install_deps.py requirements.txt --constraints constraints.txt
 if errorlevel 1 goto netfail
@@ -144,7 +165,8 @@ if errorlevel 1 (
   echo WARNING: Python OCR dependencies are unavailable; other Kira features remain available.
   set "OCR_SETUP_FAILED=1"
 )
-python -m kira.vision_ocr
+python -m kira.vision_ocr --status
+if errorlevel 1 set "OCR_RUNTIME_SETUP_FAILED=1"
 
 echo.
 echo [4/6] Installing optional microphone and audio dependencies as one group...
@@ -181,7 +203,8 @@ echo Data folder: %KIRA_DATA_DIR%
 echo Future updates will reuse this folder automatically.
 if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
 if defined AUDIO_SETUP_FAILED echo WARNING: Optional audio dependencies need attention.
-if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention.
+if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention; other Vision features remain available.
+if defined OCR_RUNTIME_SETUP_FAILED echo WARNING: Native OCR runtime or required language data is incomplete; other Vision features remain available.
 if defined SYSTEM_SETUP_FAILED echo WARNING: Optional system integrations need attention.
 if defined OLLAMA_SETUP_FAILED echo WARNING: Local Ollama setup needs attention; rerun python -m kira.setup_manager --interactive.
 echo OCR native engine and language data are detected, not silently installed.

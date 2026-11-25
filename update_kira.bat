@@ -73,6 +73,8 @@ if errorlevel 1 (
     echo %%F| findstr /I /R /C:"^constraints.*\.txt$" >nul && set "NEEDS_INSTALL=1"
     if /I "%%F"=="install.bat" set "NEEDS_INSTALL=1"
     if /I "%%F"=="install_deps.py" set "NEEDS_INSTALL=1"
+    if /I "%%F"=="scripts/generate_dependency_locks.py" set "NEEDS_INSTALL=1"
+    echo %%F| findstr /I /R /C:"^dependency-locks/.*\.txt$" >nul && set "NEEDS_INSTALL=1"
     if /I "%%F"=="scripts/setup_local_voice.py" set "NEEDS_INSTALL=1"
     if /I "%%F"=="pyproject.toml" set "NEEDS_INSTALL=1"
   )

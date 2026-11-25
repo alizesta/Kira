@@ -37,10 +37,10 @@ STATE_FIELDS = frozenset({
     "_game_prev_wake",
     "_last_variant",
     "_latest_game_frame",
-    "_perception_worker",
-    "_perception_window_info",
-    "_perception_source",
-    "_perception_result",
+
+
+
+
     "_load_tiles",
     "_loading_route",
     "_local_tts_test_active",
@@ -102,6 +102,7 @@ SERVICE_FIELDS = frozenset({
     "shared_skills_application_service",
     "tool_agent",
     "vision_application_service",
+    "vision_runtime_provider",
     "vision_router",
     "voice_application_service",
     "web_search_service",
@@ -116,6 +117,7 @@ ADAPTER_FIELDS = frozenset({
     "director",
     "game_audio_listener",
     "game_mode",
+    "perception_worker_controller",
     "music_watcher",
     "motion",
     "speaker",
@@ -257,7 +259,7 @@ RESOURCE_OWNERS = {
     "_provider_test_worker": ("state", "_provider_test_worker"),
     "_ollama_worker": ("state", "_ollama_worker"),
     "_vision_worker": ("session", "_vision_worker"),
-    "_perception_worker": ("state", "_perception_worker"),
+
     "_web_test_worker": ("state", "_web_test_worker"),
     "_attach_worker": ("session_controller", "_attach_worker"),
     "_mcp_registry_worker": ("state", "_mcp_registry_worker"),
@@ -360,7 +362,7 @@ CONTROLLER_ACCESS = {
   "adapters": frozenset({"animator","bubble","companion","director","game_mode","motion"}),
   "views": frozenset({"code_chat","companion_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","gen_stop_btn","input","kode_activity","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
-  "resources": frozenset({"_model_import_worker","_local_voice_worker","_local_stt_test_listener","_mcp_registry_worker","_model_catalog_worker","_api_worker","_route_worker","_bench_worker","_scan_worker","_provider_test_worker","_ollama_worker","_vision_worker","_perception_worker","_web_test_worker","_attach_worker","_stopping_listener","_stopping_game_audio_listener","game_audio_listener","listener","wake_timer","_game_poll_timer","_game_capture_timer","_mood_ui_timer"}),
+  "resources": frozenset({"_model_import_worker","_local_voice_worker","_local_stt_test_listener","_mcp_registry_worker","_model_catalog_worker","_api_worker","_route_worker","_bench_worker","_scan_worker","_provider_test_worker","_ollama_worker","_vision_worker","_web_test_worker","_attach_worker","_stopping_listener","_stopping_game_audio_listener","game_audio_listener","listener","wake_timer","_game_poll_timer","_game_capture_timer","_mood_ui_timer"}),
   "extras": frozenset({"session","listener","resource","is_background_session"}),
  },
  "chat": {
@@ -391,9 +393,9 @@ CONTROLLER_ACCESS = {
   "extras": frozenset({"session"}),
  },
  "attachments_vision": {
-  "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_perception_worker","_perception_window_info","_perception_source","_perception_result","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
-  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","vision_router","voice_application_service"}),
-  "adapters": frozenset({"game_audio_listener","game_mode"}),
+  "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
+  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","vision_runtime_provider","vision_router","voice_application_service"}),
+  "adapters": frozenset({"game_audio_listener","game_mode","perception_worker_controller"}),
   "views": frozenset({"game_mode_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","mic_btn","send_strip","wake_btn","code_chat","tray"}),
   "peers": frozenset({"session","chat","runtime"}),
   "resources": frozenset({"_stopping_game_audio_listener"}),

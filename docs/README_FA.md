@@ -39,6 +39,7 @@
 | [Character, Emotion, and Memory](CHARACTER.md) | [شخصیت، احساسات و حافظه](CHARACTER_FA.md) |
 | [Character Profiles](CHARACTER_PROFILES.md) | [پروفایل‌های شخصیت](CHARACTER_PROFILES_FA.md) |
 | [Desktop Interaction](DESKTOP.md) | [تعامل با دسکتاپ](DESKTOP_FA.md) |
+| [Dependency Locks](DEPENDENCY_LOCKS.md) | [قفل وابستگی‌ها](DEPENDENCY_LOCKS_FA.md) |
 | [Emotional Runtime](EMOTIONAL_RUNTIME.md) | [اجرای موتور احساسی](EMOTIONAL_RUNTIME_FA.md) |
 | [Emotional State](EMOTIONAL_STATE.md) | [سامانهٔ وضعیت احساسی](EMOTIONAL_STATE_FA.md) |
 | [Emotion-driven Persian TTS](EMOTION_DRIVEN_TTS.md) | [تبدیل متن فارسی به گفتار با هدایت احساس](EMOTION_DRIVEN_TTS_FA.md) |

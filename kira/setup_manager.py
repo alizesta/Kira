@@ -15,6 +15,7 @@ from typing import Callable
 from urllib.parse import quote
 import requests
 from .ollama_client import resolve_model
+from .ollama_setup_state import OllamaSetupStateMachine, SetupStage, StageStatus
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 REGISTRY_URL = "https://registry.ollama.ai"
@@ -35,6 +36,7 @@ class SetupSnapshot:
     selected_model_installed: bool
     selected_model_runnable: bool
     error: str | None = None
+    stages: dict[str, dict[str, str | None]] | None = None
     @property
     def ready(self):
         return self.server_reachable and self.selected_model_installed and self.selected_model_runnable
@@ -130,6 +132,7 @@ class OllamaSetupManager:
         self.disk_usage=disk_usage
         self.store_path=Path(store_path) if store_path else model_store_path()
         self.selected_model=str(selected_model or "").strip()
+        self.state_machine=OllamaSetupStateMachine()
 
     def executable(self):
         found=self.executable_finder("ollama")
@@ -163,23 +166,82 @@ class OllamaSetupManager:
         return isinstance(payload,dict) and bool(str(payload.get("response") or "").strip())
 
     def inspect(self):
-        executable=self.executable()
+        """Probe every setup stage independently; one failed endpoint must not erase other facts."""
+        self.state_machine=OllamaSetupStateMachine()
         try:
-            version=str(self._get_json("/api/version").get("version") or "")
+            executable=self.executable()
+            self.state_machine.transition(SetupStage.INSTALLATION,
+                StageStatus.READY if executable else StageStatus.MISSING)
+        except Exception as exc:
+            executable=None
+            self.state_machine.transition(SetupStage.INSTALLATION,StageStatus.FAILED,str(exc))
+        try:
+            version_payload=self._get_json("/api/version")
+        except Exception as exc:
+            message=str(exc) or exc.__class__.__name__
+            self.state_machine.transition(SetupStage.CONNECTION,StageStatus.UNREACHABLE,message)
+            self.state_machine.transition(SetupStage.SERVICE,
+                StageStatus.STOPPED if executable else StageStatus.UNKNOWN,message if executable else None)
+            self.state_machine.transition(SetupStage.VERSION,StageStatus.UNAVAILABLE,message)
+            self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.NOT_TESTED)
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,
+                StageStatus.NOT_CONFIGURED if not self.selected_model else StageStatus.NOT_TESTED)
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.NOT_TESTED)
+            return SetupSnapshot(executable,False,None,(),self.selected_model,None,False,False,
+                message,self.state_machine.snapshot())
+        self.state_machine.transition(SetupStage.CONNECTION,StageStatus.READY)
+        self.state_machine.transition(SetupStage.SERVICE,StageStatus.READY)
+        version=str(version_payload.get("version") or "").strip()
+        self.state_machine.transition(SetupStage.VERSION,
+            StageStatus.READY if version else StageStatus.FAILED,
+            None if version else "Ollama API responded but did not provide a version.")
+        try:
             installed=self.installed_models()
-        except (requests.RequestException,ValueError,SetupError) as exc:
-            return SetupSnapshot(executable,False,None,(),self.selected_model,None,False,False,str(exc))
+            self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.READY)
+        except Exception as exc:
+            installed=()
+            catalog_error=str(exc) or exc.__class__.__name__
+            self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.FAILED,catalog_error)
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,
+                StageStatus.NOT_CONFIGURED if not self.selected_model else StageStatus.NOT_TESTED)
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.NOT_TESTED)
+            errors=[value for value in (self.state_machine.observation(SetupStage.VERSION).error,catalog_error) if value]
+            return SetupSnapshot(executable,True,version or None,installed,self.selected_model,None,
+                False,False,"; ".join(errors) or None,self.state_machine.snapshot())
         resolved=resolve_model(installed,self.selected_model)
         present=resolved is not None
-        runnable=False; error=None
-        if present:
+        if not self.selected_model:
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.NOT_CONFIGURED)
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.NOT_TESTED)
+            inference_error=None
+            runnable=False
+        elif not present:
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.MISSING)
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.NOT_TESTED)
+            inference_error=f"مدل انتخاب‌شده «{self.selected_model}» در فهرست مدل‌های نصب‌شده نیست."
+            runnable=False
+        else:
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.READY)
             try:
                 runnable=self.probe_model(resolved)
-                if not runnable: error=f"مدل انتخاب‌شده «{self.selected_model}» (نسخهٔ نصب‌شده: «{resolved}») نصب است اما اجرای مستقل آن موفق نبود."
-            except (requests.RequestException,ValueError) as exc: error=str(exc)
-        return SetupSnapshot(executable,True,version,installed,self.selected_model,resolved,present,runnable,error)
+                inference_error=None if runnable else (
+                    f"مدل انتخاب‌شده «{self.selected_model}» (نسخهٔ نصب‌شده: «{resolved}») "
+                    "نصب است اما اجرای مستقل آن موفق نبود.")
+            except Exception as exc:
+                runnable=False
+                inference_error=str(exc) or exc.__class__.__name__
+            self.state_machine.transition(SetupStage.INFERENCE,
+                StageStatus.READY if runnable else StageStatus.FAILED,inference_error)
+        version_error=self.state_machine.observation(SetupStage.VERSION).error
+        errors=[value for value in (version_error,inference_error) if value]
+        return SetupSnapshot(executable,True,version or None,installed,self.selected_model,resolved,
+            present,runnable,"; ".join(errors) or None,self.state_machine.snapshot())
 
     def install_engine(self):
+        existing=self.executable()
+        if existing:
+            self.state_machine.transition(SetupStage.INSTALLATION,StageStatus.READY)
+            return existing
         if os.name!="nt": raise SetupError("نصب خودکار Ollama فقط در Windows پشتیبانی می‌شود.")
         winget=self.executable_finder("winget")
         if not winget: raise SetupError("winget پیدا نشد؛ Ollama را با نصب‌کنندهٔ رسمی نصب کن.")
@@ -188,12 +250,15 @@ class OllamaSetupManager:
         if result.returncode: raise SetupError(f"نصب Ollama با کد {result.returncode} متوقف شد.")
         executable=self.executable()
         if not executable: raise SetupError("نصب اجرا شد اما ollama.exe پیدا نشد؛ PATH را تازه‌سازی کن.")
+        self.state_machine.transition(SetupStage.INSTALLATION,StageStatus.READY)
         return executable
 
     def start_server(self):
         # winget may start the Ollama tray/server itself; never launch a second daemon.
         try:
             self._get_json("/api/version",timeout=2)
+            self.state_machine.transition(SetupStage.SERVICE,StageStatus.READY)
+            self.state_machine.transition(SetupStage.CONNECTION,StageStatus.READY)
             return
         except (requests.RequestException,ValueError,SetupError):
             pass
@@ -204,8 +269,15 @@ class OllamaSetupManager:
             stderr=subprocess.DEVNULL,creationflags=flags)
         deadline=time.monotonic()+30
         while time.monotonic()<deadline:
-            try: self._get_json("/api/version",timeout=2); return
-            except (requests.RequestException,ValueError,SetupError): time.sleep(1)
+            try:
+                self._get_json("/api/version",timeout=2)
+                self.state_machine.transition(SetupStage.SERVICE,StageStatus.READY)
+                self.state_machine.transition(SetupStage.CONNECTION,StageStatus.READY)
+                return
+            except (requests.RequestException,ValueError,SetupError):
+                time.sleep(1)
+        self.state_machine.transition(SetupStage.SERVICE,StageStatus.FAILED,"سرور Ollama ظرف ۳۰ ثانیه آماده نشد.")
+        self.state_machine.transition(SetupStage.CONNECTION,StageStatus.UNREACHABLE,"سرور Ollama ظرف ۳۰ ثانیه آماده نشد.")
         raise SetupError("سرور Ollama ظرف ۳۰ ثانیه آماده نشد.")
 
     def preflight(self,model,*,profile=None):
@@ -219,7 +291,10 @@ class OllamaSetupManager:
 
     def pull_model(self,model,*,progress=None):
         if not MODEL_RE.fullmatch(str(model or "").strip()): raise ValueError("شناسهٔ مدل معتبر نیست.")
-        if resolve_model(self.installed_models(),model) is not None: return
+        if resolve_model(self.installed_models(),model) is not None:
+            self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.READY)
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.READY)
+            return
         self.preflight(model)
         response=self.session.post(f"{self.base_url}/api/pull",json={"model":model,"stream":True},
             stream=True,timeout=(10,60))
@@ -229,10 +304,32 @@ class OllamaSetupManager:
             item=json.loads(raw)
             if item.get("error"): raise SetupError(f"دانلود مدل ناموفق بود: {item['error']}")
             if progress: progress(item)
-        if model not in self.installed_models():
+        installed=self.installed_models()
+        resolved=resolve_model(installed,model)
+        if resolved is None:
+            self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.FAILED,
+                "Pull پایان یافت اما مدل در فهرست Ollama ثبت نشده است.")
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.MISSING)
             raise SetupError("Pull پایان یافت اما مدل ثبت نشده است؛ تنظیمات انتخاب‌شده تغییر نکرد.")
+        self.state_machine.transition(SetupStage.MODEL_CATALOG,StageStatus.READY)
+        self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.READY)
+        self.state_machine.transition(SetupStage.INFERENCE,StageStatus.NOT_TESTED)
 
     def select_model(self,model):
+        resolved=resolve_model(self.installed_models(),model)
+        if resolved is None:
+            self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.MISSING,"مدل انتخابی نصب نشده است.")
+            raise SetupError(f"مدل «{model}» نصب نشده است؛ انتخاب Route تغییری نکرد.")
+        try:
+            runnable=self.probe_model(resolved)
+        except Exception as exc:
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.FAILED,str(exc))
+            raise SetupError(f"بررسی Inference مدل «{model}» ناموفق بود؛ انتخاب Route تغییری نکرد: {exc}") from exc
+        if not runnable:
+            self.state_machine.transition(SetupStage.INFERENCE,StageStatus.FAILED,"مدل نصب است اما Inference موفق نبود.")
+            raise SetupError(f"مدل «{model}» نصب است اما Inference موفق نیست؛ انتخاب Route تغییری نکرد.")
+        self.state_machine.transition(SetupStage.SELECTED_MODEL,StageStatus.READY)
+        self.state_machine.transition(SetupStage.INFERENCE,StageStatus.READY)
         from . import config,routes
         settings=config.load_settings()
         candidates=[r for r in routes.get_routes(settings) if r.get("provider")=="ollama"]

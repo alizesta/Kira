@@ -13,6 +13,14 @@ from .vision_orchestrator import FrameJob
 from .vision_pipeline import CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_MAX_WIDTH
 
 
+def _service_value(service: Any, name: str) -> Any:
+    """Read a concrete or lazily proxied non-callable service attribute."""
+    value_reader = getattr(service, "value", None)
+    if callable(value_reader):
+        return value_reader(name)
+    return getattr(service, name)
+
+
 @dataclass(frozen=True)
 class CaptureResult:
     source: str
@@ -89,7 +97,7 @@ class VisionCaptureService:
 
     @property
     def privacy(self):
-        return self._vision.desktop_capture_application_service
+        return _service_value(self._vision, "desktop_capture_application_service")
 
     def list_monitors(self):
         return self._capture.list_monitors()
@@ -123,7 +131,7 @@ class VisionCaptureService:
                 reason=reason or "window_not_permitted", stage="privacy",
             )
 
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_window(
             window_info,
             max_width=policy.max_width,
@@ -132,8 +140,9 @@ class VisionCaptureService:
         return CaptureResult("game", window_info, _to_image(pixmap))
 
     def capture_desktop_frame(self) -> CaptureResult:
+        privacy = self.privacy
         window_info = self.foreground_window_info(allow_partial_identity=True)
-        allowed, reason = self.privacy.evaluate_window(window_info)
+        allowed, reason = privacy.evaluate_window(window_info)
         if not allowed or not self._vision.capture_allowed(
             True, None, source="desktop", window_info=window_info
         ):
@@ -142,62 +151,29 @@ class VisionCaptureService:
                 reason=reason or "vision_service_inactive", stage="privacy",
             )
 
-        policy = self._vision.policy
+        policy = _service_value(self._vision, "policy")
         # detail=True (small text / fine UI / OCR retry) escalates to 1280x720; default stays at the policy size.
         max_width = CAPTURE_DETAIL_MAX_WIDTH if detail else policy.max_width
         max_height = CAPTURE_DETAIL_MAX_HEIGHT if detail else policy.max_height
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
+            monitor_id=_service_value(privacy, "selected_monitor_id") or None,
             max_width=max_width,
             max_height=max_height,
         )
         return CaptureResult("desktop", window_info, _to_image(pixmap))
 
     def capture_explicit_window(self) -> CaptureResult:
-        window_info = self.foreground_window_info()
-        allowed, reason = self.privacy.evaluate_window(window_info, explicit=True)
-        if not allowed or not self._vision.capture_allowed(
-            False, None, source="desktop", window_info=window_info, explicit=True
-        ):
-            return CaptureResult(
-                "desktop", window_info, allowed=False,
-                reason=reason or "vision_service_inactive", stage="privacy",
-            )
-
-        policy = self._vision.policy
-        pixmap = self._capture.capture_window(
-            window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
-        )
-        return CaptureResult("desktop", window_info, _to_image(pixmap))
+        """Compatibility facade; snapshot policy is owned by VisionSnapshotService."""
+        return VisionSnapshotService(
+            self._game_mode_adapter, self._vision
+        ).capture_explicit_window()
 
     def capture_desktop_attachment(self, *, source_enabled: bool, detail: bool = False) -> CaptureResult:
-        """Capture a user-requested Eye Mode attachment after both source gates pass."""
-        if not source_enabled or not self.privacy.enabled:
-            return CaptureResult(
-                "desktop", None, allowed=False,
-                reason="eye_mode_source_disabled", stage="source",
-            )
-        window_info = self.foreground_window_info(allow_partial_identity=True)
-        allowed, reason = self.privacy.evaluate_window(window_info)
-        if not allowed or not self._vision.capture_allowed(
-            False, None, source="desktop", window_info=window_info
-        ):
-            return CaptureResult(
-                "desktop", window_info, allowed=False,
-                reason=reason or "privacy_or_source_disabled", stage="privacy",
-            )
-        policy = self._vision.policy
-        pixmap = self._capture.capture_monitor_for_window(
-            window_info,
-            monitor_id=self.privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
-        )
-        return CaptureResult("desktop", window_info, _to_image(pixmap))
+        """Compatibility facade; snapshot policy is owned by VisionSnapshotService."""
+        return VisionSnapshotService(
+            self._game_mode_adapter, self._vision
+        ).capture_desktop_attachment(source_enabled=source_enabled, detail=detail)
 
     def capture_live_monitor_frame(
         self,
@@ -214,6 +190,70 @@ class VisionCaptureService:
             max_height=max_height,
         )
         return _to_image(pixmap)
+
+
+
+
+class VisionSnapshotService:
+    """Own explicit screen snapshots separately from continuous capture and Live sessions."""
+
+    def __init__(self, game_mode_adapter: Any, vision_service: Any) -> None:
+        if game_mode_adapter is None or vision_service is None:
+            raise TypeError("game_mode_adapter and vision_service are required")
+        self._capture = game_mode_adapter.capture_service
+        self._vision = vision_service
+
+    @property
+    def privacy(self):
+        return _service_value(self._vision, "desktop_capture_application_service")
+
+    def capture_explicit_window(self) -> CaptureResult:
+        window_info = self._capture.foreground_window_info()
+        allowed, reason = self.privacy.evaluate_window(window_info, explicit=True)
+        if not allowed or not self._vision.capture_allowed(
+            False, None, source="desktop", window_info=window_info, explicit=True
+        ):
+            return CaptureResult(
+                "desktop", window_info, allowed=False,
+                reason=reason or "vision_service_inactive", stage="privacy",
+            )
+        policy = _service_value(self._vision, "policy")
+        pixmap = self._capture.capture_window(
+            window_info,
+            monitor_id=_service_value(self.privacy, "selected_monitor_id") or None,
+            max_width=policy.max_width,
+            max_height=policy.max_height,
+        )
+        return CaptureResult("desktop", window_info, _to_image(pixmap))
+
+    def capture_desktop_attachment(self, *, source_enabled: bool, detail: bool = False) -> CaptureResult:
+        if not source_enabled or not _service_value(self.privacy, "enabled"):
+            return CaptureResult(
+                "desktop", None, allowed=False,
+                reason="eye_mode_source_disabled", stage="source",
+            )
+        window_info = self._capture.foreground_window_info(
+            allow_partial_identity=True
+        )
+        allowed, reason = self.privacy.evaluate_window(window_info)
+        if not allowed or not self._vision.capture_allowed(
+            False, None, source="desktop", window_info=window_info
+        ):
+            return CaptureResult(
+                "desktop", window_info, allowed=False,
+                reason=reason or "privacy_or_source_disabled", stage="privacy",
+            )
+        policy = _service_value(self._vision, "policy")
+        # detail=True (small text / fine UI / OCR retry) escalates to 1280x720; default stays at the policy size.
+        max_width = CAPTURE_DETAIL_MAX_WIDTH if detail else policy.max_width
+        max_height = CAPTURE_DETAIL_MAX_HEIGHT if detail else policy.max_height
+        pixmap = self._capture.capture_monitor_for_window(
+            window_info,
+            monitor_id=_service_value(self.privacy, "selected_monitor_id") or None,
+            max_width=max_width,
+            max_height=max_height,
+        )
+        return CaptureResult("desktop", window_info, _to_image(pixmap))
 
 
 @dataclass(frozen=True)
@@ -261,7 +301,7 @@ class VisionAnalysisCoordinator:
         if not _valid_frame(frame):
             return None, None
 
-        orchestrator = self._vision.frame_orchestrator
+        orchestrator = _service_value(self._vision, "frame_orchestrator")
         orchestrator.configure_budget(
             max_frames_per_minute=max_frames_per_minute,
             min_interval_seconds=interval_seconds,
@@ -289,7 +329,7 @@ class VisionAnalysisCoordinator:
 
         try:
             payload, visual_sample = self._frame_encoder(
-                frame, int(self._vision.policy.jpeg_quality)
+                frame, int(_service_value(self._vision, "policy").jpeg_quality)
             )
             payload = bytes(payload or b"")
             visual_sample = bytes(visual_sample or b"")
@@ -534,10 +574,10 @@ class VisionAnalysisCoordinator:
             and int(current.get("hwnd") or 0) == int(hwnd or -1)
             and int(current.get("pid") or 0) == int(pid or -1)
         )
-        privacy = self._vision.desktop_capture_application_service
+        privacy = _service_value(self._vision, "desktop_capture_application_service")
         desktop_source_active = (
             source == "desktop" and not closing and bool(game_mode_enabled)
-            and privacy is not None and bool(privacy.enabled)
+            and privacy is not None and bool(_service_value(privacy, "enabled"))
         )
         desktop_allowed, desktop_reason = (
             privacy.evaluate_window(current)
@@ -722,9 +762,9 @@ class LiveSessionManager:
             return self._release(frame_context)
 
         max_bytes = self._max_frame_bytes()
-        privacy = self._vision.desktop_capture_application_service
+        privacy = _service_value(self._vision, "desktop_capture_application_service")
         if source == "desktop":
-            source_enabled = bool(privacy.enabled)
+            source_enabled = bool(_service_value(privacy, "enabled"))
         elif source == "game":
             permissions = self._game_mode.permissions(game_mode_profile)
             source_enabled = bool(game_mode_enabled and permissions["vision_capture"])
@@ -754,7 +794,7 @@ class LiveSessionManager:
         foreground_identity = _window_identity(current)
         expected = _window_identity(window_info)
         identity = (
-            ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
+            ("desktop-monitor", str(_service_value(privacy, "selected_monitor_id") or "auto"))
             if source == "desktop" else foreground_identity
         )
         if source == "game" and (
@@ -777,7 +817,7 @@ class LiveSessionManager:
         else:
             frame_image = self._capture.capture_live_monitor_frame(
                 current,
-                monitor_id=privacy.selected_monitor_id if source == "desktop" else None,
+                monitor_id=_service_value(privacy, "selected_monitor_id") if source == "desktop" else None,
                 max_width=480,
                 max_height=270,
             )
