@@ -71,7 +71,7 @@ class AppearanceRuntime:
         wanted = (
             page.window_effect.currentData() if page is not None
             else settings.get("window_effect", SETTINGS_DEFAULTS["window_effect"])
-        ) or "acrylic"
+        ) or SETTINGS_DEFAULTS["window_effect"]
         current = winfx.active_effect(wanted)
         self.context.state._effect = current
         set_glow_intensity(appearance["glow"] / 100.0)

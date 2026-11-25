@@ -67,7 +67,7 @@ class AppearancePage(QScrollArea):
         ):
             self.window_effect.addItem(label, value)
         self.window_effect.setCurrentIndex(
-            max(0, self.window_effect.findData(settings.get("window_effect", SETTINGS_DEFAULTS["window_effect"])))
+            max(0, self.window_effect.findData(settings.get("window_effect") or SETTINGS_DEFAULTS["window_effect"]))
         )
         if not glass_supported:
             self.window_effect.setEnabled(False)

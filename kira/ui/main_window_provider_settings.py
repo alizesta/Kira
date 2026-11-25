@@ -9,6 +9,7 @@ from PySide6.QtCore import Slot
 from .. import api_manager
 from .. import model_catalog
 from .. import routes as route_model
+from ..settings_schema import DEFAULTS as SETTINGS_DEFAULTS
 _log = logging.getLogger(__name__)
 
 
@@ -741,7 +742,7 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.route_list.setCurrentRow(0)
         self.context.views.route_list.blockSignals(False)
         self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
-                                      ("" if self.context.services.settings.get("failover_enabled", True) else " · Failover خاموش است"))
+                                      ("" if self.context.services.settings.get("failover_enabled", SETTINGS_DEFAULTS["failover_enabled"]) else " · Failover خاموش است"))
         self.on_route_selected()
 
     def on_route_selected(self):
@@ -766,8 +767,9 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
             lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
             self.context.views.route_timeout.setRange(lo, hi)
-            self.context.views.route_timeout.setValue(int(route.get("timeout", 18)))
-            self.context.views.route_cooldown.setValue(int(route.get("cooldown", 45)))
+            timeout_default = route_model.DEFAULT_LOCAL_TIMEOUT if local else route_model.DEFAULT_CLOUD_TIMEOUT
+            self.context.views.route_timeout.setValue(int(route.get("timeout", timeout_default)))
+            self.context.views.route_cooldown.setValue(int(route.get("cooldown", route_model.DEFAULT_COOLDOWN)))
             is_ollama = route["provider"] == "ollama"
             self.context.views.route_ctx.setEnabled(is_ollama)
             self.context.views.route_predict.setEnabled(is_ollama)

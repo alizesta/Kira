@@ -45,6 +45,8 @@ from .main_window_voice_settings_support import (
 )
 
 
+from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+
 from .window_feature_controller import WindowFeatureController
 
 
@@ -291,7 +293,7 @@ class VoiceSettingsController(WindowFeatureController):
             self.refresh_local_voice_status()
             return
         settings = self.context.services.settings
-        selected_model = str(model_id or settings.get("local_voice_asr_model") or "")
+        selected_model = str(model_id or settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
         state = self.context.services.voice_application_service.asr_manager.discover(settings)
@@ -579,7 +581,7 @@ class VoiceSettingsController(WindowFeatureController):
             discovered = local_voice.discover_cached_models()
 
             page.asr_backend.blockSignals(True)
-            engine_index = page.asr_backend.findData(str(settings.get("local_voice_asr_backend") or "shenava"))
+            engine_index = page.asr_backend.findData(str(settings.get("local_voice_asr_backend") or SETTINGS_DEFAULTS["local_voice_asr_backend"]))
             if engine_index >= 0:
                 page.asr_backend.setCurrentIndex(engine_index)
             page.asr_backend.blockSignals(False)
@@ -776,11 +778,11 @@ class VoiceSettingsController(WindowFeatureController):
 
         from ..listener import Listener
         from .. import local_voice
-        model_name = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
-        language = str(self.context.services.settings.get("stt_language") or "fa")
+        model_name = str(self.context.services.settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])
+        language = str(self.context.services.settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"])
         listener = Listener(
             model_name, language, self,
-            sensitivity=int(self.context.services.settings.get("mic_sensitivity", 100)),
+            sensitivity=int(self.context.services.settings.get("mic_sensitivity", SETTINGS_DEFAULTS["mic_sensitivity"])),
             barge_in=False, settings=self.context.services.settings,
             asr_manager=self.context.services.voice_application_service.asr_manager,
         )

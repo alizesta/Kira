@@ -41,6 +41,8 @@ from .main_window_character_settings_support import (
 )
 
 
+from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+
 from .window_feature_controller import WindowFeatureController
 
 
@@ -92,10 +94,10 @@ class CharacterSettingsController(WindowFeatureController):
         initiative_checkbox.blockSignals(False)
         voice = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
         self.context.views.character_page.char_voice_rate.blockSignals(True)
-        self.context.views.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.context.services.settings.get("voice_rate", 0))))
+        self.context.views.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.context.services.settings.get("voice_rate", SETTINGS_DEFAULTS["voice_rate"]))))
         self.context.views.character_page.char_voice_rate.blockSignals(False)
         self.context.views.character_page.char_voice_volume.blockSignals(True)
-        self.context.views.character_page.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.context.services.settings.get("voice_volume", 0.9))) * 100))
+        self.context.views.character_page.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.context.services.settings.get("voice_volume", SETTINGS_DEFAULTS["voice_volume"]))) * 100))
         self.context.views.character_page.char_voice_volume.blockSignals(False)
         resources = (self.context.services.settings.get("character_resources") or {}).get(cid) or {}
         for widget, key in ((self.context.views.character_page.char_skills_edit, "skills"), (self.context.views.character_page.char_mcp_edit, "mcp"),
