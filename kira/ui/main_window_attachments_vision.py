@@ -1130,7 +1130,9 @@ class AttachmentsVisionController(WindowFeatureController):
         if live_ready:
             interval_seconds, max_frames_per_minute = self._live_budget_values()
         else:
-            interval_seconds = max(0.25, float(service.policy.interval_seconds))
+            interval_seconds = max(
+                0.25, float(_service_value(service, "policy").interval_seconds)
+            )
             max_frames_per_minute = max(1, int(60.0 / interval_seconds))
         try:
             frame_context, decision = self._analysis_coordinator().submit_frame(

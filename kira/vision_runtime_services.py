@@ -139,8 +139,9 @@ class VisionCaptureService:
         return CaptureResult("game", window_info, _to_image(pixmap))
 
     def capture_desktop_frame(self) -> CaptureResult:
+        privacy = self.privacy
         window_info = self.foreground_window_info(allow_partial_identity=True)
-        allowed, reason = self.privacy.evaluate_window(window_info)
+        allowed, reason = privacy.evaluate_window(window_info)
         if not allowed or not self._vision.capture_allowed(
             True, None, source="desktop", window_info=window_info
         ):
@@ -152,15 +153,16 @@ class VisionCaptureService:
         policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
-            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
+            monitor_id=_service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
         return CaptureResult("desktop", window_info, _to_image(pixmap))
 
     def capture_explicit_window(self) -> CaptureResult:
+        privacy = self.privacy
         window_info = self.foreground_window_info()
-        allowed, reason = self.privacy.evaluate_window(window_info, explicit=True)
+        allowed, reason = privacy.evaluate_window(window_info, explicit=True)
         if not allowed or not self._vision.capture_allowed(
             False, None, source="desktop", window_info=window_info, explicit=True
         ):
@@ -172,7 +174,7 @@ class VisionCaptureService:
         policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_window(
             window_info,
-            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
+            monitor_id=_service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
@@ -180,7 +182,8 @@ class VisionCaptureService:
 
     def capture_desktop_attachment(self, *, source_enabled: bool) -> CaptureResult:
         """Capture a user-requested Eye Mode attachment after both source gates pass."""
-        if not source_enabled or not self._service_value(privacy, "enabled"):
+        privacy = self.privacy
+        if not source_enabled or not _service_value(privacy, "enabled"):
             return CaptureResult(
                 "desktop", None, allowed=False,
                 reason="eye_mode_source_disabled", stage="source",
@@ -197,7 +200,7 @@ class VisionCaptureService:
         policy = _service_value(self._vision, "policy")
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
-            monitor_id=self._service_value(privacy, "selected_monitor_id") or None,
+            monitor_id=_service_value(privacy, "selected_monitor_id") or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
