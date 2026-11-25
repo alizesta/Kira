@@ -85,4 +85,59 @@ class SetupManagerTests(unittest.TestCase):
                 manager.pull_model("new-model")
         self.assertEqual(manager.selected_model,"old-model")
 
+    def test_inspection_keeps_connection_and_version_when_model_catalog_fails(self):
+        session=mock.Mock()
+        session.get.side_effect=[Response({"version":"0.6.0"}),requests.ConnectionError("tags endpoint failed")]
+        manager=OllamaSetupManager(session=session,selected_model="qwen3.5:4b",
+            executable_finder=lambda _name:"/fake/ollama")
+        snapshot=manager.inspect()
+        self.assertTrue(snapshot.server_reachable)
+        self.assertEqual(snapshot.version,"0.6.0")
+        self.assertEqual(snapshot.stages["connection"]["status"],"ready")
+        self.assertEqual(snapshot.stages["version"]["status"],"ready")
+        self.assertEqual(snapshot.stages["model_catalog"]["status"],"failed")
+        self.assertEqual(snapshot.stages["inference"]["status"],"not_tested")
+
+    def test_installed_executable_does_not_mean_server_or_model_is_ready(self):
+        session=mock.Mock()
+        session.get.side_effect=requests.ConnectionError("offline")
+        manager=OllamaSetupManager(session=session,selected_model="qwen3.5:4b",
+            executable_finder=lambda _name:"/fake/ollama")
+        snapshot=manager.inspect()
+        self.assertIsNotNone(snapshot.executable)
+        self.assertFalse(snapshot.server_reachable)
+        self.assertEqual(snapshot.stages["installation"]["status"],"ready")
+        self.assertEqual(snapshot.stages["service"]["status"],"stopped")
+        self.assertEqual(snapshot.stages["connection"]["status"],"unreachable")
+        self.assertEqual(snapshot.stages["inference"]["status"],"not_tested")
+
+    def test_installed_model_with_failed_inference_is_not_ready(self):
+        session=mock.Mock()
+        session.get.side_effect=[Response({"version":"0.6.0"}),Response({"models":[{"name":"qwen3.5:4b"}]})]
+        manager=OllamaSetupManager(session=session,selected_model="qwen3.5:4b")
+        with mock.patch.object(manager,"probe_model",return_value=False):
+            snapshot=manager.inspect()
+        self.assertTrue(snapshot.selected_model_installed)
+        self.assertFalse(snapshot.selected_model_runnable)
+        self.assertEqual(snapshot.stages["selected_model"]["status"],"ready")
+        self.assertEqual(snapshot.stages["inference"]["status"],"failed")
+        self.assertFalse(snapshot.ready)
+
+    def test_install_engine_is_idempotent_when_executable_already_exists(self):
+        runner=mock.Mock()
+        manager=OllamaSetupManager(executable_finder=lambda _name:"/existing/ollama",runner=runner)
+        self.assertEqual(manager.install_engine(),"/existing/ollama")
+        runner.assert_not_called()
+        self.assertEqual(manager.state_machine.snapshot()["installation"]["status"],"ready")
+
+    def test_pull_accepts_installed_latest_alias_after_download(self):
+        session=mock.Mock()
+        session.get.side_effect=[Response({"models":[]}),Response({"models":[{"name":"qwen3.5:latest"}]})]
+        session.post.return_value=Response(lines=[])
+        manager=OllamaSetupManager(session=session)
+        with mock.patch.object(manager,"preflight",return_value=(
+            ModelManifest("qwen3.5:4b",100,1),110,"gpu_fit","ok")):
+            manager.pull_model("qwen3.5:4b")
+        self.assertEqual(manager.state_machine.snapshot()["selected_model"]["status"],"ready")
+
 if __name__=="__main__": unittest.main()

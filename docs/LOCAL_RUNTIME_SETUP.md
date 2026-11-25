@@ -14,7 +14,7 @@ Run read-only diagnostics with:
 .venv\Scripts\python.exe -m kira.setup_manager --status
 ~~~
 
-Diagnostics distinguish the Ollama executable, server reachability, version, installed model names, configured model, the exact installed alias resolved for that configuration, and a real local generation probe. An installed model is not automatically selected, and a configured model is not ready until it can execute independently.
+Diagnostics expose a state-machine snapshot with independent installation, service, connection, version, model-catalog, selected-model, and inference states. A failure reading `/api/tags` no longer hides a successful `/api/version` connection; a failed generation probe is reported separately from model installation. Each stage carries its own status and actionable error where available. The executable, server reachability, version, installed model names, configured model, resolved installed alias, and real local generation probe remain independently observable. An installed model is not automatically selected, and a configured model is not ready until it can execute independently.
 
 Before pulling, Setup Manager reads the Ollama Registry manifest, sums layer sizes, reserves 10% for metadata/recovery, and checks free space on the model-store volume. It refuses to start when space is insufficient; it does not guess sizes from a static table. Windows RAM is read from the operating system and NVIDIA VRAM from nvidia-smi when available. Hardware fit is advisory, not a speed guarantee.
 
