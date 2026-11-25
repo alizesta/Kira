@@ -173,9 +173,10 @@ def test_one_frame_has_one_central_cloud_route_and_a_bounded_analysis_queue():
     assert "FrameJob(frame_context, jpeg, visual_sample)" in source
     assert "service.enqueue_frame(" in source
     assert "def _dispatch_next_vision_job(self):" in source
-    assert "job = service.take_next_frame()" in source
-    assert "while len(self._pending) >= self.capacity:" in orchestrator
-    assert "self._pending.popleft()" in orchestrator
+    assert "job = service.take_next_frame(session_id)" in source
+    assert "def take_next(self, session_id: str | None = None)" in orchestrator
+    assert "if len(session_pending) >= self.capacity:" in orchestrator
+    assert "self._pending.remove(session_pending[0])" in orchestrator
     assert "worker_running=False" in source
 
 
