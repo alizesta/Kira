@@ -405,11 +405,19 @@ def initialize_main_window(
                 "skills": "skills_page",
                 "voice": "voice_page",
             }
-            pages = {
-                name: getattr(self.views, field)
-                for name, field in page_fields.items()
-                if hasattr(self.views, field)
-            }
+            from shiboken6 import isValid as is_qobject_valid
+            pages = {}
+            for name, field in page_fields.items():
+                if not hasattr(self.views, field):
+                    continue
+                candidate = getattr(self.views, field)
+                # A previous lazy-build rollback may have scheduled a widget for
+                # deletion while its view alias still exists. Never finalize a dead Qt object.
+                try:
+                    if is_qobject_valid(candidate):
+                        pages[name] = candidate
+                except (RuntimeError, TypeError):
+                    continue
             apply_all_page_finalizers(pages)
             session_controller.tidy_forms()
             session_controller.retranslate()
