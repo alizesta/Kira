@@ -182,8 +182,13 @@ class VisionCaptureService:
 
     def capture_desktop_attachment(self, *, source_enabled: bool) -> CaptureResult:
         """Capture a user-requested Eye Mode attachment after both source gates pass."""
+        if not source_enabled:
+            return CaptureResult(
+                "desktop", None, allowed=False,
+                reason="eye_mode_source_disabled", stage="source",
+            )
         privacy = self.privacy
-        if not source_enabled or not _service_value(privacy, "enabled"):
+        if not _service_value(privacy, "enabled"):
             return CaptureResult(
                 "desktop", None, allowed=False,
                 reason="eye_mode_source_disabled", stage="source",

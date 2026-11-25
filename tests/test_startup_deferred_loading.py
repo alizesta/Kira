@@ -414,6 +414,19 @@ assert not loaded, sorted(loaded)
 
 
 
+    def test_window_composition_does_not_realize_required_vision_services(self):
+        source = (ROOT / "kira" / "ui" / "main_window_composition.py").read_text(encoding="utf-8")
+        self.assertNotIn("vision_application_service.policy", source)
+        self.assertNotIn(
+            "vision_application_service.desktop_capture_application_service",
+            source,
+        )
+        self.assertIn("self.state._game_capture_timer.setInterval(5000)", source)
+        self.assertIn(
+            "self.services.settings[\"desktop_vision_enabled\"] = False",
+            source,
+        )
+
     def test_monitor_menu_does_not_realize_capture_during_window_composition(self):
         source = (ROOT / "kira" / "ui" / "main_window_composition.py").read_text(encoding="utf-8")
         self.assertNotIn(
