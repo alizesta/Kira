@@ -8,6 +8,17 @@ from kira import evidence_memory as em
 
 
 class EvidenceMemoryArchitectureTests(unittest.TestCase):
+    def test_fact_mutations_are_owned_by_dedicated_repository(self):
+        self.assertEqual(
+            type(em._FACT_REPOSITORY).__module__,
+            "kira.evidence_memory_repository",
+        )
+        self.assertTrue(em.add_manual("repository-owned evidence fact"))
+        self.assertTrue(any(
+            "repository-owned evidence fact" in item["text"]
+            for item in em.list_extra_items()
+        ))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.patches = [
