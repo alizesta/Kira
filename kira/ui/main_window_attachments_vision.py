@@ -2,7 +2,6 @@
 from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
 from ..perception.events import PerceptionEvent
-from ..vision_runtime_services import _service_value
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
     AttachmentTile,
@@ -84,7 +83,9 @@ class AttachmentsVisionController(WindowFeatureController):
         )
 
     def _cancel_perception_worker(self):
-        controller = getattr(self, "_perception_worker_controller", None)
+        controller = getattr(
+            self.context.services, "perception_worker_controller", None
+        )
         if controller is not None:
             controller.cancel()
     def _vision_interval_ms(self):
