@@ -1401,20 +1401,21 @@ class AttachmentsVisionController(WindowFeatureController):
             "title": frame_context.window_identity[3],
             "path": frame_context.window_identity[4],
         }
-        if not service.should_analyze(
-            enabled=enabled, profile=profile, frame_available=True,
-            worker_running=False, chat_busy=session.busy, provider_busy=session.client.busy,
-            speech_active=self.context.services.voice_application_service.is_speaking(),
-            source=source, window_info=window_info,
-        ):
-            service.release_frame_budget(frame_context)
-            return
-        if not service.accept_frame(job.payload, visual_sample=job.visual_sample):
-            service.release_frame_budget(frame_context)
-            return
-        image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
-        image = att.image_attachment(job.payload, image_name, "image/jpeg")
         try:
+            eligible = service.should_analyze(
+                enabled=enabled, profile=profile, frame_available=True,
+                worker_running=False, chat_busy=session.busy, provider_busy=session.client.busy,
+                speech_active=self.context.services.voice_application_service.is_speaking(),
+                source=source, window_info=window_info,
+            )
+            if not eligible:
+                service.release_frame_budget(frame_context)
+                return
+            if not service.accept_frame(job.payload, visual_sample=job.visual_sample):
+                service.release_frame_budget(frame_context)
+                return
+            image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
+            image = att.image_attachment(job.payload, image_name, "image/jpeg")
             router = getattr(self.context.services, "vision_router", None)
             if router is None:
                 raise RuntimeError("isolated Vision router is unavailable")
