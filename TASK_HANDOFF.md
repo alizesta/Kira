@@ -1,3 +1,9 @@
+## Eye Mode auto screenshot + single detail retry (2026-11-26 01:25 Iran)
+- Branch `claude/eye-vision-free-models`. With Eye Mode on, `ChatController.submit` now attaches ONE fresh screenshot when the question refers to the screen (`refers_to_screen`, phrase list `SCREEN_HINTS` in `vision_pipeline.py`). Not attached when busy (a queued frame would be stale), when the user attached something, when Eye Mode is off, or when settings key `eye_auto_screenshot` is false (default true, not in the schema/UI yet).
+- Small-text questions capture 1280x720 q80. If the reply says it could not read (`UNREADABLE_HINTS`), `on_stream_done` -> `maybe_retry_eye_detail` resends ONCE at 1280x720 (the retry is marked detail, so it never loops). Known limit: the retry re-submits the same question, so the user message appears twice in the chat.
+- Not verified: the full MainWindow flow, Windows, a real Gemini call; the hint lists are keyword guesses and need tuning from real use. Whether older turns' screenshots stay in provider history was not checked.
+- New `tests/test_eye_auto_screenshot.py` (4 tests, mocked controller). Pre-existing failures unchanged (`test_chat_application_service` event publisher test, OCR test, router tests).
+
 ## Eye Vision detail capture plumbing — follow-up (2026-11-26 00:48 Iran)
 - Branch `claude/eye-vision-free-models`. `capture_desktop_attachment(detail=True)` now captures 1280x720; `_live_vision_attachment(question, detail=)` picks detail via `wants_detail_capture(question)` and encodes at q80. Detail constants moved to Qt-free `vision_pipeline.py` (re-exported by `desktop_capture.py`).
 - Still NOT triggered anywhere: since Task 2, ordinary chat does not attach raw frames, so `_game_vision_attachment` has no caller. The automatic single retry (`reply_was_unreadable`) needs a chat-side trigger that is not built yet.

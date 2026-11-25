@@ -44,6 +44,19 @@ UNREADABLE_HINTS = (
 )
 
 
+# Phrases that mean the question is about what is on the screen right now: only then is a screenshot attached.
+SCREEN_HINTS = (
+    "صفحه", "اسکرین", "صفحه‌نمایش", "مانیتور", "ببین", "نگاه کن", "نگاه کنی", "می‌بینی", "میبینی", "این چیه", "اینجا چیه",
+    "چی نوشته", "چی میگه", "چی می‌گه", "کجام", "کجای", "این منو", "این بخش", "این دکمه",
+    "screen", "look at", "do you see", "what is this", "what's this", "what does it say", "where am i", "this menu",
+)
+
+
+def refers_to_screen(question: str | None) -> bool:
+    low = str(question or "").casefold()
+    return any(hint in low for hint in SCREEN_HINTS)
+
+
 def wants_detail_capture(question: str | None) -> bool:
     low = str(question or "").casefold()
     return any(hint in low for hint in DETAIL_HINTS)

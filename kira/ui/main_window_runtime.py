@@ -346,6 +346,8 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             self.feature_controller("chat").add_sources(self.context.session._web_found)
         self.context.session._web_found = None
         self._send_next_pending()
+        if not res.get("stopped") and not res.get("interrupted"):
+            self.feature_controller("chat").maybe_retry_eye_detail(text)
 
     def on_error(self, error):
         if self.context.state._closing:

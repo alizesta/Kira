@@ -1,6 +1,7 @@
 """Chat feature controller for the desktop window."""
 from PySide6.QtCore import Slot
 from ..chat.context_builder import latest_user_text
+from ..vision_pipeline import refers_to_screen, reply_was_unreadable, wants_detail_capture
 from .main_window_chat_support import (
     ApplicationEventKind,
     QMessageBox,
@@ -137,7 +138,48 @@ class ChatController(WindowFeatureController):
                 else:
                     self.feature_controller("runtime").on_error(event.error or "Chat request failed")
 
-    def submit(self, text, attachments=None, _voice=None):
+    def _maybe_attach_eye_frame(self, text, attachments, *, detail=False):
+        """Eye Mode only: attach ONE fresh screenshot when the question is about the screen.
+
+        Never attaches while busy (a queued frame would be stale), never when the user attached something,
+        and never accumulates: each turn gets its own latest frame. Small-text questions use 1280x720.
+        """
+        self.context.session._eye_auto_turn = None
+        if attachments or self.context.session.busy or not self.context.state._game_mode_enabled:
+            return attachments
+        if not (detail or refers_to_screen(text)):
+            return attachments
+        if not self.context.services.settings.get("eye_auto_screenshot", True):
+            return attachments
+        try:
+            frame = self.feature_controller("attachments_vision")._live_vision_attachment(text, detail=detail)
+        except Exception:  # noqa: BLE001 - a failed capture must never block ordinary chat
+            return attachments
+        if not frame:
+            return attachments
+        self.context.session._eye_auto_turn = {"text": str(text), "detail": bool(detail or wants_detail_capture(text))}
+        return [frame]
+
+    def maybe_retry_eye_detail(self, reply):
+        """After an unreadable reply to an auto screenshot, resend ONCE at 1280x720 (never loops)."""
+        turn = getattr(self.context.session, "_eye_auto_turn", None)
+        self.context.session._eye_auto_turn = None
+        if not turn or turn.get("detail") or not reply_was_unreadable(reply):
+            return
+        session = self.context.state.cur
+
+        def run():
+            if self.context.state._closing or self.context.state.cur is not session or session.busy:
+                return
+            with self.feature_controller("session")._as(session):
+                self.feature_controller("session").add_chat(
+                    "system", "🔍 متن برای مدل ریز بود؛ یک بار دیگر با رزولوشن بالاتر (۱۲۸۰×۷۲۰) می‌فرستم."
+                )
+                self.submit(turn["text"], None, None, _eye_detail=True)
+
+        QTimer.singleShot(0, run)
+
+    def submit(self, text, attachments=None, _voice=None, *, _eye_detail=False):
         if self.context.state.cur.status in ("closing", "closed", "failed"):
             return
         if _voice is None:
@@ -157,6 +199,7 @@ class ChatController(WindowFeatureController):
                 if control_dispatch.reply_text:
                     self.feature_controller("session").add_chat("system", control_dispatch.reply_text)
                 return
+        attachments = self._maybe_attach_eye_frame(text, attachments, detail=_eye_detail)
         self.feature_controller("session")._ensure_session_conversation(self.context.state.cur)
         result = self.context.services.chat_application_service.submit_message(
             self.context.state.cur.session_id, text, attachments, voice,

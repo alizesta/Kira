@@ -127,3 +127,9 @@ class DetailEscalationTests(unittest.TestCase):
     def test_detail_constants_are_1280x720_q80(self):
         from kira.vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_MAX_WIDTH
         self.assertEqual((CAPTURE_DETAIL_MAX_WIDTH, CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_JPEG_QUALITY), (1280, 720, 80))
+
+    def test_screen_reference_detection(self):
+        from kira.vision_pipeline import refers_to_screen
+        self.assertTrue(refers_to_screen("چی نوشته روی صفحه؟"))
+        self.assertTrue(refers_to_screen("can you look at this menu"))
+        self.assertFalse(refers_to_screen("امروز هوا چطوره؟"))
