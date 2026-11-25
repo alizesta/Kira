@@ -162,6 +162,55 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.refresh_model_catalogs()
 
+    def build_network_policy_panel(self):
+        """Expose the network boundary as an explicit, persisted user permission."""
+        panel = QWidget()
+        form = QFormLayout(panel)
+        self.network_policy_combo = QComboBox()
+        self.network_policy_combo.addItem("فقط مدل‌های محلی؛ ارسال به Cloud ممنوع", "local_only")
+        self.network_policy_combo.addItem("اجازهٔ استفاده از مدل‌های Cloud در صورت نیاز", "cloud_permitted")
+        settings = self.context.services.settings
+        current = str(settings.get("network_policy") or "local_only").strip().lower()
+        if current not in ("local_only", "cloud_permitted"):
+            current = "local_only"
+        self.network_policy_combo.setCurrentIndex(self.network_policy_combo.findData(current))
+        self.network_policy_combo.activated.connect(self.on_network_policy_selected)
+        form.addRow("مجوز دسترسی شبکه", self.network_policy_combo)
+        note = QLabel(
+            "حالت محلی پیش‌فرض امن است. فعال‌کردن Cloud اجازه می‌دهد درخواست‌های مجاز "
+            "در صورت نیاز به Provider ابری ارسال شوند؛ کلید API به‌تنهایی این مجوز را فعال نمی‌کند."
+        )
+        note.setWordWrap(True)
+        form.addRow("", note)
+        return panel
+
+    def on_network_policy_selected(self, index):
+        """Persist Cloud permission only after a direct, explicit confirmation."""
+        requested = str(self.network_policy_combo.itemData(index) or "local_only")
+        if requested not in ("local_only", "cloud_permitted"):
+            requested = "local_only"
+        settings = self.context.services.settings
+        previous = str(settings.get("network_policy") or "local_only").strip().lower()
+        if previous not in ("local_only", "cloud_permitted"):
+            previous = "local_only"
+        if requested == "cloud_permitted" and previous != "cloud_permitted":
+            answer = QMessageBox.question(
+                self.window,
+                "اجازهٔ استفاده از Cloud",
+                "با فعال‌کردن این گزینه، درخواست‌های مجاز Kira ممکن است همراه متن و "
+                "ضمیمه‌های لازم به Provider ابری ارسال شوند. ادامه می‌دهی؟",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                self.network_policy_combo.setCurrentIndex(
+                    self.network_policy_combo.findData(previous)
+                )
+                return
+        settings["network_policy"] = requested
+        self.feature_controller("runtime").save_now()
+        self.refresh_route_list()
+
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
         page = QWidget()
@@ -171,6 +220,7 @@ class ProviderSettingsController(WindowFeatureController):
 
         # This panel validates Chat-model access; a registered Google key is also selectable by the separate Gemini Live audio transport.
         layout.addWidget(self.build_api_boxes())
+        layout.addWidget(self.build_network_policy_panel())
 
         import_row = QHBoxLayout()
         self.context.views.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
