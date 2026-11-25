@@ -88,6 +88,46 @@ class GeminiLiveTests(unittest.TestCase):
         }
         self.assertEqual(resolve_google_api_key(settings), "")
 
+    def test_voice_page_refresh_preserves_a_deleted_selected_google_connection(self):
+        from types import SimpleNamespace
+        from kira.ui.pages.voice_page import VoicePage
+
+        class FakeCombo:
+            def __init__(self):
+                self.items = []
+                self.index = -1
+                self.enabled = False
+            def currentData(self):
+                return self.items[self.index][1] if 0 <= self.index < len(self.items) else ""
+            def blockSignals(self, _blocked):
+                return None
+            def clear(self):
+                self.items.clear()
+                self.index = -1
+            def addItem(self, label, value):
+                self.items.append((label, value))
+            def findData(self, value):
+                return next((i for i, item in enumerate(self.items) if item[1] == value), -1)
+            def setCurrentIndex(self, index):
+                self.index = index
+            def count(self):
+                return len(self.items)
+            def setEnabled(self, enabled):
+                self.enabled = bool(enabled)
+
+        combo = FakeCombo()
+        page = SimpleNamespace(gemini_provider=combo)
+        settings = {
+            "gemini_live_provider": "deleted-google",
+            "providers": {
+                "google-secondary": {"service": "google", "api_key": "secondary-secret"}
+            },
+        }
+        VoicePage.refresh_gemini_providers(page, settings)
+        self.assertEqual(combo.currentData(), "deleted-google")
+        self.assertIn("google-secondary", [item[1] for item in combo.items])
+        self.assertTrue(combo.enabled)
+
     def test_auto_selection_only_uses_google_service_or_google_endpoint(self):
         settings = {
             "providers": {
