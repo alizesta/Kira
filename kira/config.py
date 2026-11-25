@@ -357,6 +357,17 @@ def load_settings():
             saved = _migrate_settings(saved, warnings=LOAD_WARNINGS)
             if not isinstance(saved, dict):
                 raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
+            # These names are reserved for process-local observations even when a
+            # file claims to be at the current schema version.
+            runtime_keys = ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes")
+            stripped_runtime_keys = [key for key in runtime_keys if key in saved]
+            for key in stripped_runtime_keys:
+                saved.pop(key, None)
+            if stripped_runtime_keys:
+                LOAD_WARNINGS.append(
+                    "داده‌های موقت تشخیص از فایل تنظیمات حذف شدند: "
+                    + ", ".join(stripped_runtime_keys)
+                )
         except Exception as exc:
             # Never crash on start-up and never destroy the user's file: keep a copy, run with defaults.
             backup = _backup_corrupt(CONFIG_PATH)
@@ -378,7 +389,7 @@ def load_settings():
         # converts numeric overrides and must never be handed malformed persisted data.
         before_validation = deepcopy(merged)
         merged = _validate_settings(merged)
-        settings_repaired = merged != before_validation
+        settings_repaired = merged != before_validation or bool(stripped_runtime_keys)
         merged["provider_order"] = normalize_provider_order(saved.get("provider_order"))
         for provider, pcfg in list(merged["providers"].items()):
             if not isinstance(pcfg, dict):

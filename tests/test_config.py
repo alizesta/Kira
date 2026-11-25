@@ -199,6 +199,30 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings["providers"]["ollama"]["num_ctx"], "invalid")
         self.assertEqual(settings["temperature"], 99)
 
+    def test_current_schema_load_strips_runtime_observations(self):
+        self.path.write_text(
+            json.dumps({
+                "settings_version": config.SETTINGS_SCHEMA_VERSION,
+                "assistant_name": "Persisted User Name",
+                "api_registry": {"groq": {"status": "valid"}},
+                "model_catalog_refreshed_at": 12345,
+                "model_tests": {"groq::model": {"ok": True}},
+                "route_notes": {"groq": "automatic failure"},
+                "user_extension": {"keep": True},
+            }),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+
+        self.assertEqual(settings["assistant_name"], "Persisted User Name")
+        self.assertEqual(settings["user_extension"], {"keep": True})
+        for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+            self.assertNotIn(key, settings)
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+            self.assertNotIn(key, saved)
+        self.assertTrue(any("داده‌های موقت تشخیص" in warning for warning in config.LOAD_WARNINGS))
+
     def test_v6_migration_removes_route_health_notes_but_preserves_route_settings(self):
         source = {
             "settings_version": 6,
