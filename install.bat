@@ -165,7 +165,8 @@ if errorlevel 1 (
   echo WARNING: Python OCR dependencies are unavailable; other Kira features remain available.
   set "OCR_SETUP_FAILED=1"
 )
-python -m kira.vision_ocr
+python -m kira.vision_ocr --status
+if errorlevel 1 set "OCR_RUNTIME_SETUP_FAILED=1"
 
 echo.
 echo [4/6] Installing optional microphone and audio dependencies as one group...
@@ -202,7 +203,8 @@ echo Data folder: %KIRA_DATA_DIR%
 echo Future updates will reuse this folder automatically.
 if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
 if defined AUDIO_SETUP_FAILED echo WARNING: Optional audio dependencies need attention.
-if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention.
+if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention; other Vision features remain available.
+if defined OCR_RUNTIME_SETUP_FAILED echo WARNING: Native OCR runtime or required language data is incomplete; other Vision features remain available.
 if defined SYSTEM_SETUP_FAILED echo WARNING: Optional system integrations need attention.
 if defined OLLAMA_SETUP_FAILED echo WARNING: Local Ollama setup needs attention; rerun python -m kira.setup_manager --interactive.
 echo OCR native engine and language data are detected, not silently installed.

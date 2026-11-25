@@ -81,6 +81,7 @@ class PerceptionApplicationService:
         self._worker: CancellableWorker | None = None
         self._result: Any = None
         self._disposed = False
+        self._ocr_shutdown = False
         self._trace_ocr_diagnostics()
 
     def _trace_ocr_diagnostics(self) -> None:
@@ -91,12 +92,21 @@ class PerceptionApplicationService:
         self._trace(
             "ocr_runtime_diagnostics",
             engine=status.get("selected_engine"),
+            state=selected.get("status"),
+            installed=selected.get("installed", False),
+            available=selected.get("available", False),
             ready=status.get("ready"),
             python_bindings_ready=selected.get("python_bindings_ready", False),
+            pillow_ready=selected.get("pillow_ready", False),
             binary_ready=selected.get("binary_ready", False),
+            requested_languages=",".join(selected.get("requested_languages") or ()),
+            installed_languages=",".join(selected.get("installed_languages") or ()),
+            missing_languages=",".join(selected.get("missing_languages") or ()),
             persian_ready=languages.get("fas", False),
             english_ready=languages.get("eng", False),
             error=selected.get("error_code") or None,
+            error_stage=selected.get("error_stage") or None,
+            error_message=selected.get("error_message") or None,
         )
 
     @property
@@ -310,6 +320,8 @@ class PerceptionApplicationService:
         self._job = None
         self._result = None
         self._worker = None
+        if self._disposed:
+            self._shutdown_ocr_runtime()
 
         if job is None or job.generation != self._generation:
             return PerceptionOutcome(
@@ -421,8 +433,23 @@ class PerceptionApplicationService:
             error_code=ocr_result.error_code or None,
         )
 
+    def _shutdown_ocr_runtime(self) -> None:
+        if self._ocr_shutdown:
+            return
+        shutdown = getattr(self.ocr_service, "shutdown", None)
+        try:
+            if callable(shutdown):
+                shutdown()
+        except Exception as exc:
+            self._trace("ocr_runtime_shutdown_failed", reason=type(exc).__name__)
+        finally:
+            self._ocr_shutdown = True
+
     def dispose(self) -> bool:
         self._disposed = True
         self.cancel()
         # A stopped QThread is still owned until its queued finished signal is consumed.
+        # Do not release adapter resources until the worker has fully completed.
+        if self._worker is None:
+            self._shutdown_ocr_runtime()
         return self._worker is None

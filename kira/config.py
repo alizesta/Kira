@@ -42,6 +42,38 @@ RETIRED_GROQ_MODELS = {
 LOAD_WARNINGS: list[str] = []
 
 
+def ocr_runtime_paths():
+    """Return the single supported source of native OCR executable/data paths.
+
+    KIRA_TESSERACT_CMD and KIRA_TESSDATA_DIR are Kira-specific overrides.
+    TESSERACT_CMD and TESSDATA_PREFIX remain supported as standard fallbacks.
+    No native OCR binary or language pack is downloaded by the application.
+    """
+    def configured_path(*names):
+        for name in names:
+            value = str(os.environ.get(name) or "").strip().strip('"').strip("'")
+            if value:
+                return str(Path(os.path.expandvars(value)).expanduser())
+        return ""
+
+    executable = configured_path("KIRA_TESSERACT_CMD", "TESSERACT_CMD")
+    tessdata_dir = configured_path("KIRA_TESSDATA_DIR", "TESSDATA_PREFIX")
+    candidates = []
+    if not executable:
+        for variable in ("ProgramFiles", "ProgramFiles(x86)"):
+            root = str(os.environ.get(variable) or "").strip()
+            if root:
+                candidates.append(str(Path(root) / "Tesseract-OCR" / "tesseract.exe"))
+        local = str(os.environ.get("LOCALAPPDATA") or "").strip()
+        if local:
+            candidates.append(str(Path(local) / "Programs" / "Tesseract-OCR" / "tesseract.exe"))
+    return {
+        "executable": executable,
+        "executable_candidates": tuple(candidates),
+        "tessdata_dir": tessdata_dir,
+    }
+
+
 def normalize_provider_order(order):
     """Keep a stable priority order for every cloud and local route."""
     valid = (*CLOUD_PROVIDERS, "ollama")

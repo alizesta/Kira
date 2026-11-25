@@ -39,6 +39,22 @@ Previous observations are separated as visual history and must not be combined w
 - Disabling Eye Mode, disabling the visual source, or failing the privacy policy must stop capture and clear queued frames and current visual state.
 - OCR is optional and local; no language package or data is installed automatically. OCR is off by default in Game Mode.
 
+## Local OCR runtime setup and lifecycle
+
+The installer treats OCR as an optional capability. It installs the Python packages listed in requirements-ocr.txt, then runs python -m kira.vision_ocr --status. It does not silently install the native Tesseract executable or trained language files. An incomplete OCR setup is reported as degraded and does not disable screen capture, Perception events, DesktopContext, or other Vision paths.
+
+The default language policy requires both Persian (fas) and English (eng). A runtime is not Ready while any configured required language is missing. The lifecycle is explicit:
+
+- Installed: one or more OCR components were discovered, but the complete runtime has not been validated.
+- Available: Python bindings, the native executable, its version, and every required language were validated; initialization has not completed yet.
+- Ready: validation succeeded and the adapter initialized successfully.
+- Degraded: a required component, executable, language file, validation step, or initialization step is unavailable.
+- NotInstalled: no OCR component could be discovered.
+
+Native paths are read centrally from kira.config. Set KIRA_TESSERACT_CMD to the full executable path when Tesseract is not on PATH. Set KIRA_TESSDATA_DIR to the directory containing the required .traineddata files when the default data directory cannot be discovered. TESSERACT_CMD and TESSDATA_PREFIX are accepted as standard fallbacks. Run python -m kira.vision_ocr --status to validate and initialize the selected OCR adapter; a non-zero exit code means OCR is not Ready.
+
+Discovery and validation are cached briefly, not indefinitely. Initialization is lazy and occurs only when an OCR job is executed. Shutdown releases Python adapter resources after any active worker has completed. Adapter failures include engine, language, failure stage, cause, and a bounded message; they do not stop the rest of Vision.
+
 ## Architecture components
 
 - **DesktopCaptureService:** monitor capture and HWND/PID revalidation.

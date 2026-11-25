@@ -54,6 +54,10 @@ class FakeOcr:
     def __init__(self, result=None):
         self.result = result or OcrResult("Open project", "eng", 0.91)
         self.received_frame_ids = []
+        self.shutdown_calls = 0
+
+    def shutdown(self):
+        self.shutdown_calls += 1
 
     def diagnostics(self):
         return {
@@ -139,6 +143,22 @@ class TestPerceptionApplicationService:
         self.sample = bytes([255]) * 576
         next_job = self.prepare()
         assert next_job is not None
+
+    def test_shutdown_waits_for_worker_completion_before_releasing_ocr_runtime(self):
+        job = self.prepare()
+        worker = FakeWorker()
+        assert self.service.bind_worker(job, worker)
+
+        assert self.service.dispose() is False
+        assert self.ocr.shutdown_calls == 0
+
+        worker.running = False
+        outcome = self.service.finish_worker(
+            closing=True,
+            game_mode_enabled=True,
+        )
+        assert outcome.status == "discarded"
+        assert self.ocr.shutdown_calls == 1
 
     def test_changed_frame_creates_job_with_stable_identity_and_policy_event(self):
         job = self.prepare()
