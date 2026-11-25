@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..chat_sessions import Muted, NOOP
+from ..app.runtime_state import RuntimeState
 
 
 STATE_FIELDS = frozenset({
@@ -283,7 +284,7 @@ VIEW_FRONT_ONLY = frozenset({"status", "gen_stop_btn", "send_btn", "input", "voi
 class _FieldBucket:
     """A strict, mutable namespace with a declared field contract."""
 
-    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure", "_source")
+    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure", "_source", "_store")
 
     def __init__(
         self,
@@ -294,6 +295,7 @@ class _FieldBucket:
         front_only: frozenset[str] = frozenset(),
         pure: Mapping[str, frozenset[str]] | None = None,
         source: "_FieldBucket | None" = None,
+        store: RuntimeState | None = None,
     ) -> None:
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_name", name)
@@ -302,6 +304,7 @@ class _FieldBucket:
         object.__setattr__(self, "_front_only", front_only)
         object.__setattr__(self, "_pure", dict(pure or {}))
         object.__setattr__(self, "_source", source)
+        object.__setattr__(self, "_store", store)
 
     def __getattr__(self, name: str):
         if name not in self._allowed:
@@ -310,10 +313,14 @@ class _FieldBucket:
         source = object.__getattribute__(self, "_source")
         if source is not None:
             value = getattr(source, name)
-        elif name in values:
-            value = values[name]
         else:
-            raise AttributeError(f"{self._name}.{name} has not been initialized")
+            store = object.__getattribute__(self, "_store")
+            if store is not None and store.contains(name):
+                value = store.get(name)
+            elif name in values:
+                value = values[name]
+            else:
+                raise AttributeError(f"{self._name}.{name} has not been initialized")
         if name in self._front_only and self._context.is_background_session:
             if value is None:
                 return None
@@ -328,13 +335,20 @@ class _FieldBucket:
         if source is not None:
             setattr(source, name, value)
         else:
-            self._values[name] = value
+            store = object.__getattribute__(self, "_store")
+            if store is not None:
+                store.set(name, value)
+            else:
+                self._values[name] = value
 
     def __contains__(self, name: str) -> bool:
         if name not in self._allowed:
             return False
         source = object.__getattribute__(self, "_source")
-        return (name in source) if source is not None else name in self._values
+        if source is not None:
+            return name in source
+        store = object.__getattribute__(self, "_store")
+        return store.contains(name) if store is not None else name in self._values
 
 
 
@@ -482,7 +496,8 @@ class WindowPresentationContext:
     def __init__(self, host, controllers) -> None:
         self.host = host
         self.controllers = controllers
-        self.state = _FieldBucket(self, "state", STATE_FIELDS)
+        self.runtime_state = RuntimeState(STATE_FIELDS)
+        self.state = _FieldBucket(self, "state", STATE_FIELDS, store=self.runtime_state)
         self.services = _FieldBucket(
             self, "services", SERVICE_FIELDS, front_only=SERVICE_FRONT_ONLY
         )

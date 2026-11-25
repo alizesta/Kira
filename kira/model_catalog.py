@@ -115,14 +115,14 @@ def _archive_reason(settings, provider, model, meta, route):
     return ""
 
 
-def model_rows(settings):
+def model_rows(settings, *, capabilities=None):
     """Every chat model of every registered API as a flat list of dicts (see module doc for the tab rules)."""
-    api_manager.ensure_registry(settings)
+    api_manager.ensure_registry(settings, capabilities)
     routes = route_model.get_routes(settings)
     order = {(r["provider"], r["model"]): i for i, r in enumerate(routes)}
     by_key = {(r["provider"], r["model"]): r for r in routes}
     rows = []
-    for pid, entry in api_manager.registry(settings).items():
+    for pid, entry in api_manager.registry(settings, capabilities).items():
         cfg = (settings.get("providers") or {}).get(pid, {})
         label = route_model.provider_label(pid, cfg)
         for mid, meta in (entry.get("models") or {}).items():

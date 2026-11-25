@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any
 
 from .. import api_manager, routes as route_model
+from .detected_capabilities import DetectedCapabilities
 
 
 class ProviderApplicationService:
@@ -18,6 +19,21 @@ class ProviderApplicationService:
     def __init__(self, router_factory=None, ollama_client_factory=None):
         self._router_factory = router_factory
         self._ollama_client_factory = ollama_client_factory
+        self.detected_capabilities = DetectedCapabilities()
+
+    @property
+    def ollama_models(self):
+        return tuple(self.detected_capabilities.get("ollama_models", ()))
+
+    def set_ollama_models(self, models):
+        self.detected_capabilities.set("ollama_models", tuple(str(item) for item in (models or ())))
+
+    @property
+    def model_catalog_refreshed_at(self):
+        return int(self.detected_capabilities.get("model_catalog_refreshed_at", 0) or 0)
+
+    def set_model_catalog_refreshed_at(self, timestamp):
+        self.detected_capabilities.set("model_catalog_refreshed_at", int(timestamp or 0))
 
     def create_router(self, settings):
         if self._router_factory is not None:
@@ -162,13 +178,12 @@ class ProviderApplicationService:
             settings.update(before)
             raise
 
-    @staticmethod
-    def remove_provider(settings: dict[str, Any], provider_id: str):
+    def remove_provider(self, settings: dict[str, Any], provider_id: str):
         """Remove a custom provider and its API registry entry as one settings operation."""
         before = deepcopy(settings)
         try:
             removed_routes = route_model.remove_provider(settings, provider_id)
-            api_manager.registry(settings).pop(provider_id, None)
+            api_manager.registry(settings, self.detected_capabilities).pop(provider_id, None)
             return removed_routes
         except Exception:
             settings.clear()
@@ -183,21 +198,18 @@ class ProviderApplicationService:
     def set_model_enabled(settings: dict[str, Any], provider_id: str, model_id: str, enabled: bool) -> None:
         api_manager.set_model_enabled(settings, provider_id, model_id, enabled)
 
-    @staticmethod
-    def delete_api(settings: dict[str, Any], provider_id: str) -> None:
-        api_manager.delete_api(settings, provider_id)
+    def delete_api(self, settings: dict[str, Any], provider_id: str) -> None:
+        api_manager.delete_api(settings, provider_id, capabilities=self.detected_capabilities)
 
     @staticmethod
     def move_api(settings: dict[str, Any], provider_id: str, delta: int) -> None:
         api_manager.move_api(settings, provider_id, delta)
 
-    @staticmethod
-    def apply_models(settings: dict[str, Any], provider_id: str, models, rate_limit=None):
-        return api_manager.apply_models(settings, provider_id, models, rate_limit)
+    def apply_models(self, settings: dict[str, Any], provider_id: str, models, rate_limit=None):
+        return api_manager.apply_models(settings, provider_id, models, rate_limit, capabilities=self.detected_capabilities)
 
-    @staticmethod
-    def apply_failure(settings: dict[str, Any], provider_id: str, detection) -> None:
-        api_manager.apply_failure(settings, provider_id, detection)
+    def apply_failure(self, settings: dict[str, Any], provider_id: str, detection) -> None:
+        api_manager.apply_failure(settings, provider_id, detection, capabilities=self.detected_capabilities)
 
     Detection = api_manager.Detection
 
@@ -209,13 +221,11 @@ class ProviderApplicationService:
     def rediscover(provider_id, config, timeout=15):
         return api_manager.rediscover(provider_id, config, timeout=timeout)
 
-    @staticmethod
-    def ensure_registry(settings):
-        return api_manager.ensure_registry(settings)
+    def ensure_registry(self, settings):
+        return api_manager.ensure_registry(settings, self.detected_capabilities)
 
-    @staticmethod
-    def registry(settings):
-        return api_manager.registry(settings)
+    def registry(self, settings):
+        return api_manager.registry(settings, self.detected_capabilities)
 
     @staticmethod
     def detect(api_key, account=None):
@@ -229,25 +239,22 @@ class ProviderApplicationService:
     def find_duplicate(settings, api_key):
         return api_manager.find_duplicate(settings, api_key)
 
-    @staticmethod
-    def register(settings, detection, api_key):
-        return api_manager.register(settings, detection, api_key)
+    def register(self, settings, detection, api_key):
+        return api_manager.register(settings, detection, api_key, capabilities=self.detected_capabilities)
 
     @staticmethod
     def describe_failure(detection):
         return api_manager.describe_failure(detection)
 
-    @staticmethod
-    def api_rows(settings):
-        return api_manager.api_rows(settings)
+    def api_rows(self, settings):
+        return api_manager.api_rows(settings, capabilities=self.detected_capabilities)
 
     @staticmethod
     def fmt_time(value):
         return api_manager.fmt_time(value)
 
-    @staticmethod
-    def api_details(settings, provider_id):
-        return api_manager.api_details(settings, provider_id)
+    def api_details(self, settings, provider_id):
+        return api_manager.api_details(settings, provider_id, capabilities=self.detected_capabilities)
 
     @staticmethod
     def service_of(provider_id, config):
