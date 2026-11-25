@@ -1,3 +1,5 @@
+[فارسی](README.fa.md) — [Documentation index](docs/README.md)
+
 # Project Kira
 
 Kira is a Windows 11 desktop companion and AI assistant. The application combines a character-driven chat interface with local and cloud model routing, persistent conversations, voice interaction, file and image input, desktop awareness, and a task-oriented coding agent.
