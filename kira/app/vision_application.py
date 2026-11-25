@@ -53,14 +53,18 @@ class VisionApplicationService:
 
     def capture_allowed(self, enabled: bool, profile: str | None, *,
                         source: str = GAME_SOURCE, window_info: dict | None = None,
-                        explicit: bool = False) -> bool:
+                        explicit: bool = False,
+                        allow_partial_identity: bool = False) -> bool:
         if not self._active or self._disposed:
             return False
         if source == self.DESKTOP_SOURCE:
             privacy = self.desktop_capture_application_service
             if privacy is None:
                 return False
-            allowed, _reason = privacy.evaluate_window(window_info, explicit=explicit)
+            allowed, _reason = privacy.evaluate_window(
+                window_info, explicit=explicit,
+                allow_partial_identity=allow_partial_identity,
+            )
             return bool(allowed)
         if source != self.GAME_SOURCE or self.game_mode_service is None:
             return False
@@ -70,16 +74,21 @@ class VisionApplicationService:
         if window_info is None or self.desktop_capture_application_service is None:
             return True
         allowed, _reason = self.desktop_capture_application_service.evaluate_window(
-            window_info, explicit=True
+            window_info, explicit=True,
+            allow_partial_identity=allow_partial_identity,
         )
         return bool(allowed)
 
     def should_analyze(self, *, enabled: bool, profile: str | None,
                        frame_available: bool, worker_running: bool,
                        chat_busy: bool, provider_busy: bool, speech_active: bool,
-                       source: str = GAME_SOURCE, window_info: dict | None = None) -> bool:
+                       source: str = GAME_SOURCE, window_info: dict | None = None,
+                       allow_partial_identity: bool = False) -> bool:
         return (
-            self.capture_allowed(enabled, profile, source=source, window_info=window_info)
+            self.capture_allowed(
+                enabled, profile, source=source, window_info=window_info,
+                allow_partial_identity=allow_partial_identity,
+            )
             and bool(frame_available)
             and not bool(worker_running)
             and not bool(chat_busy)
@@ -89,8 +98,12 @@ class VisionApplicationService:
 
     def consume_result(self, *, enabled: bool, profile: str | None, ok: bool,
                        result: Any, source: str = GAME_SOURCE,
-                       window_info: dict | None = None) -> str | None:
-        if not self.capture_allowed(enabled, profile, source=source, window_info=window_info):
+                       window_info: dict | None = None,
+                       allow_partial_identity: bool = False) -> str | None:
+        if not self.capture_allowed(
+            enabled, profile, source=source, window_info=window_info,
+            allow_partial_identity=allow_partial_identity,
+        ):
             return None
         message = str(result or "").strip()
         if not ok and not message:
