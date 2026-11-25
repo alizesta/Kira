@@ -62,6 +62,7 @@ class HybridRouter:
         self.settings = settings
         self.detected_capabilities = detected_capabilities or DetectedCapabilities()
         self.cooldowns: dict[str, float] = {}
+        self.quota_blocks: dict[tuple, dict] = {}
         self.states: dict[str, dict] = {}              # route id -> health / last error / last response time (runtime only)
         self.metrics = deque(maxlen=METRICS_KEEP)       # per-request speed records (metadata only)
         self.benchmarks = deque(maxlen=50)
@@ -254,7 +255,7 @@ class HybridRouter:
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
         for route in self._candidates():
             ok, _ = self.eligibility(route)
-            if ok:
+            if ok and not self._quota_status(route):
                 return self.route_info(route)
         return None
 
@@ -324,6 +325,32 @@ class HybridRouter:
             return ("google-project-model", project_scope, model)
         return ("google-provider-model", str(route.get("provider") or "").strip().casefold(), model)
 
+    def _quota_status(self, route):
+        """Return an active quota block without conflating it with cooldown or route policy."""
+        scope = self._google_quota_scope(route) or (
+            "route-model", str(route.get("provider") or "").casefold(),
+            str(route.get("model") or "").casefold(),
+        )
+        entry = self.quota_blocks.get(scope)
+        if not entry:
+            return None
+        expires_at = entry.get("expires_at")
+        if expires_at is not None and expires_at <= time.monotonic():
+            self.quota_blocks.pop(scope, None)
+            return None
+        return entry
+
+    def reset_quota_blocks(self, route_id=None):
+        """Clear runtime quota observations; never changes Provider or Route configuration."""
+        if route_id:
+            for scope in list(self.quota_blocks):
+                if scope == ("route-model",):
+                    continue
+                if scope[0] == "route-model" and scope[1] == str(route_id):
+                    self.quota_blocks.pop(scope, None)
+        else:
+            self.quota_blocks.clear()
+
     def _mark_failure(self, route, exc, secrets=()):
         kind, status, retryable, retry_after = classify(exc)
         base = int(route.get("cooldown", COOLDOWN_TRANSIENT) or 0)
@@ -354,6 +381,17 @@ class HybridRouter:
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
+        quota_kind_value = str(getattr(exc, "quota", "") or "")
+        if quota_kind_value in ("no_free", "daily"):
+            quota_scope = self._google_quota_scope(route) or (
+                "route-model", str(route.get("provider") or "").casefold(),
+                str(route.get("model") or "").casefold(),
+            )
+            self.quota_blocks[quota_scope] = {
+                "kind": quota_kind_value,
+                "expires_at": None if quota_kind_value == "no_free" else time.monotonic() + 86400,
+                "route_id": str(route.get("id") or ""),
+            }
         # Quota exhaustion and permanent model/configuration errors affect runtime
         # health only. They must never rewrite route.enabled or any other user setting.
         if kind == "model":
@@ -411,9 +449,18 @@ class HybridRouter:
             # credential merely because it is configured as multiple Routes.
             # This avoids apparent model-hopping that only repeats the same backend.
             attempted_route_targets = set()
+            quota_blocked_routes = set()
             for candidate in candidates:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
+                quota_state = self._quota_status(candidate)
+                if quota_state:
+                    candidate_id = str(candidate.get("id") or "")
+                    quota_blocked_routes.add(candidate_id)
+                    failures.append(f"{candidate_id}: سهمیهٔ Provider مسدود است ({quota_state['kind']})")
+                    self.last_attempts.append({"provider": candidate["provider"], "route_id": candidate_id,
+                                               "result": "quota_blocked", "quota_kind": quota_state["kind"]})
+                    continue
                 _, candidate_reason = self.eligibility(candidate)
                 if candidate_reason == "cooldown":
                     candidate_id = candidate["id"]
@@ -426,7 +473,7 @@ class HybridRouter:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 rid = route["id"]
-                if rid in cooldown_routes:
+                if rid in cooldown_routes or rid in quota_blocked_routes:
                     continue
                 ok, reason = self.eligibility(route)
                 if reason == "cooldown":
@@ -677,7 +724,7 @@ class HybridRouter:
                 if self._cancel.is_set():
                     return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
                 ok, reason = self.eligibility(route)
-                if not ok:
+                if not ok or self._quota_status(route):
                     continue
                 info = self.route_info(route)
                 try:
@@ -943,5 +990,6 @@ class HybridRouter:
                         "policy_decision": next((d["reason"] for d in self.last_route_decisions
                                                  if d["route_id"] == str(route.get("id") or "")), None),
                         "network_policy": self.settings.get("network_policy", "local_only"),
+                        "quota_block": (self._quota_status(route) or {}).get("kind"),
                         "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
         return out
