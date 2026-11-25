@@ -416,4 +416,3 @@ class SqliteConversationRepository:
             except (sqlite3.Error, OSError, self._persistence_error) as exc:
                 raise self._persistence_error(f"حذف گفتگو ناموفق بود؛ داده‌ها حفظ شدند. ({exc})") from exc
 
-}
