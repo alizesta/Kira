@@ -137,6 +137,20 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertIs(worker._cancelled, router.cancel_event)
         self.assertEqual(results, [(True, "تحلیل آماده")])
 
+    def test_background_vision_emits_immutable_frame_context_with_result(self):
+        router = FakeVisionAnalysisRouter()
+        frame_context = object()
+        worker = VisionAnalysisWorker(
+            router, {"b64": "invalid-base64"}, "تحلیل",
+            ocr_enabled=False, frame_context=frame_context,
+        )
+        results = []
+        worker.done_with_context.connect(lambda ok, text, latency, context: results.append((ok, text, context)))
+        worker.run()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][:2], (True, "تحلیل آماده"))
+        self.assertIs(results[0][2], frame_context)
+
     def test_cancel_during_route_discovery_prevents_provider_request(self):
         router = FakeVisionAnalysisRouter()
         worker = VisionAnalysisWorker(router, {"b64": "invalid-base64"}, "تحلیل")

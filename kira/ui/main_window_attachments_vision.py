@@ -1421,6 +1421,7 @@ class AttachmentsVisionController(WindowFeatureController):
                     bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
                     if source == "game" else False
                 ),
+                frame_context=frame_context,
             )
             session._vision_session = session
             session._vision_frame_context = frame_context
@@ -1432,7 +1433,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 session_id=frame_context.session_id, source=source,
                 jpeg_bytes=len(job.payload),
             )
-            worker.done.connect(session.relay.game_vision_done)
+            worker.done_with_context.connect(session.relay.game_vision_done_with_context)
             worker.finished.connect(session.relay.game_vision_finished)
             worker.start()
         except Exception as exc:
@@ -1451,9 +1452,10 @@ class AttachmentsVisionController(WindowFeatureController):
             return
         self.feature_controller("runtime")._send_next_pending(session)
 
-    def _on_game_vision_result(self, ok, result, latency_ms):
+    def _on_game_vision_result(self, ok, result, latency_ms, frame_context=None):
         service = self.context.services.vision_application_service
-        frame_context = getattr(self.context.session, "_vision_frame_context", None)
+        if frame_context is None:
+            frame_context = getattr(self.context.session, "_vision_frame_context", None)
         if frame_context is not None and not service.frame_orchestrator.is_current(frame_context):
             vision_trace(
                 "analysis_discarded",

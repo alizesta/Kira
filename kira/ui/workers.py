@@ -210,13 +210,15 @@ class ProviderTestWorker(QThread):
 class VisionAnalysisWorker(QThread):
     """Bounded image analysis; uses only a route marked/recognized as Vision-capable."""
     done = Signal(bool, str, int)
+    done_with_context = Signal(bool, str, int, object)
 
-    def __init__(self, router, image, context="", *, ocr_enabled=True):
+    def __init__(self, router, image, context="", *, ocr_enabled=True, frame_context=None):
         super().__init__()
         self.router = router
         self.image = dict(image)
         self.context = str(context or "").strip()[:1200]
         self.ocr_enabled = bool(ocr_enabled)
+        self.frame_context = frame_context
         self._cancelled = threading.Event()
 
     def cancel_request(self):
@@ -226,6 +228,12 @@ class VisionAnalysisWorker(QThread):
             self.router.cancel()
         except Exception:
             pass
+
+    def _emit_result(self, ok, result, latency_ms):
+        if self.frame_context is None:
+            self.done.emit(bool(ok), str(result), int(latency_ms))
+        else:
+            self.done_with_context.emit(bool(ok), str(result), int(latency_ms), self.frame_context)
 
     def run(self):
         began = time.monotonic()
@@ -262,10 +270,10 @@ class VisionAnalysisWorker(QThread):
             else:
                 result = response
             if not self._cancelled.is_set():
-                self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
+                self._emit_result(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
         except Exception as exc:
             if not self._cancelled.is_set():
-                self.done.emit(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
+                self._emit_result(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
 
 
 

@@ -106,6 +106,10 @@ class SessionRelay(QObject):
     def game_vision_done(self, ok, result, latency_ms):
         self._run("_on_game_vision_result", ok, result, latency_ms)
 
+    @Slot(bool, str, int, object)
+    def game_vision_done_with_context(self, ok, result, latency_ms, frame_context):
+        self._run("_on_game_vision_result", ok, result, latency_ms, frame_context)
+
     @Slot()
     def game_vision_finished(self):
         self._run("_dispatch_next_vision_job")
