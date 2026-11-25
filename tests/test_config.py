@@ -626,6 +626,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(ollama_client.DEFAULT_NUM_CTX, ollama_defaults["num_ctx"])
         self.assertEqual(ollama_client.DEFAULT_KEEP_ALIVE, ollama_defaults["keep_alive"])
         self.assertEqual(ollama_client.DEFAULT_NUM_PREDICT, ollama_defaults["num_predict"])
+        self.assertEqual(ollama_client.DEFAULT_TIMEOUT, ollama_defaults["timeout"])
         self.assertEqual((ollama_client.MIN_NUM_CTX, ollama_client.MAX_NUM_CTX), SETTING_RANGES["providers.ollama.num_ctx"])
         self.assertEqual(routes.CLOUD_TIMEOUT, SETTING_RANGES["routes.timeout.cloud"])
         self.assertEqual(routes.LOCAL_TIMEOUT, SETTING_RANGES["routes.timeout.local"])

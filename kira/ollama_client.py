@@ -12,7 +12,8 @@ from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS, SETTING_RANGES
 _OLLAMA_DEFAULTS = SETTINGS_DEFAULTS["providers"]["ollama"]
 DEFAULT_NUM_CTX = _OLLAMA_DEFAULTS["num_ctx"]
 DEFAULT_KEEP_ALIVE = _OLLAMA_DEFAULTS["keep_alive"]
-DEFAULT_NUM_PREDICT = _OLLAMA_DEFAULTS["num_predict"]          # max reply length in tokens: stops a runaway/slow generation
+DEFAULT_NUM_PREDICT = _OLLAMA_DEFAULTS["num_predict"]
+DEFAULT_TIMEOUT = _OLLAMA_DEFAULTS["timeout"]          # max reply length in tokens: stops a runaway/slow generation
 MIN_NUM_CTX, MAX_NUM_CTX = SETTING_RANGES["providers.ollama.num_ctx"]
 REPLY_RESERVE_TOKENS = 768          # room kept free for the model's answer
 CHARS_PER_TOKEN = 2.0               # conservative for Persian text
@@ -135,7 +136,7 @@ def fit_messages(messages, system_prompt, num_ctx, reserve=REPLY_RESERVE_TOKENS,
 
 
 class OllamaClient:
-    def __init__(self, base_url, model, num_ctx=DEFAULT_NUM_CTX, keep_alive=DEFAULT_KEEP_ALIVE, timeout=180,
+    def __init__(self, base_url, model, num_ctx=DEFAULT_NUM_CTX, keep_alive=DEFAULT_KEEP_ALIVE, timeout=DEFAULT_TIMEOUT,
                  num_predict=DEFAULT_NUM_PREDICT):
         self.base_url = str(base_url or "http://localhost:11434").rstrip("/")
         self.model = str(model or "").strip()
@@ -167,7 +168,7 @@ class OllamaClient:
         return cls(settings.get("ollama_url") or cfg.get("base_url") or SETTINGS_DEFAULTS["ollama_url"],
                    settings.get("model") or cfg.get("model") or SETTINGS_DEFAULTS["model"],
                    cfg.get("num_ctx", DEFAULT_NUM_CTX), cfg.get("keep_alive", DEFAULT_KEEP_ALIVE),
-                   cfg.get("timeout", 180), cfg.get("num_predict", DEFAULT_NUM_PREDICT))
+                   cfg.get("timeout", DEFAULT_TIMEOUT), cfg.get("num_predict", DEFAULT_NUM_PREDICT))
 
     # ---------- helpers ----------
     def _offline(self, exc):
