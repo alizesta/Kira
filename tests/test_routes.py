@@ -151,6 +151,19 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             routes.add_route(s, pid, "example-model")
 
+    def test_remove_last_route_keeps_provider_and_clears_manual_and_default_selections(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        pid = routes.add_provider(s, "Single-route provider", "http://localhost:1234/v1", local=True)
+        route = routes.add_route(s, pid, "only-model")
+        routes.set_default(s, route["id"])
+        routes.set_manual(s, route["id"])
+        routes.remove_route(s, route["id"])
+        self.assertIsNone(routes.find_route(s, route["id"]))
+        self.assertEqual(s["providers"][pid]["base_url"], "http://localhost:1234/v1")
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertEqual(s["default_route_id"], "cloudflare")
+
     def test_remove_provider_clears_last_route_default_and_manual_selections(self):
         s = legacy_settings()
         routes.ensure_routes(s)
