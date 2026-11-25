@@ -9,8 +9,9 @@ The repository's primary documentation language is **English**. Persian translat
 ## Installation and first launch
 
 1. Run **install.bat**. On the first installation, choose the data directory or use the suggested default.
-2. The installer prepares the application dependencies and supported local speech/model components. It also installs Ollama when the Windows Package Manager is available and prepares the configured local Qwen model.
-3. Start the application with **start_kira.bat**.
+2. The installer prepares Kira's application dependencies and local speech components. Ollama is a separate optional stage: Setup Manager detects an existing server or asks before installing the engine, then confirms the exact model's registry size, free disk space, and hardware fit before downloading.
+3. A downloaded model is not automatically selected. Setup Manager asks separately before changing Kira's local chat route. Rerun `python -m kira.setup_manager --interactive` to resume or repair setup; use `python -m kira.setup_manager --status` for read-only diagnostics. See [Local Runtime Setup](docs/LOCAL_RUNTIME_SETUP.md).
+4. Start the application with **start_kira.bat**.
 4. To configure a cloud model, open the Route settings, choose **Add API**, and enter the provider's API key. Kira validates the key and discovers models through the provider API. See the [API Manager guide](docs/API_MANAGER.md) for the current provider workflow.
 
 The updater is **update_kira.bat**. It updates code and dependencies and runs the configured focused checks.

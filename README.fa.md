@@ -8,8 +8,9 @@
 
 ## نصب و اجرا
 1. فقط `install.bat` را اجرا کن. در نصب اول مسیر ذخیره‌ی داده‌ها را انتخاب می‌کنی: مسیر پیش‌فرض یا پوشه‌ی دلخواه.
-2. نصب‌کننده وابستگی‌های برنامه، موتورهای صوتی محلی و مدل‌های Qwen/Piper را آماده می‌کند؛ Ollama را نیز در صورت پشتیبانی Windows Package Manager نصب و مدل محلی Qwen3.5-9B Abliterated Q4_K_M را با SHA-256 ثابت دانلود و در Ollama نصب می‌کند.
-3. بعد از نصب، `start_kira.bat` را اجرا کن. در آپدیت‌های بعدی مسیر داده‌ی قبلی خودکار بازیابی می‌شود و دوباره سؤال نمی‌شود.
+2. نصب‌کننده وابستگی‌های Kira و موتورهای گفتار محلی را آماده می‌کند. Ollama مرحله‌ای مستقل و اختیاری است: Setup Manager سرور موجود را تشخیص می‌دهد یا برای نصب موتور اجازه می‌گیرد؛ سپس شناسهٔ دقیق مدل، اندازهٔ Registry، فضای آزاد و سازگاری سخت‌افزار را پیش از دانلود اعلام می‌کند.
+3. مدل دانلودشده خودکار انتخاب نمی‌شود. پس از دانلود، برای تغییر مدل محلی Route تأیید جداگانه می‌گیری. برای ادامه یا تعمیر نصب ناقص، `python -m kira.setup_manager --interactive` و برای گزارش فقط‌خواندنی `python -m kira.setup_manager --status` را اجرا کن. راهنما: `docs/LOCAL_RUNTIME_SETUP_FA.md`.
+4. بعد از نصب، `start_kira.bat` را اجرا کن. در آپدیت‌های بعدی مسیر داده‌ی قبلی خودکار بازیابی می‌شود و دوباره سؤال نمی‌شود.
 4. برای مدل ابری: تب Route ← **Add API** ← کلید API را وارد کن. راهنما: `docs/API_MANAGER_FA.md`.
 
 ## Ai1 Code (Agent داخل چت کیرا)
@@ -57,6 +58,8 @@ Eye Mode مسیر یکپارچه‌ی مشاهده‌ی صفحه در Kira اس�
 
 ## راهنماها
 `docs/TOOLS_FA.md` · `docs/ROUTE_MANAGER_GUIDE_FA.md` · `docs/ADD_PROVIDER_AND_MODEL_FA.md` · `docs/WINDOWS11_CHECKLIST_FA.md` · `docs/CHARACTER_FA.md` · `docs/AGENT_FA.md` (برنامه‌ریزی و اجرای خودکار وظایف) · `docs/WEB_RESEARCH_FA.md` (تحقیق چندمنبعی در وب) · `docs/MEMORY_EVIDENCE_FA.md` (حافظه‌ی شواهدمحور) · `docs/BRAIN_FA.md` (مغز چندمرحله‌ای) · `docs/MCP_AGENTS_FA.md` (MCP و ایجنت‌های مستقل) · `docs/USAGE_FA.md` (مصرف و هزینه) · `docs/FILE_AGENT_FA.md` (عامل فایل) · `docs/DESKTOP_FA.md` (تعامل با دسکتاپ) · `docs/CHANGES_INTEGRATION_FA.md` (خلاصه‌ی تغییرات)
+
+راهنمای نصب، انتخاب مدل، بررسی فضای دیسک، تشخیص Runtime و بازیابی دانلود: `docs/LOCAL_RUNTIME_SETUP_FA.md`.
 
 ## تست
 `run_tests.bat` (یا `python -m unittest discover -s tests -t .`).

@@ -1,0 +1,54 @@
+import unittest
+from unittest import mock
+import requests
+from kira.setup_manager import HardwareProfile,ModelManifest,OllamaSetupManager,SetupError,_model_parts,registry_manifest
+
+class Response:
+    def __init__(self,payload=None,status=200,lines=()):
+        self.payload=payload or {}; self.status_code=status; self.lines=lines
+    def raise_for_status(self):
+        if self.status_code>=400: raise requests.HTTPError(str(self.status_code))
+    def json(self): return self.payload
+    def iter_lines(self,decode_unicode=True): yield from self.lines
+
+class SetupManagerTests(unittest.TestCase):
+    def test_model_id_parsing(self):
+        self.assertEqual(_model_parts("qwen3.5:4b"),("library/qwen3.5","4b"))
+        self.assertEqual(_model_parts("team/model:Q4_K_M"),("team/model","Q4_K_M"))
+        with self.assertRaises(ValueError): _model_parts("../escape")
+    def test_manifest_size_comes_from_registry_layers(self):
+        session=mock.Mock(); session.get.return_value=Response({"layers":[{"size":100},{"size":250}]})
+        self.assertEqual(registry_manifest("qwen3.5:4b",session=session),ModelManifest("qwen3.5:4b",350,2))
+        self.assertIn("/v2/library/qwen3.5/manifests/4b",session.get.call_args.args[0])
+    def test_missing_manifest_is_not_zero_size(self):
+        session=mock.Mock(); session.get.return_value=Response(status=404)
+        with self.assertRaises(SetupError): registry_manifest("not-found",session=session)
+    def test_hardware_assessment(self):
+        profile=HardwareProfile(ram_bytes=16000,vram_bytes=8000)
+        self.assertEqual(profile.assess(7000)[0],"gpu_fit")
+        self.assertEqual(profile.assess(10000)[0],"ram_fit")
+        self.assertEqual(profile.assess(20000)[0],"constrained")
+    def test_insufficient_disk_rejects_before_pull(self):
+        session=mock.Mock(); session.get.return_value=Response({"layers":[{"size":10000}]})
+        manager=OllamaSetupManager(session=session,store_path=__import__("pathlib").Path("models"),
+            disk_usage=lambda _p:mock.Mock(free=100))
+        with mock.patch("kira.setup_manager._existing_parent",return_value=__import__("pathlib").Path(".")):
+            with self.assertRaisesRegex(SetupError,"فضای آزاد کافی نیست"):
+                manager.preflight("qwen3.5:4b",profile=HardwareProfile(1000000,None))
+        session.post.assert_not_called()
+    def test_installed_model_is_not_downloaded_again(self):
+        session=mock.Mock(); session.get.return_value=Response({"models":[{"name":"qwen3.5:4b"}]})
+        manager=OllamaSetupManager(session=session,selected_model="qwen3.5:4b")
+        manager.pull_model("qwen3.5:4b")
+        session.post.assert_not_called()
+    def test_incomplete_pull_does_not_change_selected_model(self):
+        session=mock.Mock()
+        session.get.side_effect=[Response({"models":[]}),Response({"models":[]})]
+        session.post.return_value=Response(lines=[b'{"status":"downloading","completed":5,"total":10}'])
+        manager=OllamaSetupManager(session=session,selected_model="old-model")
+        with mock.patch.object(manager,"preflight",return_value=(ModelManifest("new-model",100,1),110,"gpu_fit","ok")):
+            with self.assertRaisesRegex(SetupError,"ثبت نشده"):
+                manager.pull_model("new-model")
+        self.assertEqual(manager.selected_model,"old-model")
+
+if __name__=="__main__": unittest.main()

@@ -152,9 +152,12 @@ if errorlevel 1 (
 )
 
 echo.
-echo [5/5] Ollama model installation is currently disabled.
-echo No Ollama application, server, or chat model will be installed or downloaded.
-echo You can select and install a local model later when ready.
+echo [5/5] Checking optional Ollama local runtime and model setup...
+python -m kira.setup_manager --interactive
+if errorlevel 1 (
+  echo WARNING: Ollama setup is incomplete. Kira core installation remains available.
+  set "OLLAMA_SETUP_FAILED=1"
+)
 
 :install_done
 echo.
@@ -165,6 +168,7 @@ echo Data folder: %KIRA_DATA_DIR%
 echo Future updates will reuse this folder automatically.
 if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
 if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention.
+if defined OLLAMA_SETUP_FAILED echo WARNING: Local Ollama setup needs attention; rerun python -m kira.setup_manager --interactive.
 echo OCR native engine and language data are detected, not silently installed.
 echo Persian OCR requires the Tesseract fas language pack; English requires eng.
 if exist voice_failed.txt (
