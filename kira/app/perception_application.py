@@ -37,6 +37,9 @@ class PerceptionOutcome:
     language: str | None = None
     confidence: float = 0.0
     error_code: str | None = None
+    engine: str | None = None
+    error_stage: str | None = None
+    error_message: str | None = None
 
 
 def _window_identity(info: dict | None) -> tuple[Any, ...] | None:
@@ -420,6 +423,9 @@ class PerceptionApplicationService:
             language=ocr_result.language or None,
             confidence=round(ocr_result.confidence, 3),
             error=ocr_result.error_code or None,
+            engine=ocr_result.engine or getattr(self.ocr_service, "selected_engine", None),
+            error_stage=ocr_result.error_stage or None,
+            error_message=ocr_result.error_message or None,
             latency_ms=latency_ms,
         )
         return PerceptionOutcome(
@@ -431,6 +437,9 @@ class PerceptionApplicationService:
             language=ocr_result.language or None,
             confidence=float(ocr_result.confidence),
             error_code=ocr_result.error_code or None,
+            engine=ocr_result.engine or getattr(self.ocr_service, "selected_engine", None),
+            error_stage=ocr_result.error_stage or None,
+            error_message=ocr_result.error_message or None,
         )
 
     def _shutdown_ocr_runtime(self) -> None:

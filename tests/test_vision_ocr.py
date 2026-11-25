@@ -222,12 +222,14 @@ class VisionOcrTests(unittest.TestCase):
         self.assertEqual(result.error_stage, "validation")
         self.assertIn("fas", result.error_message)
 
-    def test_discovery_does_not_execute_and_incomplete_engine_cannot_be_selected(self):
+    def test_unready_engine_is_not_selected_when_initialization_fails(self):
         engine = FakeEngine(False)
+        engine.allow_initialize = False
         service = OcrService({"fake": engine}, selected_engine="fake")
         self.assertFalse(service.diagnostics()["ready"])
         with self.assertRaises(RuntimeError):
             service.select_engine("fake")
+        self.assertEqual(engine.initialize_calls, 1)
         self.assertEqual(engine.calls, [])
 
     def test_service_selection_and_frame_metadata(self):

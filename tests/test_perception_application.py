@@ -55,6 +55,7 @@ class FakeOcr:
         self.result = result or OcrResult("Open project", "eng", 0.91)
         self.received_frame_ids = []
         self.shutdown_calls = 0
+        self.trace_events = []
 
     def shutdown(self):
         self.shutdown_calls += 1
@@ -75,6 +76,9 @@ class FakeOcr:
             self.result.confidence,
             self.result.error_code,
             source_frame_id=source_frame_id,
+            engine=self.result.engine,
+            error_stage=self.result.error_stage,
+            error_message=self.result.error_message,
         )
 
 
@@ -102,6 +106,7 @@ class TestPerceptionApplicationService:
             self.context,
             self.capture,
             ocr_service=self.ocr,
+            trace=lambda name, **details: self.trace_events.append((name, details)),
             clock=self.clock,
         )
         self.frame = object()
@@ -247,6 +252,28 @@ class TestPerceptionApplicationService:
         assert outcome.status == "discarded"
         assert outcome.reason == "capture_source_disabled"
         assert "Open project" not in self.context.summary()
+
+    def test_ocr_failure_details_survive_application_and_diagnostics(self):
+        self.ocr.result = OcrResult(
+            language="fas+eng",
+            error_code="required_language_data_missing",
+            engine="tesseract",
+            error_stage="validation",
+            error_message="Required Tesseract language data is missing: fas",
+        )
+        job = self.prepare()
+        outcome = self.bind_and_complete(job)
+
+        assert outcome.status == "no_text"
+        assert outcome.engine == "tesseract"
+        assert outcome.language == "fas+eng"
+        assert outcome.error_code == "required_language_data_missing"
+        assert outcome.error_stage == "validation"
+        assert "fas" in outcome.error_message
+        event = next(details for name, details in self.trace_events if name == "perception_ocr_result")
+        assert event["engine"] == "tesseract"
+        assert event["error_stage"] == "validation"
+        assert "fas" in event["error_message"]
 
     def test_ocr_error_remains_a_visible_context_event_without_fabricated_text(self):
         self.ocr.result = OcrResult(error_code="tesseract_executable_unavailable")
