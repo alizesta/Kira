@@ -338,6 +338,22 @@ class RouteGuiTests(unittest.TestCase):
         self.assertNotIn(pid, config.load_settings()["providers"])
         self.assertNotIn(pid, [w.api_table.item(i, 0).data(Qt.UserRole) for i in range(w.api_table.rowCount())])
 
+    def test_explicit_cloud_opt_in_persists_policy_and_surface_allowlist(self):
+        w = self.win
+        helpers.enable(w.settings, "groq")
+        w.settings["network_policy"] = "local_only"
+        w.settings["role_provider_allowlist"]["surface"] = ["ollama"]
+        controller = w.presentation_context.controllers.require("provider_settings")
+        with mock.patch(
+            "PySide6.QtWidgets.QMessageBox.question",
+            return_value=__import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox.Yes,
+        ):
+            self.assertTrue(controller.enable_surface_cloud())
+        saved = config.load_settings()
+        self.assertEqual(saved["network_policy"], "cloud_permitted")
+        self.assertIn("ollama", saved["role_provider_allowlist"]["surface"])
+        self.assertIn("groq", saved["role_provider_allowlist"]["surface"])
+
     def test_api_enable_disable_autosaves_encrypted_and_keeps_key(self):
         w = self.win
         w.settings["providers"]["mistral"].update({"enabled": True, "api_key": f"{CANARY}-mistral"})
