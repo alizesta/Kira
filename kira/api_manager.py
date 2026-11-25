@@ -20,7 +20,7 @@ from . import discovery
 from . import routes as route_model
 from .discovery import DiscoveryError
 from .app.detected_capabilities import DetectedCapabilities
-from .settings_schema import PROVIDER_DEFAULT_MODELS
+from .settings_schema import GOOGLE_DEEP_REASONING_MODEL, GOOGLE_FREE_VISION_CHAIN, PROVIDER_DEFAULT_MODELS
 
 SERVICES = {
     "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_models": PROVIDER_DEFAULT_MODELS["groq"]},
@@ -387,6 +387,50 @@ def register(settings, detection, key, now=None, *, capabilities: DetectedCapabi
             route_model.reorder(settings, google_ids + other_ids)
             settings["default_route_id"] = google_ids[0]
     return pid
+
+
+# ---------------- automatic free-chain setup ----------------
+def prepare_free_chain(settings, pid, *, capabilities: DetectedCapabilities) -> list[str]:
+    """Create (disabled) Routes for every free-chain model this Google API really lists, in chain order, plus the optional
+    deep-reasoning model last. Returns the route ids to probe (the deep model is never probed: its daily quota drains first)."""
+    listed = {mid.casefold(): mid for mid, rec in (registry(capabilities).get(pid, {}).get("models") or {}).items()
+              if (rec or {}).get("status") != "unavailable"}
+    ids = []
+    for model in (*GOOGLE_FREE_VISION_CHAIN, GOOGLE_DEEP_REASONING_MODEL):
+        real = listed.get(model.casefold())
+        if not real:
+            continue
+        rid = ""
+        for r in route_model.get_routes(settings):
+            if r["provider"] == pid and str(r.get("model") or "").casefold() == model.casefold():
+                rid = r["id"]
+                break
+        if not rid:
+            rid = route_model.add_route(settings, pid, real, enabled=False)["id"]
+        if model != GOOGLE_DEEP_REASONING_MODEL:
+            ids.append(rid)
+    return ids
+
+
+def apply_chain_probe(settings, pid, rows, *, capabilities: DetectedCapabilities) -> dict:
+    """Enable the routes whose one-request probe succeeded (chain order, first in the priority list); leave failed ones off.
+    Returns {'enabled': [model...], 'failed': [(model, error)...]}."""
+    order = {m.casefold(): i for i, m in enumerate(GOOGLE_FREE_VISION_CHAIN)}
+    good, bad = [], []
+    for row in rows or []:
+        (good if row.get("ok") else bad).append(row)
+    good.sort(key=lambda r: order.get(str(r.get("model") or "").casefold(), 99))
+    for row in good:
+        route_model.update_route(settings, row["route_id"], enabled=True, capabilities=capabilities)
+    for row in bad:
+        route_model.update_route(settings, row["route_id"], enabled=False, capabilities=capabilities)
+    current = route_model.get_routes(settings)
+    first = [row["route_id"] for row in good]
+    rest = [r["id"] for r in current if r["id"] not in first]
+    if first:
+        route_model.reorder(settings, first + rest)
+        settings["default_route_id"] = first[0]
+    return {"enabled": [r["model"] for r in good], "failed": [(r["model"], str(r.get("error") or "ناموفق")[:120]) for r in bad]}
 
 
 # ---------------- actions on a registered API ----------------

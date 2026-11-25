@@ -34,6 +34,7 @@ class RouteEditor(QWidget):
     select_auto_requested = Signal()
     test_requested = Signal()
     benchmark_requested = Signal(bool)
+    auto_chain_requested = Signal()
     details_changed = Signal()
 
     def __init__(self, settings: dict, *, model_combo_factory, parent=None) -> None:
@@ -165,6 +166,8 @@ class RouteEditor(QWidget):
         bench_menu = QMenu(self.route_bench_btn)
         bench_menu.addAction("فقط این Route", lambda: self.benchmark_requested.emit(False))
         bench_menu.addAction("همه Routeها", lambda: self.benchmark_requested.emit(True))
+        bench_menu.addSeparator()
+        bench_menu.addAction("راه‌اندازی خودکار زنجیره‌ی رایگان Gemini", self.auto_chain_requested.emit)
         self.route_bench_btn.setMenu(bench_menu)
         actions.addWidget(self.route_test_btn)
         actions.addWidget(self.route_bench_btn)

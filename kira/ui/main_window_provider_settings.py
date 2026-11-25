@@ -280,6 +280,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.route_editor.select_auto_requested.connect(lambda: self.feature_controller("runtime").select_route(""))
         self.route_editor.test_requested.connect(self.test_selected_route)
         self.route_editor.benchmark_requested.connect(self.run_benchmark)
+        self.route_editor.auto_chain_requested.connect(self.run_auto_free_chain)
         self.route_editor.details_changed.connect(self.route_edit_changed)
         advanced_layout.addWidget(self.route_editor)
 
@@ -1112,6 +1113,64 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._bench_worker.done.connect(self.on_bench_done)
         self.context.state._bench_worker.finished.connect(self._clear_bench_worker)
         self.context.state._bench_worker.start()
+
+    def run_auto_free_chain(self):
+        """Create the free Gemini/Gemma routes, probe each with ONE tiny request (serial), enable only the healthy ones."""
+        if self.context.session.busy:
+            self.context.views.route_status.setText("✕ یک پاسخ در حال تولید است؛ بعد از پایان آن دوباره امتحان کن.")
+            return
+        service = self.context.services.provider_application_service
+        settings = self.context.services.settings
+        caps = service.detected_capabilities
+        pids = [p for p, c in settings.get("providers", {}).items()
+                if service.service_of(p, c) == "google" and str(c.get("api_key") or "").strip() and c.get("enabled", True)]
+        if not pids:
+            self.context.views.route_status.setText("✕ API فعال Google با کلید پیدا نشد.")
+            return
+        ids, owner = [], {}
+        for pid in pids:
+            for rid in api_manager.prepare_free_chain(settings, pid, capabilities=caps):
+                ids.append(rid)
+                owner[rid] = pid
+        if not ids:
+            self.context.views.route_status.setText("✕ هیچ‌کدام از مدل‌های زنجیره‌ی رایگان در فهرست API پیدا نشد؛ اول «به‌روزرسانی مدل‌ها» را بزن.")
+            return
+        self.refresh_route_list()
+        self._auto_chain_owner = owner
+        self.context.session.busy = True
+        self.context.state._bench_busy = True
+        self.context.views.bench_out.setPlainText(f"در حال سنجش {len(ids)} مدل (هرکدام یک درخواست کوتاه، یکی‌یکی)…")
+        self._bench_lines = []
+        self.context.state._bench_worker = BenchWorker(self.context.session.client, ids)
+        self.context.state._bench_worker.progress.connect(self.on_bench_progress)
+        self.context.state._bench_worker.done.connect(self._on_auto_chain_done)
+        self.context.state._bench_worker.finished.connect(self._clear_bench_worker)
+        self.context.state._bench_worker.start()
+
+    @Slot(object)
+    def _on_auto_chain_done(self, result):
+        worker = self.sender()
+        if worker is None or self.context.state._bench_worker is not worker or self.context.state._closing:
+            return
+        self.context.session.busy = False
+        self.context.state._bench_busy = False
+        ok, value = result
+        if not ok:
+            self.context.views.bench_out.setPlainText("✕ " + str(value))
+        else:
+            caps = self.context.services.provider_application_service.detected_capabilities
+            owner = getattr(self, "_auto_chain_owner", {})
+            lines, enabled = [], 0
+            for pid in sorted(set(owner.values())):
+                rows = [r for r in value if owner.get(r.get("route_id")) == pid]
+                out = api_manager.apply_chain_probe(self.context.services.settings, pid, rows, capabilities=caps)
+                enabled += len(out["enabled"])
+                lines += [f"✓ فعال شد: {m}" for m in out["enabled"]] + [f"✕ غیرفعال ماند: {m} — {e}" for m, e in out["failed"]]
+            lines.append(f"\n{enabled} مدل فعال شد. مدل‌های ردشده (مثلاً ۴۲۹) بعداً دوباره با همین گزینه امتحان می‌شن؛ Hydrogen غیرفعال و فقط برای استراتژی سخت ساخته شد.")
+            self.context.views.bench_out.setPlainText("\n".join(lines))
+            self.feature_controller("runtime").save_now()
+        self.refresh_route_list()
+        self.feature_controller("runtime")._send_next_pending()
 
     @Slot()
     def _clear_bench_worker(self):

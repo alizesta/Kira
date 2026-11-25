@@ -1,3 +1,8 @@
+## Automatic free-chain setup (2026-11-26 01:37 Iran)
+- New menu item "راه‌اندازی خودکار زنجیره‌ی رایگان Gemini" under Benchmark ▾ in the Routes page. `api_manager.prepare_free_chain` creates DISABLED routes for the chain models the Google API really lists (hydrogen last, never probed); the existing serial `router.benchmark` sends ONE tiny request per route; `api_manager.apply_chain_probe` enables only the ones that answered, in chain order, first in priority, and sets the default route. Failed ones (e.g. 429) stay off with the error shown; run it again later.
+- Limit: Google exposes no quota numbers, so "measuring the rate limit" is one probe per model, not an RPM test. Cooldown/429 failover already existed.
+- Tests: `tests/test_free_chain_setup.py` (2). Not verified: the real UI action, Windows, a real Gemini key.
+
 ## Eye Mode auto screenshot + single detail retry (2026-11-26 01:25 Iran)
 - Branch `claude/eye-vision-free-models`. With Eye Mode on, `ChatController.submit` now attaches ONE fresh screenshot when the question refers to the screen (`refers_to_screen`, phrase list `SCREEN_HINTS` in `vision_pipeline.py`). Not attached when busy (a queued frame would be stale), when the user attached something, when Eye Mode is off, or when settings key `eye_auto_screenshot` is false (default true, not in the schema/UI yet).
 - Small-text questions capture 1280x720 q80. If the reply says it could not read (`UNREADABLE_HINTS`), `on_stream_done` -> `maybe_retry_eye_detail` resends ONCE at 1280x720 (the retry is marked detail, so it never loops). Known limit: the retry re-submits the same question, so the user message appears twice in the chat.
