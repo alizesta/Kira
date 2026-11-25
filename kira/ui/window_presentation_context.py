@@ -394,8 +394,8 @@ CONTROLLER_ACCESS = {
  },
  "attachments_vision": {
   "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
-  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","vision_router","voice_application_service"}),
-  "adapters": frozenset({"game_audio_listener","game_mode"}),
+  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","vision_runtime_provider","vision_router","voice_application_service"}),
+  "adapters": frozenset({"game_audio_listener","game_mode","perception_worker_controller"}),
   "views": frozenset({"game_mode_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","mic_btn","send_strip","wake_btn","code_chat","tray"}),
   "peers": frozenset({"session","chat","runtime"}),
   "resources": frozenset({"_stopping_game_audio_listener"}),
