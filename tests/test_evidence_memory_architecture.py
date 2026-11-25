@@ -18,6 +18,22 @@ class EvidenceMemoryArchitectureTests(unittest.TestCase):
             "repository-owned evidence fact" in item["text"]
             for item in em.list_extra_items()
         ))
+        with em._lock, em._db() as connection:
+            fact = connection.execute(
+                "SELECT id FROM facts WHERE text=?",
+                ("repository-owned evidence fact",),
+            ).fetchone()
+            self.assertIsNotNone(fact)
+            em._FACT_REPOSITORY.add_evidence_quote(
+                connection, fact["id"], 123, "user", "another verified quote", 123.0
+            )
+            quote = connection.execute(
+                "SELECT quote FROM evidence WHERE fact_id=? AND message_id=?",
+                (fact["id"], 123),
+            ).fetchone()
+            self.assertEqual(quote["quote"], "another verified quote")
+            em._FACT_REPOSITORY.set_meta(connection, "repository_test", "stored")
+            self.assertEqual(em._FACT_REPOSITORY.get_meta(connection, "repository_test"), "stored")
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
