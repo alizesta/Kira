@@ -81,6 +81,18 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(len(f.calls), 1)
         self.assertIn("groq", f.calls[0]["url"])
 
+    def test_surface_uses_explicitly_allowlisted_cloud_despite_legacy_local_model_allowlist(self):
+        s, r = make("groq", ollama=False)
+        s["network_policy"] = "cloud_permitted"
+        s["role_provider_allowlist"] = {"surface": ["ollama", "groq"], "deep": ["google"]}
+        s["role_route_models"] = {"surface": ["kira-qwen3.5-9b-abliterated:q4_k_m"]}
+        f = dispatch({"groq": ok_openai("cloud-fallback")})
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "cloud-fallback")
+        self.assertEqual(len(f.calls), 1)
+        self.assertIn("groq", f.calls[0]["url"])
+
     def test_surface_never_uses_cloud_when_network_policy_is_local_only(self):
         s, r = make("groq", ollama=False)
         s["network_policy"] = "local_only"
