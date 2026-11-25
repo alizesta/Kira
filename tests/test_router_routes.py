@@ -111,6 +111,18 @@ class RouterRouteTests(unittest.TestCase):
                 r.chat(MSGS, SYS)
         self.assertIn("هیچ Route ابریِ فعال و معتبری", str(cm.exception))
 
+    def test_surface_explains_local_only_policy_when_cloud_is_configured(self):
+        s, r = make("groq", ollama=True)
+        routes.set_enabled(s, "ollama", False)
+        s["network_policy"] = "local_only"
+        s["role_provider_allowlist"] = {"surface": ["ollama"]}
+        with r.role_scope("surface"):
+            with self.assertRaises(RuntimeError) as cm:
+                r.chat(MSGS, SYS)
+        self.assertIn("سیاست حریم خصوصی روی «فقط محلی» است", str(cm.exception))
+        self.assertIn("cloud_permitted", str(cm.exception))
+        self.assertEqual(r.last_route_decisions[0]["reason"], "blocked_by_local_only")
+
     def test_deep_role_uses_gemini_only_even_when_manual_route_is_other_provider(self):
         s, r = make("groq")
         s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
