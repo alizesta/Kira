@@ -88,6 +88,8 @@ DEFAULTS = {
     "minimize_to_tray": True,            # minimize button hides the window to the system tray
     "close_to_tray": False,              # close (X) hides to the tray instead of quitting
     "idle_talk": True,
+    "start_with_windows": True,          # per-user Run key (kira/autostart.py); starts hidden in the tray
+    "game_commentary": True,             # Eye/Game Mode: speak up on a remarkable moment (rate-limited; no extra model request)
     "companion_perch": True,             # after a drag she falls and sits on the window / taskbar under her (kira/pet.py)
     "companion_hang": True,              # while dragged she hangs from the cursor and swings
     "auto_dance": True,                  # dance by herself when music plays on the PC (needs PyAudioWPatch)

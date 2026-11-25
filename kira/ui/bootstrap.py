@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -340,9 +341,18 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
     app.aboutToQuit.connect(console_log_capture.restore)
     app.aboutToQuit.connect(module_manager.shutdown)
     app.aboutToQuit.connect(event_bus.close)
-    window.show()
-    window.repaint()
-    splash.finish(window)
+    if os.environ.pop("KIRA_AUTOSTART", "") == "1" and getattr(window.presentation_context.views, "tray", None) is not None:
+        # Launched by Windows at login: stay out of the way (tray + companion only).
+        try:
+            window.feature_controller("lifecycle").hide_to_tray()
+            splash.close()
+        except Exception:  # noqa: BLE001 - if hiding fails, show the window normally
+            window.show()
+            splash.finish(window)
+    else:
+        window.show()
+        window.repaint()
+        splash.finish(window)
     mark_phase("window_shown")
 
     def record_interactive_startup() -> None:

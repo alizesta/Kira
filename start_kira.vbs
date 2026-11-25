@@ -13,4 +13,7 @@ If Not fso.FileExists(launcher) Then
 End If
 
 shell.CurrentDirectory = scriptDir
+If WScript.Arguments.Count > 0 Then
+    If LCase(WScript.Arguments(0)) = "autostart" Then shell.Environment("Process")("KIRA_AUTOSTART") = "1"
+End If
 shell.Run """" & launcher & """", 0, False

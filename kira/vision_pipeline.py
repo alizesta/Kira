@@ -57,6 +57,42 @@ def refers_to_screen(question: str | None) -> bool:
     return any(hint in low for hint in SCREEN_HINTS)
 
 
+HIGHLIGHT_MARK = "[HIGHLIGHT]"
+
+
+def extract_highlight(text: str | None, max_chars: int = 220) -> str | None:
+    """The one-line comment the vision model appends after HIGHLIGHT_MARK, or None when nothing notable happened."""
+    for line in reversed(str(text or "").splitlines()):
+        line = line.strip()
+        if line.upper().startswith(HIGHLIGHT_MARK):
+            comment = line[len(HIGHLIGHT_MARK):].strip(" :-—")
+            return comment[:max_chars] if comment else None
+    return None
+
+
+class HighlightGate:
+    """Keep spontaneous game comments rare: minimum gap, hourly cap, and no repeating the same remark."""
+
+    def __init__(self, min_interval: float = 60.0, per_hour: int = 10, clock=time.monotonic):
+        self.min_interval, self.per_hour, self._clock = float(min_interval), int(per_hour), clock
+        self._sent: list[float] = []
+        self._recent: list[str] = []
+
+    def allow(self, comment: str) -> bool:
+        now = self._clock()
+        self._sent = [t for t in self._sent if now - t < 3600]
+        key = " ".join(str(comment or "").split()).casefold()
+        if not key or key in self._recent:
+            return False
+        if self._sent and now - self._sent[-1] < self.min_interval:
+            return False
+        if len(self._sent) >= self.per_hour:
+            return False
+        self._sent.append(now)
+        self._recent = (self._recent + [key])[-5:]
+        return True
+
+
 def wants_detail_capture(question: str | None) -> bool:
     low = str(question or "").casefold()
     return any(hint in low for hint in DETAIL_HINTS)

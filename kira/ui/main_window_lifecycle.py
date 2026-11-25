@@ -1,5 +1,6 @@
 """Window lifecycle feature controller."""
 from PySide6.QtCore import Slot
+from .. import autostart
 from .companion_session import session_marker
 from .main_window_lifecycle_support import (
     DEFAULTS,
@@ -72,7 +73,7 @@ class LifecycleController(WindowFeatureController):
             "companion_height": self.context.views.character_page.size_sl.value(),
             "follow_strength": self.context.views.character_page.follow_sl.value() / 100.0,
             "motion_strength": self.context.views.character_page.motion_sl.value() / 100.0,
-            "click_reactions": self.context.views.character_page.react_chk.isChecked(), "idle_talk": self.context.views.character_page.idle_chk.isChecked(), "always_on_top": self.context.views.character_page.top_chk.isChecked(),
+            "click_reactions": self.context.views.character_page.react_chk.isChecked(), "idle_talk": self.context.views.character_page.idle_chk.isChecked(), "start_with_windows": self.context.views.character_page.autostart_chk.isChecked(), "game_commentary": self.context.views.character_page.commentary_chk.isChecked(), "always_on_top": self.context.views.character_page.top_chk.isChecked(),
             "companion_perch": self.context.views.character_page.perch_chk.isChecked(), "companion_hang": self.context.views.character_page.hang_chk.isChecked(),
             "auto_dance": self.context.views.character_page.dance_chk.isChecked(),
             "minimize_to_tray": self.context.views.character_page.tray_min_chk.isChecked(), "close_to_tray": self.context.views.character_page.tray_close_chk.isChecked(),
@@ -314,6 +315,10 @@ class LifecycleController(WindowFeatureController):
         self.context.adapters.animator.auto_bored = True
         self.context.adapters.companion.set_height(int(s["companion_height"]))
         self.context.adapters.companion.set_on_top(bool(s["always_on_top"]))
+        try:                                                                       # keep the Windows Run entry in sync with the setting
+            autostart.set_enabled(bool(s.get("start_with_windows", True)))
+        except Exception:                                                          # noqa: BLE001 - never block startup
+            pass
 
     def look_anchor(self):
         w = self.context.adapters.companion if self.context.adapters.companion.isVisible() else self.context.views.avatar

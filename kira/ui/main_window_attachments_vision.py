@@ -1,7 +1,7 @@
 """Attachment and vision feature controller for the desktop window."""
 from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
-from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, wants_detail_capture
+from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, HighlightGate, extract_highlight, wants_detail_capture
 from ..perception.events import PerceptionEvent
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
@@ -799,6 +799,10 @@ class AttachmentsVisionController(WindowFeatureController):
             fingerprint=PerceptionEvent.fingerprint,
             frame_context=frame_context,
         )
+        try:
+            self._maybe_comment_on_highlight(outcome)
+        except Exception:  # noqa: BLE001 - commentary is a bonus and must never break vision
+            pass
         if outcome.stats is not None:
             stats = outcome.stats
             self.context.views.game_mode_btn.setToolTip(
@@ -806,6 +810,25 @@ class AttachmentsVisionController(WindowFeatureController):
                 f"فریم تکراری ردشده: {stats['unchanged_skips']} · "
                 f"تأخیر آخرین تحلیل: {int(latency_ms or 0)}ms"
             )
+
+    def _maybe_comment_on_highlight(self, outcome):
+        """Speak up once when the vision model flagged a remarkable moment (no extra model request; rate-limited)."""
+        if outcome.status != "ready" or not self.context.state._game_mode_enabled:
+            return
+        if not self.context.services.settings.get("game_commentary", True):
+            return
+        comment = extract_highlight(outcome.message)
+        if not comment or self.context.session.busy or self.context.services.voice_application_service.is_speaking():
+            return
+        gate = getattr(self, "_highlight_gate", None)
+        if gate is None:
+            gate = self._highlight_gate = HighlightGate()
+        if not gate.allow(comment):
+            return
+        vision_trace("game_commentary", chars=len(comment))
+        self.feature_controller("session").add_chat("assistant", comment)
+        self.feature_controller("runtime").save_message("assistant", comment, persist=False, observe=False)
+        self.feature_controller("runtime").say(comment)
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
