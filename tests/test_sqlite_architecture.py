@@ -9,6 +9,7 @@ from kira.chat.sqlite_connection import SqliteConnectionManager
 from kira.chat.sqlite_pending_queue import SqlitePendingMessageQueue
 from kira.chat.sqlite_recovery import SqliteRecoveryManager
 from kira.chat.sqlite_snapshot import SqliteSnapshotManager
+from kira.chat.sqlite_repository import PersistenceError, SqliteChatRepository
 
 
 class SqlitePersistenceBoundaryTests(unittest.TestCase):
@@ -65,6 +66,38 @@ class SqlitePersistenceBoundaryTests(unittest.TestCase):
         damaged.write_bytes(b"not sqlite")
         self.assertFalse(recovery.healthy(damaged))
         self.assertEqual(recovery.backup_dirs(), [])
+
+    def test_recovery_rewrite_rolls_back_messages_when_metadata_conflicts(self):
+        repository = SqliteChatRepository(db_path=self.database)
+        self.assertEqual(repository.init_db(), [])
+        repository.create_conversation("kira", conversation_id="existing-conversation")
+        self.assertTrue(repository.add_message(
+            "user", "keep-this-message", character_id="kira",
+            conversation_id="existing-conversation",
+        ))
+
+        recovered_rows = [(
+            None, "user", "must-rollback", "", "kira",
+            "new-conversation", "{}", "complete",
+        )]
+        conflicting_metadata = [{
+            "id": "existing-conversation",
+            "character_id": "another-character",
+            "title": "conflict",
+            "metadata": {},
+            "status": "active",
+            "created_at": "2026-01-01 00:00:00",
+            "updated_at": "2026-01-01 00:00:00",
+        }]
+
+        with self.assertRaises(PersistenceError):
+            repository._write_recovery_state(recovered_rows, conflicting_metadata)
+
+        self.assertEqual(
+            repository.recent_messages(10, character_id="kira"),
+            [{"role": "user", "content": "keep-this-message"}],
+        )
+        self.assertIsNone(repository.get_conversation("new-conversation"))
 
     def test_pending_queue_replays_receipts_without_repository_dependency(self):
         self.connections.configure_database()
