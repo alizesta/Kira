@@ -32,6 +32,26 @@ class EvidenceFactRepository:
         self._max_rows = max(1, int(max_rows))
         self._cache = cache
 
+    def get_meta(self, connection, key, default=""):
+        row = connection.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_meta(self, connection, key, value) -> None:
+        connection.execute(
+            "INSERT INTO meta(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value)),
+        )
+
+    def add_evidence_quote(self, connection, fact_id, message_id, speaker, quote, created_at) -> None:
+        if not fact_id:
+            return
+        connection.execute(
+            "INSERT OR IGNORE INTO evidence(fact_id, message_id, speaker, quote, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (fact_id, message_id, speaker, " ".join(str(quote or "").split()), created_at),
+        )
+
     def quarantine(self, connection, reason, payload) -> None:
         connection.execute(
             "INSERT INTO quarantine(created_at, reason, payload) VALUES (?, ?, ?)",
