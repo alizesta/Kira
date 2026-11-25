@@ -88,6 +88,10 @@ class DependencyLockGenerationTests(unittest.TestCase):
             self.assertEqual(len(calls), len(generator.GROUPS) * 2)
             self.assertTrue((output / "python311" / "core.txt").is_file())
             self.assertTrue((output / "python312" / "voice-kitten-engine.txt").is_file())
+            self.assertEqual(
+                (output / "python311" / "core-constraints.txt").read_text(encoding="utf-8"),
+                "demo==1.2.3\n",
+            )
             call_count = len(calls)
             reused = generator.generate_locks(
                 root=root, output_dir=output, uv_executable="uv",

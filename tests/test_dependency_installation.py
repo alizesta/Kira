@@ -52,8 +52,8 @@ class DependencyInstallationTests(unittest.TestCase):
         )
         lock_file.parent.mkdir(parents=True)
         lock_file.write_text(
-            "alpha==1.2 --hash=sha256:0123456789abcdef\\n"
-            "beta==2.0 --hash=sha256:abcdef0123456789\\n",
+            "alpha==1.2 --hash=sha256:0123456789abcdef\n"
+            "beta==2.0 --hash=sha256:abcdef0123456789\n",
             encoding="utf-8",
         )
         calls, runner = self.make_runner()
@@ -82,7 +82,7 @@ class DependencyInstallationTests(unittest.TestCase):
     def test_kitten_engine_lock_keeps_no_deps_install_contract(self):
         project_root = self.root / "project"
         engine_requirements = self.root / "requirements-voice-kitten-engine.txt"
-        engine_requirements.write_text("kittenml>=0.9.8,<1\\n", encoding="utf-8")
+        engine_requirements.write_text("kittenml>=0.9.8,<1\n", encoding="utf-8")
         lock_file = (
             project_root
             / "dependency-locks"
@@ -92,7 +92,7 @@ class DependencyInstallationTests(unittest.TestCase):
         )
         lock_file.parent.mkdir(parents=True)
         lock_file.write_text(
-            "kittenml==0.9.8 --hash=sha256:0123456789abcdef\\n",
+            "kittenml==0.9.8 --hash=sha256:0123456789abcdef\n",
             encoding="utf-8",
         )
         calls, runner = self.make_runner()
@@ -115,12 +115,12 @@ class DependencyInstallationTests(unittest.TestCase):
     def test_lock_selection_is_limited_to_supported_windows_targets(self):
         project_root = self.root / "project"
         requirements = self.root / "requirements.txt"
-        requirements.write_text("alpha>=1\\n", encoding="utf-8")
+        requirements.write_text("alpha>=1\n", encoding="utf-8")
         expected = (
             project_root / "dependency-locks" / "windows-x86_64" / "python311" / "core.txt"
         )
         expected.parent.mkdir(parents=True)
-        expected.write_text("alpha==1.2\\n", encoding="utf-8")
+        expected.write_text("alpha==1.2\n", encoding="utf-8")
 
         selected = install_deps._find_dependency_lock(
             requirements,
@@ -147,6 +147,34 @@ class DependencyInstallationTests(unittest.TestCase):
         self.assertEqual(selected, expected)
         self.assertIsNone(unsupported_platform)
         self.assertIsNone(unsupported_python)
+
+    def test_optional_fallback_is_constrained_by_the_existing_core_lock(self):
+        optional_requirements = self.root / "requirements-ocr.txt"
+        optional_requirements.write_text("Pillow>=10,<13\n", encoding="utf-8")
+        project_root = self.root / "project"
+        core_lock = (
+            project_root / "dependency-locks" / "windows-x86_64" / "python312" / "core.txt"
+        )
+        core_constraints = core_lock.parent / "core-constraints.txt"
+        core_constraints.parent.mkdir(parents=True)
+        core_lock.write_text("requests==2.32.5\n", encoding="utf-8")
+        core_constraints.write_text("requests==2.32.5\n", encoding="utf-8")
+        calls, runner = self.make_runner()
+        lookup = mock.patch(
+            "install_deps._find_dependency_lock",
+            side_effect=lambda requirement, root=None: (
+                core_lock if Path(requirement).name == "requirements.txt" else None
+            ),
+        )
+        with self.patched_environment(), lookup:
+            result = install_deps.install(
+                optional_requirements, runner=runner, out=lambda _message: None,
+                project_root=project_root,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(len(calls), 3)
+        self.assertIn(str(core_constraints), calls[0])
+        self.assertIn(str(core_constraints), calls[1])
 
     def test_preflight_install_and_pip_check_share_the_same_constraints(self):
         calls, runner = self.make_runner()

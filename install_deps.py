@@ -200,8 +200,16 @@ def install(
         out("ERROR: --upgrade cannot be used with a hash-locked dependency group; regenerate its lock instead.")
         return 1
 
+    effective_constraints = list(constraints)
+    if lock_file is None and requirement_file.name in LOCK_GROUPS and requirement_file.name != "requirements.txt":
+        core_lock = _find_dependency_lock("requirements.txt", root=project_root)
+        if core_lock is not None:
+            core_constraints = core_lock.parent / "core-constraints.txt"
+            if core_constraints.is_file():
+                effective_constraints.append(core_constraints)
+
     try:
-        constraint_args = [] if lock_file else _constraint_args(list(constraints))
+        constraint_args = [] if lock_file else _constraint_args(effective_constraints)
     except FileNotFoundError as exc:
         out(f"ERROR: {exc}")
         return 1

@@ -174,8 +174,18 @@ def _reusable_locks(output_dir: Path, fingerprint: str, python_versions: Sequenc
         for version in python_versions:
             core_lock = output_dir / ("python" + version.replace(".", "")) / "core.txt"
             _validate_lock(core_lock)
+        for version in python_versions:
+            version_dir = output_dir / ("python" + version.replace(".", ""))
+            core_lock = version_dir / "core.txt"
+            expected_constraints = "".join(
+                f"{name}=={version_pin}\n"
+                for name, version_pin, _stanza in _lock_stanzas(core_lock.read_text(encoding="utf-8"))
+            )
+            if (version_dir / "core-constraints.txt").read_text(encoding="utf-8") != expected_constraints:
+                return False
         for lock_file in output_dir.glob("python*/*.txt"):
-            _validate_lock(lock_file)
+            if lock_file.name != "core-constraints.txt":
+                _validate_lock(lock_file)
         return True
     except (OSError, ValueError, LockGenerationError):
         return False
@@ -295,7 +305,7 @@ def generate_locks(
             for version in python_versions:
                 version_name = "python" + version.replace(".", "")
                 core_lock = staged_output / version_name / "core.txt"
-                core_constraints = staging / f"core-constraints-{version_name}.txt"
+                core_constraints = staged_output / version_name / "core-constraints.txt"
                 try:
                     _write_core_constraints(core_lock, core_constraints)
                 except (OSError, LockGenerationError) as exc:
