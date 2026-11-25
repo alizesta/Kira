@@ -52,6 +52,48 @@ class DesktopCaptureAdapterTests(unittest.TestCase):
         self.assertIsNone(service.capture_window(item))
         service._capture_dxcam.assert_not_called()
 
+    def test_foreground_window_info_retains_stable_anchor_when_process_metadata_is_unavailable(self):
+        class User32:
+            @staticmethod
+            def GetForegroundWindow():
+                return 10
+
+            @staticmethod
+            def GetWindowThreadProcessId(hwnd, output):
+                output._obj.value = 20
+                return 1
+
+            @staticmethod
+            def GetWindowTextLengthW(hwnd):
+                return 0
+
+            @staticmethod
+            def GetWindowTextW(hwnd, buffer, size):
+                return 0
+
+            @staticmethod
+            def GetWindowRect(hwnd, output):
+                output._obj.left = 0
+                output._obj.top = 0
+                output._obj.right = 640
+                output._obj.bottom = 480
+                return 1
+
+        class Kernel32:
+            @staticmethod
+            def OpenProcess(access, inherit, pid):
+                return 0  # Windows did not grant process metadata access.
+
+        service = DesktopCaptureService()
+        service._user32 = User32()
+        service._kernel32 = Kernel32()
+        info = service.foreground_window_info()
+        self.assertEqual(
+            info,
+            {"hwnd": 10, "pid": 20, "exe": "", "path": "", "title": "",
+             "rect": (0, 0, 640, 480)},
+        )
+
     def test_full_monitor_capture_uses_monitor_containing_foreground_window(self):
         service = DesktopCaptureService()
         primary = FakeScreen(r"\\.\\DISPLAY1", (0, 0, 1920, 1080), True)
