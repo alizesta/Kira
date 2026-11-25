@@ -205,3 +205,13 @@ def test_desktop_live_and_analysis_reuse_the_same_capture_result():
     assert "frame, \"desktop\", window_info, frame_context=frame_context" in capture
     assert "frame_image = _frame.scaled(" in live
     assert "capture.capture_monitor_for_window(" in live
+
+
+def test_live_failures_release_reserved_budget():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    live = source.split("def _maybe_stream_gemini_live_frame", 1)[1].split(
+        "def _queue_perception_ocr", 1
+    )[0]
+    assert "def _release_live_frame_budget" in source
+    assert "return self._release_live_frame_budget(frame_context)" in live
+    assert "return True" in live

@@ -127,10 +127,7 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertIsNone(orchestrator.take_next("a"))
         self.assertEqual(orchestrator.snapshot()["dropped_pending"], 1)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
+    
     def test_releasing_unsent_frame_returns_shared_quota(self):
         orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)
         context = orchestrator.create_context("s", "desktop")
@@ -140,11 +137,30 @@ if __name__ == "__main__":
         self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
 
     def test_replacing_pending_frame_releases_evicted_quota(self):
-        orchestrator = VisionFrameOrchestrator(capacity=1, max_frames_per_minute=1)
+        orchestrator = VisionFrameOrchestrator(capacity=1, max_frames_per_minute=2)
         first = orchestrator.create_context("s", "desktop")
-        orchestrator.decide(first, live_ready=False)
+        self.assertEqual(orchestrator.decide(first, live_ready=False).route, "analysis")
         orchestrator.enqueue(FrameJob(first, b"old"))
         second = orchestrator.create_context("s", "desktop")
-        # The first reservation is still held until enqueue replaces it; the second
-        # decision is admitted only after the pending slot evicts/releases the old job.
-        self.assertEqual(orchestrator.decide(second, live_ready=False).reason, "frame_budget_exhausted")
+        self.assertEqual(orchestrator.decide(second, live_ready=False).route, "analysis")
+        orchestrator.enqueue(FrameJob(second, b"new"))
+        third = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(third, live_ready=False).route, "analysis")
+
+    def test_configured_budget_is_shared_across_route_types(self):
+        orchestrator = VisionFrameOrchestrator()
+        orchestrator.configure_budget(max_frames_per_minute=1, min_interval_seconds=5)
+        live = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(live, live_ready=True, now=100).route, "live")
+        blocked = orchestrator.create_context("s", "desktop")
+        self.assertEqual(
+            orchestrator.decide(blocked, live_ready=False, now=102).reason,
+            "frame_budget_exhausted",
+        )
+        orchestrator.configure_budget(max_frames_per_minute=2, min_interval_seconds=0)
+        analysis = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(analysis, live_ready=False, now=103).route, "analysis")
+
+
+if __name__ == "__main__":
+    unittest.main()
