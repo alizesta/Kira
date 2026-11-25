@@ -191,6 +191,12 @@ class OllamaSetupManager:
         return executable
 
     def start_server(self):
+        # winget may start the Ollama tray/server itself; never launch a second daemon.
+        try:
+            self._get_json("/api/version",timeout=2)
+            return
+        except (requests.RequestException,ValueError,SetupError):
+            pass
         executable=self.executable()
         if not executable: raise SetupError("فایل اجرایی Ollama پیدا نشد.")
         flags=(getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0)) if os.name=="nt" else 0

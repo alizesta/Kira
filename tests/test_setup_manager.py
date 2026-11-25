@@ -32,6 +32,14 @@ class SetupManagerTests(unittest.TestCase):
         self.assertEqual(profile.assess(7000)[0],"gpu_fit")
         self.assertEqual(profile.assess(10000)[0],"ram_fit")
         self.assertEqual(profile.assess(20000)[0],"constrained")
+    def test_start_server_reuses_an_already_running_server(self):
+        session=mock.Mock()
+        session.get.return_value=Response({"version":"0.6.0"})
+        popen=mock.Mock()
+        manager=OllamaSetupManager(session=session,popen=popen)
+        manager.start_server()
+        popen.assert_not_called()
+
     def test_insufficient_disk_rejects_before_pull(self):
         session=mock.Mock(); session.get.return_value=Response({"layers":[{"size":10000}]})
         manager=OllamaSetupManager(session=session,store_path=__import__("pathlib").Path("models"),
