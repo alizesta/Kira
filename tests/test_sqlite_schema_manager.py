@@ -42,6 +42,47 @@ class SqliteSchemaManagerTests(unittest.TestCase):
                     [1, 2],
                 )
 
+    def test_version_one_database_migrates_to_version_two_without_losing_messages(self):
+        with tempfile.TemporaryDirectory(prefix="kira-schema-v1-") as directory:
+            database = Path(directory) / "chat.sqlite3"
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "CREATE TABLE conversations (id TEXT PRIMARY KEY, character_id TEXT NOT NULL, "
+                    "title TEXT NOT NULL DEFAULT '', metadata TEXT NOT NULL DEFAULT '{}', "
+                    "status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+                )
+                connection.execute(
+                    "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, "
+                    "content TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                    "character_id TEXT NOT NULL DEFAULT 'kira', conversation_id TEXT, "
+                    "metadata TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'complete')"
+                )
+                connection.execute(
+                    "CREATE TABLE persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)"
+                )
+                connection.execute(
+                    "INSERT INTO persistence_schema VALUES (1, '2026-01-01', 'v1')"
+                )
+                connection.execute(
+                    "INSERT INTO messages(role, content, character_id) VALUES ('user', 'v1 message', 'kira')"
+                )
+                connection.execute("PRAGMA user_version = 1")
+
+            repository = SqliteChatRepository(database)
+            self.assertEqual(repository.init_db(), [])
+            self.assertEqual(repository.get_messages(limit=10, character_id="kira")[0]["content"], "v1 message")
+            with sqlite3.connect(database) as connection:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+                self.assertEqual(
+                    [row[0] for row in connection.execute(
+                        "SELECT version FROM persistence_schema ORDER BY version"
+                    )],
+                    [1, 2],
+                )
+                self.assertIsNotNone(connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='persistence_receipts'"
+                ).fetchone())
+
     def test_legacy_message_migration_remains_additive_and_preserves_rows(self):
         with tempfile.TemporaryDirectory(prefix="kira-schema-legacy-") as directory:
             database = Path(directory) / "chat.sqlite3"

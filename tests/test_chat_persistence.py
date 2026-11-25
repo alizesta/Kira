@@ -134,6 +134,33 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertEqual(memory.pending_count(), 0)
         self.assertIsNone(memory.repository.last_error)
 
+    def test_spool_replay_after_commit_before_cleanup_does_not_duplicate_message(self):
+        repository = memory.repository
+        row = (
+            "user", "crash replay", "kira", "crash-replay-conversation",
+            "{}", "complete", "crash-replay-token",
+        )
+        with repository._lock:
+            self.assertTrue(repository._queue_pending_locked(row))
+        spool = repository._pending_spool_path()
+        original_unlink = Path.unlink
+        failed = [False]
+
+        def fail_first_spool_cleanup(path, *args, **kwargs):
+            if path == spool and not failed[0]:
+                failed[0] = True
+                raise OSError("simulated process interruption before spool cleanup")
+            return original_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", new=fail_first_spool_cleanup):
+            self.assertEqual(repository.flush_pending(), 1)
+
+        self.assertEqual(repository.message_count(), 1)
+        self.assertEqual(repository.pending_count(), 1)
+        self.assertEqual(repository.flush_pending(), 1)
+        self.assertEqual(repository.message_count(), 1)
+        self.assertEqual(repository.pending_count(), 0)
+
     def test_full_pending_queue_preserves_accepted_messages_and_reports_new_write(self):
         memory._pending.extend(
             ("user", f"pending-{index}", "kira", "conversation", "{}", "complete")
