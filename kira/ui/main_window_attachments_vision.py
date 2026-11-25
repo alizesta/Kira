@@ -93,6 +93,33 @@ def _trace_capture_state(game, frame, source=None):
     )
 
 
+def _live_window_identity(window_info):
+    """Return the stable HWND/PID anchor and any process metadata Windows exposed."""
+    if not isinstance(window_info, dict):
+        return None
+    try:
+        hwnd, pid = int(window_info.get("hwnd") or 0), int(window_info.get("pid") or 0)
+        rect = tuple(int(value) for value in window_info.get("rect") or ())
+    except (TypeError, ValueError):
+        return None
+    if hwnd <= 0 or pid <= 0 or len(rect) != 4 or rect[2] <= rect[0] or rect[3] <= rect[1]:
+        return None
+    return (
+        hwnd, pid,
+        str(window_info.get("exe") or "").strip().casefold(),
+        str(window_info.get("title") or "").strip().casefold(),
+        str(window_info.get("path") or "").strip().casefold(),
+    )
+
+
+def _same_live_window(left, right):
+    """Compare HWND/PID strictly and compare optional metadata when both sides have it."""
+    first, second = _live_window_identity(left), _live_window_identity(right)
+    if first is None or second is None or first[:2] != second[:2]:
+        return False
+    return all(not a or not b or a == b for a, b in zip(first[2:], second[2:]))
+
+
 class AttachmentsVisionController(WindowFeatureController):
     def _perception_engine(self):
         engine = getattr(self, "_desktop_perception_engine", None)
@@ -264,30 +291,21 @@ class AttachmentsVisionController(WindowFeatureController):
         permitted = service.capture_allowed(
             self.context.state._game_mode_enabled if source == "game" else False,
             self.context.state._game_mode_profile if source == "game" else None,
-            source=source, window_info=current,
+            source=source, window_info=current, allow_partial_identity=True,
         )
         if not permitted:
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
             return False
-        foreground_identity = (
-            int(current.get("hwnd") or 0), int(current.get("pid") or 0),
-            str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
-            str(current.get("path") or "").casefold(),
-        )
-        expected = (
-            int((window_info or {}).get("hwnd") or 0), int((window_info or {}).get("pid") or 0),
-            str((window_info or {}).get("exe") or "").casefold(),
-            str((window_info or {}).get("title") or "").strip(),
-            str((window_info or {}).get("path") or "").casefold(),
-        )
-        # Desktop Eye Mode captures the selected monitor, not the foreground window.
-        # Keep its Live stream stable while focus moves between applications.
+        foreground_identity = _live_window_identity(current)
+        # Desktop Eye Mode captures the selected monitor, not a titled application
+        # window. The HWND/PID/rect anchor is sufficient; optional metadata is
+        # still checked against the privacy blocklist when it is available.
         identity = (
             ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
             if source == "desktop" else foreground_identity
         )
-        if not all(foreground_identity) or (source == "game" and foreground_identity != expected):
+        if foreground_identity is None or (source == "game" and not _same_live_window(current, window_info)):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
             return False
@@ -306,16 +324,10 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
             return False
         latest = capture.foreground_window_info()
-        latest_identity = (
-            int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
-            str((latest or {}).get("exe") or "").casefold(),
-            str((latest or {}).get("title") or "").strip(),
-            str((latest or {}).get("path") or "").casefold(),
-        )
-        if (source == "game" and latest_identity != foreground_identity) or not service.capture_allowed(
+        if (source == "game" and not _same_live_window(latest, current)) or not service.capture_allowed(
             self.context.state._game_mode_enabled if source == "game" else False,
             self.context.state._game_mode_profile if source == "game" else None,
-            source=source, window_info=latest,
+            source=source, window_info=latest, allow_partial_identity=True,
         ):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
@@ -377,8 +389,21 @@ class AttachmentsVisionController(WindowFeatureController):
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
-            max_bytes=MAX_VIDEO_FRAME_BYTES, fps=1,
-            approx_kib_per_second=round(len(jpeg) / 1024.0, 2),
+            max_bytes=MAX_VIDEO_FRAME_BYTES,
+            min_interval_seconds=self._live_budget_values()[0],
+            max_frames_per_minute=min(
+                self._live_budget_values()[1],
+                int(60.0 / self._live_budget_values()[0]),
+                60,
+            ),
+            max_fps=round(min(1.0, 1.0 / self._live_budget_values()[0],
+                              min(self._live_budget_values()[1],
+                                  int(60.0 / self._live_budget_values()[0]), 60) / 60.0), 4),
+            approx_kib_per_second=round(
+                (len(jpeg) / 1024.0) * min(1.0, 1.0 / self._live_budget_values()[0],
+                    min(self._live_budget_values()[1],
+                        int(60.0 / self._live_budget_values()[0]), 60) / 60.0), 2
+            ),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
@@ -389,7 +414,8 @@ class AttachmentsVisionController(WindowFeatureController):
         context = self.context.services.desktop_context_application_service
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         allowed, reason = privacy.evaluate_window(
-            window_info, explicit=(source == "game")
+            window_info, explicit=(source == "game"),
+            allow_partial_identity=(source == "desktop"),
         )
         if not allowed:
             context.clear_sensitive(
@@ -1193,7 +1219,9 @@ class AttachmentsVisionController(WindowFeatureController):
         privacy = service.desktop_capture_application_service
         capture = self.context.adapters.game_mode.capture_service
         window_info = capture.foreground_window_info()
-        allowed, reason = privacy.evaluate_window(window_info)
+        allowed, reason = privacy.evaluate_window(
+            window_info, allow_partial_identity=True
+        )
         if not allowed:
             self._clear_live_video_state()
             self.context.state._latest_game_frame = None
@@ -1249,6 +1277,7 @@ class AttachmentsVisionController(WindowFeatureController):
             speech_active=self.context.services.voice_application_service.is_speaking(),
             source=source,
             window_info=window_info,
+            allow_partial_identity=(source == "desktop"),
         ):
             return
         try:
