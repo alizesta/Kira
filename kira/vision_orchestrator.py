@@ -121,6 +121,12 @@ class VisionFrameOrchestrator:
         while len(self._decisions) > self._history_size:
             self._decisions.popitem(last=False)
 
+    def configure_budget(self, *, max_frames_per_minute: int, min_interval_seconds: float) -> None:
+        """Update the active route budget while retaining the shared session history."""
+        with self._lock:
+            self.max_frames_per_minute = max(0, int(max_frames_per_minute))
+            self.min_interval_seconds = max(0.0, float(min_interval_seconds))
+
     def _over_budget(self, session_id: str, now: float) -> bool:
         sent = self._sent_at.setdefault(session_id, deque())
         while sent and now - sent[0] >= 60.0:

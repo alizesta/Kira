@@ -1301,6 +1301,15 @@ class AttachmentsVisionController(WindowFeatureController):
             or str(id(self.context.session))
         )
         orchestrator = service.frame_orchestrator
+        if live_ready:
+            interval_seconds, max_frames_per_minute = self._live_budget_values()
+        else:
+            interval_seconds = max(0.25, float(service.policy.interval_seconds))
+            max_frames_per_minute = max(1, int(60.0 / interval_seconds))
+        orchestrator.configure_budget(
+            max_frames_per_minute=max_frames_per_minute,
+            min_interval_seconds=interval_seconds,
+        )
         frame_context = orchestrator.create_context(session_id, source, window_info)
         decision = orchestrator.decide(
             frame_context, live_ready=live_ready, analysis_allowed=analysis_allowed

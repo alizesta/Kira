@@ -129,3 +129,14 @@ if __name__ == "__main__":
         self.assertEqual(orchestrator.take_next("a").context.frame_id, a2.frame_id)
         self.assertIsNone(orchestrator.take_next("a"))
         self.assertEqual(orchestrator.snapshot()["dropped_pending"], 1)
+
+    def test_configured_budget_is_shared_across_route_types(self):
+        orchestrator = VisionFrameOrchestrator(max_frames_per_minute=60)
+        orchestrator.configure_budget(max_frames_per_minute=1, min_interval_seconds=0)
+        live = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(live, live_ready=True).route, "live")
+        orchestrator.configure_budget(max_frames_per_minute=60, min_interval_seconds=0)
+        analysis = orchestrator.create_context("s", "desktop")
+        decision = orchestrator.decide(analysis, live_ready=False)
+        self.assertEqual(decision.route, "analysis")
+        self.assertEqual(orchestrator.snapshot()["pending"], 0)
