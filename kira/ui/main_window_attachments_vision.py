@@ -386,6 +386,8 @@ class AttachmentsVisionController(WindowFeatureController):
         selector.commit(sample)
         vision_trace(
             "live_video_frame_queued", source=source,
+            frame_id=frame_context.frame_id if frame_context is not None else None,
+            session_id=frame_context.session_id if frame_context is not None else None,
             reason=decision.reason, mean_change=round(decision.mean_change, 4),
             changed_cells=decision.changed_cells,
             skipped_unchanged=selector.skipped_unchanged,
@@ -1387,29 +1389,39 @@ class AttachmentsVisionController(WindowFeatureController):
             return
         image_name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
         image = att.image_attachment(job.payload, image_name, "image/jpeg")
-        router = getattr(self.context.services, "vision_router", None)
-        if router is None:
-            raise RuntimeError("isolated Vision router is unavailable")
-        worker = VisionAnalysisWorker(
-            router, image,
-            ocr_enabled=(
-                bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
-                if source == "game" else False
-            ),
-        )
-        session._vision_session = session
-        session._vision_frame_context = frame_context
-        session._vision_worker = worker
-        _FRAME_SOURCE["value"] = source
-        _FRAME_WINDOW_INFO["value"] = window_info
-        vision_trace(
-            "analysis_started", frame_id=frame_context.frame_id,
-            session_id=frame_context.session_id, source=source,
-            jpeg_bytes=len(job.payload),
-        )
-        worker.done.connect(session.relay.game_vision_done)
-        worker.finished.connect(session.relay.game_vision_finished)
-        worker.start()
+        try:
+            router = getattr(self.context.services, "vision_router", None)
+            if router is None:
+                raise RuntimeError("isolated Vision router is unavailable")
+            worker = VisionAnalysisWorker(
+                router, image,
+                ocr_enabled=(
+                    bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
+                    if source == "game" else False
+                ),
+            )
+            session._vision_session = session
+            session._vision_frame_context = frame_context
+            session._vision_worker = worker
+            _FRAME_SOURCE["value"] = source
+            _FRAME_WINDOW_INFO["value"] = window_info
+            vision_trace(
+                "analysis_started", frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id, source=source,
+                jpeg_bytes=len(job.payload),
+            )
+            worker.done.connect(session.relay.game_vision_done)
+            worker.finished.connect(session.relay.game_vision_finished)
+            worker.start()
+        except Exception as exc:
+            vision_trace(
+                "analysis_error", frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id, source=source,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            self.feature_controller("session").add_chat(
+                "system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}"
+            )
 
     def _send_pending_for_session(self, session):
         if self.context.state._closing or session is None or session.cid not in self.context.state.sessions:
@@ -1430,8 +1442,17 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.session._vision_frame_context = None
             return
         self.context.session._vision_frame_context = None
-        source = _FRAME_SOURCE.get("value") or "game"
-        captured = _FRAME_WINDOW_INFO.get("value") or {}
+        source = frame_context.source if frame_context is not None else (_FRAME_SOURCE.get("value") or "game")
+        captured = (
+            {
+                "hwnd": frame_context.window_identity[0],
+                "pid": frame_context.window_identity[1],
+                "exe": frame_context.window_identity[2],
+                "title": frame_context.window_identity[3],
+                "path": frame_context.window_identity[4],
+            }
+            if frame_context is not None else (_FRAME_WINDOW_INFO.get("value") or {})
+        )
         current = self.context.adapters.game_mode.capture_service.foreground_window_info(
             allow_partial_identity=(source == "desktop")
         )

@@ -66,6 +66,17 @@ class VisionOrchestratorTests(unittest.TestCase):
         with self.assertRaises(Exception):
             context.session_id = "other"
 
+    def test_cancelled_pending_job_is_removed_and_does_not_leak_to_another_session(self):
+        orchestrator = VisionFrameOrchestrator(capacity=2)
+        stale = orchestrator.create_context("session-a", "desktop")
+        fresh = orchestrator.create_context("session-b", "desktop")
+        orchestrator.enqueue(FrameJob(stale, b"private-a"))
+        orchestrator.enqueue(FrameJob(fresh, b"private-b"))
+        self.assertEqual(orchestrator.cancel_session("session-a"), 1)
+        job = orchestrator.take_next()
+        self.assertEqual(job.context.session_id, "session-b")
+        self.assertEqual(job.payload, b"private-b")
+
     def test_cancel_invalidates_an_already_decided_frame(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("s", "desktop")
