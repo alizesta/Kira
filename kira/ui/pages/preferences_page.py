@@ -57,7 +57,7 @@ class PreferencesPage(QScrollArea):
         self.ui_lang = self._row(language_form, "ui_lang", QComboBox())
         self.ui_lang.addItem("فارسی", "fa")
         self.ui_lang.addItem("English", "en")
-        self.ui_lang.setCurrentIndex(0 if settings.get("ui_lang", "fa") == "fa" else 1)
+        self.ui_lang.setCurrentIndex(0 if settings.get("ui_lang", "en") == "fa" else 1)
 
         self.tavily_key = QLineEdit(str(settings.get("tavily_api_key", "")))
         self.tavily_key.setEchoMode(QLineEdit.Password)
