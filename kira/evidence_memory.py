@@ -44,6 +44,7 @@ from .evidence_memory_index import (
 from .evidence_memory_models import EmbeddingIndex
 from .evidence_memory_retrieval import EvidenceRetriever
 from .evidence_memory_storage import DB_NAME, SCHEMA as _SCHEMA, SQLiteEvidenceStorage
+from .evidence_memory_repository import EvidenceFactRepository
 
 _log = logging.getLogger(__name__)
 
@@ -88,6 +89,16 @@ usage_hook = None
 _STORAGE = SQLiteEvidenceStorage(DB_NAME)
 _INDEX = EvidenceIndexer(_tok_cache)
 _EMBEDDING_SERVICE = EmbeddingService()                     # optional callable(dict) set by kira.usage: receives one record per embedding request
+_FACT_REPOSITORY = EvidenceFactRepository(
+    fact_id=_fact_id,
+    normalize=norm,
+    quote_in=quote_in,
+    word_regex=_WORD,
+    stop_words=_STOP,
+    categories=CATEGORIES,
+    single_valued=SINGLE_VALUED,
+    cache=_tok_cache,
+)
 
 # ----------------------------------------------------------------------------------------------- indexing primitives are implemented in evidence_memory_index.py
 
@@ -162,84 +173,29 @@ def _find_message_id(role, content):
 
 # ----------------------------------------------------------------------------------------------- writing
 def _quarantine(con, reason, payload) -> None:
-    con.execute("INSERT INTO quarantine(created_at, reason, payload) VALUES (?, ?, ?)",
-                (time.time(), str(reason)[:300], json.dumps(payload, ensure_ascii=False, default=str)[:800]))
+    _FACT_REPOSITORY.quarantine(con, reason, payload)
 
 
 def _same_thing(a, b) -> bool:
-    na, nb = norm(a), norm(b)
-    if not na or not nb:
-        return False
-    if na in nb or nb in na:
-        return True
-    wa, wb = set(_WORD.findall(na)) - _STOP, set(_WORD.findall(nb)) - _STOP
-    return bool(wa and wb) and len(wa & wb) / len(wa | wb) >= 0.5
+    return _FACT_REPOSITORY.same_thing(a, b)
 
 
 def _ingest(con, *, subject, predicate, value, text, category, quote, speaker, message_id, source_kind, now,
             uncertain=False, explicit=False, persona_id=None, valid_to=None, source_text=None, legacy=0) -> str | None:
-    """Store one fact with its evidence. Returns the fact id, or None when it was rejected (and quarantined)."""
-    value, text, quote = " ".join(str(value or "").split()), " ".join(str(text or "").split()), " ".join(str(quote or "").split())
-    if not value or not text or not quote:
-        _quarantine(con, "empty value / text / quote", {"predicate": predicate, "text": text})
-        return None
-    if category not in CATEGORIES:
-        category = "unverified"
-    if source_text is not None and not quote_in(quote, source_text):
-        _quarantine(con, "quote is not a literal substring of its source message", {"predicate": predicate, "quote": quote})
-        return None
-    if speaker == "assistant" and subject == "user" and category != "unverified":
-        category = "unverified"                                             # her own words are evidence that she said it, never proof about him
-    status = "uncertain" if (uncertain and not explicit) else "active"
-    fid = _fact_id(subject, predicate, value)
-    existing = con.execute("SELECT * FROM facts WHERE subject=? AND predicate=? AND status IN ('active','uncertain')", (subject, predicate)).fetchall()
-    row = con.execute("SELECT * FROM facts WHERE id=?", (fid,)).fetchone()
-    if row is not None and row["status"] in ("active", "uncertain"):      # the same fact again: one more piece of evidence
-        con.execute("INSERT OR IGNORE INTO evidence(fact_id, message_id, speaker, quote, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (fid, message_id, speaker, quote, now))
-        new_status = "active" if (row["status"] == "uncertain" and status == "active") else row["status"]
-        con.execute("UPDATE facts SET updated_at=?, status=?, persona_id=COALESCE(persona_id, ?) WHERE id=?", (now, new_status, persona_id, fid))
-        _tok_cache.pop(fid, None)
-        return fid
-    superseded: list[str] = []
-    if status == "active":
-        if predicate in SINGLE_VALUED:
-            superseded = [r["id"] for r in existing if r["id"] != fid]
-        elif predicate in ("like", "dislike"):
-            opposite = "dislike" if predicate == "like" else "like"
-            rows = con.execute("SELECT * FROM facts WHERE subject=? AND predicate=? AND status IN ('active','uncertain')", (subject, opposite)).fetchall()
-            superseded = [r["id"] for r in rows if _same_thing(r["value"], value)]
-    for old in superseded:
-        con.execute("UPDATE facts SET status='superseded', updated_at=? WHERE id=?", (now, old))
-    if row is not None:                                                    # an old value that was superseded and is now stated again
-        con.execute("UPDATE facts SET status=?, category=?, text=?, valid_from=?, valid_to=?, supersedes=?, created_at=?, updated_at=?,"
-                    " persona_id=COALESCE(?, persona_id) WHERE id=?",
-                    (status, category, text, now, valid_to, json.dumps(superseded), now, now, persona_id, fid))
-    else:
-        con.execute("INSERT INTO facts(id, subject, predicate, value, text, category, status, source_kind, valid_from, valid_to, supersedes, legacy,"
-                    " persona_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (fid, subject, predicate, value, text, category, status, source_kind, now, valid_to, json.dumps(superseded), int(legacy), persona_id, now, now))
-    con.execute("INSERT OR IGNORE INTO evidence(fact_id, message_id, speaker, quote, created_at) VALUES (?, ?, ?, ?, ?)",
-                (fid, message_id, speaker, quote, now))
-    _tok_cache.pop(fid, None)
-    return fid
+    return _FACT_REPOSITORY.ingest(
+        con, subject=subject, predicate=predicate, value=value, text=text, category=category,
+        quote=quote, speaker=speaker, message_id=message_id, source_kind=source_kind, now=now,
+        uncertain=uncertain, explicit=explicit, persona_id=persona_id, valid_to=valid_to,
+        source_text=source_text, legacy=legacy,
+    )
 
 
 def _prune(con) -> None:
-    total = con.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
-    if total <= MAX_ROWS:
-        return
-    ids = [r[0] for r in con.execute("SELECT id FROM facts WHERE status IN ('superseded','retracted') ORDER BY updated_at LIMIT ?", (total - MAX_ROWS,))]
-    for fid in ids:
-        _delete_rows(con, [fid])
+    _FACT_REPOSITORY.prune(con)
 
 
 def _delete_rows(con, ids) -> None:
-    for fid in ids:
-        con.execute("DELETE FROM vectors WHERE fact_id=?", (fid,))
-        con.execute("DELETE FROM evidence WHERE fact_id=?", (fid,))
-        con.execute("DELETE FROM facts WHERE id=?", (fid,))
-        _tok_cache.pop(fid, None)
+    _FACT_REPOSITORY.delete_rows(con, ids)
 
 
 def record_user_message(content, facts=None, moments=None, now=None) -> int:
