@@ -25,6 +25,13 @@ class ConfigTests(unittest.TestCase):
     def tearDown(self):
         self.p.stop(); self.p1.stop(); self.p2.stop()
 
+    def test_ui_language_defaults_to_english_and_preserves_saved_persian(self):
+        self.path.write_text(json.dumps({"assistant_name": "Kira"}), encoding="utf-8")
+        self.assertEqual(config.load_settings()["ui_lang"], "en")
+
+        self.path.write_text(json.dumps({"ui_lang": "fa"}), encoding="utf-8")
+        self.assertEqual(config.load_settings()["ui_lang"], "fa")
+
     # 1) settings written by an older version still load; new keys appear, user values survive
     def test_01_old_settings_load(self):
         old = {"model": "qwen2.5:3b", "assistant_name": "Mina", "ollama_url": "http://localhost:11434",

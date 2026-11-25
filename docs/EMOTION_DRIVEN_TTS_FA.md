@@ -1,42 +1,43 @@
-# Emotion-driven Persian TTS
+# تبدیل متن فارسی به گفتار با هدایت احساس
 
-Kira's emotional engine already resolves the active reply emotion and intensity. This layer carries that metadata into the actual Piper synthesis path.
+موتور احساسی Kira از قبل احساس فعال پاسخ و شدت آن را تعیین می‌کند. این لایه فراداده را به مسیر واقعی تولید صدا با Piper منتقل می‌کند.
 
-## Delivery pipeline
+## خط لولهٔ تولید صدا
 
-1. The reply parser removes the private emotion tag and keeps its emotion IDs/intensity.
-2. The runtime forwards that metadata to Speaker before the first eligible streamed sentence is synthesized.
-3. A bounded prosody profile is resolved for each emotion. A secondary emotion contributes a small blend; intensity interpolates from neutral.
-4. Piper receives native length_scale, noise_scale and noise_w_scale parameters.
-5. Comma/semicolon clauses are synthesized separately and joined with real, emotion-scaled silence. Inter-sentence silence is prepended to the next sentence, so a live stream never leaves an artificial pause after its final sentence.
-6. PCM gain is adjusted subtly. A small pitch shift is attempted through ffmpeg when available; if ffmpeg is absent or fails, synthesis remains valid and only pitch adjustment is skipped.
-7. The finished WAV is validated and cached. Cache identity includes model/sidecar signature, text, emotion profile and speed so a neutral clip cannot be reused for a sad or excited reply.
+۱. تحلیل‌گر پاسخ، تگ خصوصی احساس را از متن حذف می‌کند و شناسه‌های احساس و شدت را نگه می‌دارد.
+۲. Runtime این فراداده را پیش از ساخته‌شدن نخستین جملهٔ مجاز استریم، به Speaker می‌فرستد.
+۳. برای هر احساس یک پروفایل محدود آهنگ گفتار (Prosody) انتخاب می‌شود. احساس ثانویه سهم ترکیبی کوچکی دارد و شدت، پارامترها را از حالت خنثی به‌صورت تدریجی تغییر می‌دهد.
+۴. Piper پارامترهای بومی `length_scale`، `noise_scale` و `noise_w_scale` را دریافت می‌کند.
+۵. بندهای جداشده با ویرگول و نقطه‌ویرگول جداگانه تولید و با سکوت واقعی متناسب با احساس به هم متصل می‌شوند. سکوت بین جمله‌ها به ابتدای جملهٔ بعد اضافه می‌شود تا استریم زنده پس از آخرین جمله مکث مصنوعی نداشته باشد.
+۶. Gain دادهٔ PCM به‌شکل ملایم تنظیم می‌شود. در صورت وجود ffmpeg، تغییر جزئی زیر و بمی نیز امتحان می‌شود؛ اگر ffmpeg وجود نداشته باشد یا شکست بخورد، تولید صدا معتبر می‌ماند و فقط تغییر Pitch کنار گذاشته می‌شود.
+۷. WAV نهایی اعتبارسنجی و Cache می‌شود. هویت Cache شامل امضای مدل/فایل جانبی، متن، پروفایل احساس و سرعت است تا کلیپ خنثی برای پاسخ غمگین یا هیجان‌زده استفاده نشود.
 
-## Emotion profile intent
+## هدف پروفایل‌های احساسی
 
-- Sad, lonely, disappointed and guilty: slower, softer, lower variation, longer pauses.
-- Excited, laughing and surprised: faster, slightly brighter, more variation and shorter pauses.
-- Calm, content and relieved: measured delivery and longer breathing room.
-- Angry, frustrated and annoyed: firmer, clipped timing without extreme loudness.
-- Affectionate, warm, grateful and protective: gentle, close delivery.
-- Curious, confused and thinking: measured but lightly varied delivery.
-- Shy, embarrassed and tsundere: slower, softer and slightly hesitant.
+- غمگین، تنها، ناامید و گناهکار: آهسته‌تر، نرم‌تر، با نوسان کمتر و مکث‌های طولانی‌تر.
+- هیجان‌زده، خندان و متعجب: سریع‌تر، کمی روشن‌تر، با تنوع بیشتر و مکث‌های کوتاه‌تر.
+- آرام، راضی و آسوده: بیان سنجیده با فاصلهٔ تنفسی بیشتر.
+- عصبانی، کلافه و ناراحت: محکم‌تر و منقطع‌تر، بدون بلندی صدای افراطی.
+- مهربان، گرم، سپاسگزار و حمایتگر: بیان ملایم و نزدیک.
+- کنجکاو، گیج و در حال فکر: بیان سنجیده با تنوع اندک.
+- خجالتی، شرمنده و تسوندره: آهسته‌تر، نرم‌تر و کمی مردد.
 
-All 37 emotion IDs in EmotionalRuntime have an explicit profile. Values are conservative starting points; final tuning requires listening to the Mana voice on the target PC.
+برای هر ۳۷ شناسهٔ احساسی EmotionalRuntime پروفایل صریح وجود دارد. این مقادیر نقطهٔ شروع محافظه‌کارانه‌اند؛ تنظیم نهایی به شنیدن صدای Mana روی رایانهٔ هدف نیاز دارد.
 
-## Persian text preparation
+## آماده‌سازی متن فارسی
 
-The Persian TTS quality branch's normalization is retained: Arabic/Persian letter normalization, ZWNJ and punctuation cleanup, common technical-name pronunciation, and optional ezafe processing. This layer also spells out Persian-context integers/decimals and Jalali dates (e.g. 1405/08/28) before phonemization. Latin-only text and version-like Latin identifiers are left untouched.
+نرمال‌سازی شاخهٔ کیفیت TTS فارسی حفظ شده است: یکسان‌سازی حروف عربی/فارسی، پاک‌سازی نیم‌فاصله و نشانه‌گذاری، تلفظ نام‌های فنی رایج و پردازش اختیاری اضافه. این لایه همچنین اعداد صحیح/اعشاری در متن فارسی و تاریخ‌های جلالی (برای نمونه ۱۴۰۵/۰۸/۲۸) را پیش از واج‌نگاری به شکل گفتاری تبدیل می‌کند. متن صرفاً لاتین و شناسه‌های نسخه‌مانند لاتین دست‌نخورده می‌مانند.
 
-## Medium vs low model benchmark
+## مقایسهٔ مدل Medium و Low
 
-The bundled Mana voice is fa_IR-mana-medium.onnx; this repository does not currently bundle a verified Mana low model. The benchmark script compares any installed ONNX voices without changing the selected voice:
+صدای همراه Mana با فایل `fa_IR-mana-medium.onnx` عرضه می‌شود؛ این مخزن در حال حاضر مدل Low تأییدشده‌ای از Mana ندارد. اسکریپت معیارسنجی، مدل‌های ONNX نصب‌شده را بدون تغییر صدای انتخابی مقایسه می‌کند:
 
-    python scripts/benchmark_piper_voices.py --models "path/to/medium.onnx" "path/to/low.onnx"
+```text
+python scripts/benchmark_piper_voices.py --models "path/to/medium.onnx" "path/to/low.onnx"
+```
 
-Compare median synthesis time and real-time factor (RTF). RTF below 1.0 means synthesis is faster than playback. Do not switch models solely on file size; listen to the same Persian samples and compare intelligibility and naturalness.
+میانهٔ زمان تولید و ضریب زمان واقعی (RTF) را مقایسه کنید. RTF کمتر از ۱٫۰ یعنی تولید صدا سریع‌تر از زمان پخش است. مدل را فقط بر اساس حجم فایل عوض نکنید؛ نمونه‌های فارسی یکسان را گوش کنید و وضوح و طبیعی‌بودن را مقایسه کنید.
 
-## Validation
+## اعتبارسنجی
 
-Focused tests cover all emotion IDs, parameter bounds, emotion blending, comma/sentence silence, WAV assembly, gain, optional ffmpeg fallback, number/date expansion and Piper parameter forwarding. The test workflow also runs existing voice/TTS regression suites, Ruff and py_compile.
-
+تست‌های متمرکز همهٔ شناسه‌های احساس، محدودهٔ پارامترها، ترکیب احساس، سکوت بعد از ویرگول/جمله، مونتاژ WAV، Gain، fallback اختیاری ffmpeg، گسترش اعداد/تاریخ‌ها و انتقال پارامترها به Piper را پوشش می‌دهند. Workflow تست همچنین مجموعه‌های رگرسیون قبلی Voice/TTS، ابزار Ruff و `py_compile` را اجرا می‌کند.

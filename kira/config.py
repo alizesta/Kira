@@ -93,7 +93,7 @@ DEFAULTS = {
     "wake_timeout": 25,
     "mic_sensitivity": 100,               # 50-200 %: lower = ignores more room noise
     "barge_in": True,                     # talking over Kira stops her (headphones give the best result)
-    "ui_lang": "fa",
+    "ui_lang": "en",
     "window_effect": "acrylic",          # Windows 11: acrylic | mica | off (ignored elsewhere)
     "click_reactions": True,
     "body_control": True,                 # chat commands move the 3D body (raise hand, turn back, bend ...; kira/body.py)

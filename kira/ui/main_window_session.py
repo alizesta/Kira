@@ -61,14 +61,14 @@ class SessionController(WindowFeatureController):
         return controller.worker if controller is not None else None
 
     def t(self, key, **kw):
-        s = STR.get(self.context.services.settings.get("ui_lang", "fa"), STR["fa"]).get(key, key)
+        s = STR.get(self.context.services.settings.get("ui_lang", "en"), STR["en"]).get(key, key)
         return s.format(**kw) if kw else s
 
     def reg(self, setter, key):
         self.context.state._tr.append((setter, key))
 
     def retranslate(self):
-        lang = self.context.services.settings.get("ui_lang", "fa")
+        lang = self.context.services.settings.get("ui_lang", "en")
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
         new_chat_button = getattr(self.context.views, "new_chat_btn", None)
         if new_chat_button is not None:
@@ -83,7 +83,7 @@ class SessionController(WindowFeatureController):
         set_character_placeholder = getattr(input_widget, "set_character_placeholder", None)
         if callable(set_character_placeholder):
             set_character_placeholder(getattr(getattr(self.context.state, "front", None), "cid", "kira"),
-                                      self.context.services.settings.get("ui_lang", "fa"))
+                                      self.context.services.settings.get("ui_lang", "en"))
         else:
             input_widget.setPlaceholderText(self.t("input_ph"))
         if hasattr(self.context.state, "_menu_actions"):
@@ -220,7 +220,7 @@ class SessionController(WindowFeatureController):
         if session.busy or service.pending_count(session.session_id):
             self.context.views.status.setText(
                 "بعد از پایان پاسخ فعلی می‌توانی گفتگوی جدید بسازی."
-                if self.context.services.settings.get("ui_lang", "fa") == "fa"
+                if self.context.services.settings.get("ui_lang", "en") == "fa"
                 else "Start a new conversation after the current response finishes."
             )
             return False
@@ -242,7 +242,7 @@ class SessionController(WindowFeatureController):
             self.refresh_tab_buttons()
             self.context.views.status.setText(
                 "گفتگوی جدید آماده است."
-                if self.context.services.settings.get("ui_lang", "fa") == "fa"
+                if self.context.services.settings.get("ui_lang", "en") == "fa"
                 else "New conversation is ready."
             )
             return True
@@ -400,7 +400,7 @@ class SessionController(WindowFeatureController):
         for cid, button in self.context.views.char_tab_buttons.items():
             sess = self.context.state.sessions.get(cid)
             profile = profiles.get(cid) or {}
-            name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
+            name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "en") == "fa" else profile.get("name")
             mark = ""
             if sess is not None and sess.busy:
                 mark = "  ⏳"
@@ -457,7 +457,7 @@ class SessionController(WindowFeatureController):
         self.context.services.settings["active_character_id"] = cid
         set_character_placeholder = getattr(self.context.views.input, "set_character_placeholder", None)
         if callable(set_character_placeholder):
-            set_character_placeholder(cid, self.context.services.settings.get("ui_lang", "fa"))
+            set_character_placeholder(cid, self.context.services.settings.get("ui_lang", "en"))
         self.refresh_navigation_icons()
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
@@ -512,8 +512,8 @@ class SessionController(WindowFeatureController):
         profile = self.context.services.character_service.active(self.context.services.settings)
         if profile["id"] == "kira":
             return self.t("greeting")
-        name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
-        if self.context.services.settings.get("ui_lang", "fa") == "fa":
+        name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "en") == "fa" else profile.get("name")
+        if self.context.services.settings.get("ui_lang", "en") == "fa":
             return f"سلام! من {name} هستم. {profile.get('description', '')}"
         return f"Hi! I'm {name}. {profile.get('description', '')}"
 
@@ -526,7 +526,7 @@ class SessionController(WindowFeatureController):
             conversation_id=session.conversation_id,
         )
         items = []
-        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "en") == "fa" else "ltr"
         assistant_name = self.context.services.character_service.display_name(
             self.context.services.settings
         )
@@ -582,7 +582,7 @@ class SessionController(WindowFeatureController):
         if name is None:
             name = {"user": self.t("you"), "assistant": self.active_character().get("name", "Character"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
-        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "en") == "fa" else "ltr"
         extra = self.thumbnail_html(images)
         footer = self.chat_actions_html(kind, text)
         with bubble_accent(self.accent()):
@@ -886,7 +886,7 @@ class SessionController(WindowFeatureController):
 
     def on_input_changed(self, text):
         """Typed text flows in its own direction (Persian right-to-left, English left-to-right)."""
-        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "en") == "fa" else "ltr"
         d = detect_direction(text, ui_dir)
         self.context.views.input.setLayoutDirection(Qt.RightToLeft if d == "rtl" else Qt.LeftToRight)
 
@@ -899,7 +899,7 @@ class SessionController(WindowFeatureController):
         self._progress_view = view
         if view is None:
             return
-        rtl = self.context.services.settings.get("ui_lang", "fa") == "fa"
+        rtl = self.context.services.settings.get("ui_lang", "en") == "fa"
         apply_progress_to_view(view, self.context.views.kode_activity.visible_rows(), rtl)
 
     @front_only
