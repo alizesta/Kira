@@ -47,6 +47,17 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertEqual(orchestrator.decide(fresh, live_ready=False).route, "analysis")
         self.assertTrue(orchestrator.enqueue(FrameJob(fresh, b"fresh")))
 
+    def test_live_disconnect_routes_the_next_frame_to_analysis_without_retrying_old_frame(self):
+        orchestrator = VisionFrameOrchestrator()
+        live_frame = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(live_frame, live_ready=True).route, "live")
+        self.assertEqual(
+            orchestrator.decide(live_frame, live_ready=False).route,
+            "live",
+        )
+        next_frame = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(next_frame, live_ready=False).route, "analysis")
+
     def test_budget_is_shared_by_live_and_analysis_routes_per_session(self):
         clock = Clock()
         orchestrator = VisionFrameOrchestrator(
