@@ -256,6 +256,7 @@
     "kira/rig.py",
     "kira/routes.py",
     "kira/secret_store.py",
+    "kira/settings_schema.py",
     "kira/services/__init__.py",
     "kira/services/character_service.py",
     "kira/services/chat_history_service.py",

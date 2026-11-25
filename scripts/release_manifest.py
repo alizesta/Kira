@@ -23,6 +23,7 @@ REQUIRED_RELEASE_FILES = frozenset(
         "kira/__init__.py",
         "kira/main.py",
         "kira/config.py",
+        "kira/settings_schema.py",
         "kira/storage.py",
         "kira/build_info.py",
         "kira/ui/main_window_support.py",
