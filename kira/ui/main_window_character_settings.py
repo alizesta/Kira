@@ -366,11 +366,14 @@ class CharacterSettingsController(WindowFeatureController):
 
     def reset_appearance(self):
         page = self.context.views.appearance_page
-        page.set_background_color("#0A0A1C")
-        page.window_effect.setCurrentIndex(max(0, page.window_effect.findData("acrylic")))
-        page.appearance_brightness.setValue(100)
-        page.appearance_glow.setValue(58)
-        page.appearance_transparency.setValue(28)
+        appearance_defaults = SETTINGS_DEFAULTS["appearance"]
+        page.set_background_color(appearance_defaults["background_color"])
+        page.window_effect.setCurrentIndex(
+            max(0, page.window_effect.findData(SETTINGS_DEFAULTS["window_effect"]))
+        )
+        page.appearance_brightness.setValue(int(appearance_defaults["brightness"]))
+        page.appearance_glow.setValue(int(appearance_defaults["glow"]))
+        page.appearance_transparency.setValue(int(appearance_defaults["transparency"]))
         page.schedule_appearance()
 
     def schedule_appearance(self, *_):
