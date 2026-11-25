@@ -338,21 +338,26 @@ class RouteGuiTests(unittest.TestCase):
         self.assertNotIn(pid, config.load_settings()["providers"])
         self.assertNotIn(pid, [w.api_table.item(i, 0).data(Qt.UserRole) for i in range(w.api_table.rowCount())])
 
-    def test_explicit_cloud_opt_in_persists_policy_and_surface_allowlist(self):
+    def test_single_cloud_fallback_checkbox_persists_local_first_permission(self):
         w = self.win
         helpers.enable(w.settings, "groq")
         w.settings["network_policy"] = "local_only"
         w.settings["role_provider_allowlist"]["surface"] = ["ollama"]
         controller = w.presentation_context.controllers.require("provider_settings")
-        with mock.patch(
-            "PySide6.QtWidgets.QMessageBox.question",
-            return_value=__import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox.Yes,
-        ):
-            self.assertTrue(controller.enable_surface_cloud())
+
+        self.assertFalse(controller.cloud_fallback_check.isChecked())
+        self.assertFalse(hasattr(controller, "network_policy_combo"))
+        self.assertFalse(hasattr(controller, "surface_provider_checks"))
+        self.assertFalse(hasattr(controller, "enable_surface_cloud_btn"))
+
+        controller.cloud_fallback_check.setChecked(True)
         saved = config.load_settings()
         self.assertEqual(saved["network_policy"], "cloud_permitted")
         self.assertIn("ollama", saved["role_provider_allowlist"]["surface"])
         self.assertIn("groq", saved["role_provider_allowlist"]["surface"])
+
+        controller.cloud_fallback_check.setChecked(False)
+        self.assertEqual(config.load_settings()["network_policy"], "local_only")
 
     def test_api_enable_disable_autosaves_encrypted_and_keeps_key(self):
         w = self.win
