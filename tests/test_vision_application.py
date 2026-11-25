@@ -83,6 +83,28 @@ class VisionApplicationServiceTests(unittest.TestCase):
             False, None, source="unknown", window_info=identity
         ))
 
+    def test_explicit_desktop_source_accepts_partial_foreground_identity(self):
+        desktop = DesktopCaptureApplicationService()
+        desktop.set_enabled(True)
+        service = VisionApplicationService(self.game_mode, "economic", desktop)
+        partial = {
+            "hwnd": 10, "pid": 20, "exe": "", "title": "", "path": "",
+            "rect": (0, 0, 900, 700),
+        }
+        self.assertFalse(service.capture_allowed(
+            False, None, source="desktop", window_info=partial
+        ))
+        self.assertTrue(service.capture_allowed(
+            False, None, source="desktop", window_info=partial,
+            allow_partial_identity=True,
+        ))
+        self.assertTrue(service.should_analyze(
+            enabled=True, profile=None, frame_available=True,
+            worker_running=False, chat_busy=False, provider_busy=False,
+            speech_active=False, source="desktop", window_info=partial,
+            allow_partial_identity=True,
+        ))
+
     def test_reset_clears_duplicate_suppression_and_frame_gate(self):
         self.service.consume_result(enabled=True, profile="story", ok=True, result="scene")
         self.service.reset()
