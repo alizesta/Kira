@@ -141,6 +141,7 @@ DEFAULTS = {
 # Semantic constraints are part of the settings schema, not UI-only assumptions.
 SETTING_CHOICES = {
     "voice_engine": frozenset({"gemini_live", "local"}),
+    "stt_language": frozenset({"fa", "en", "auto"}),
     "tts_engine": frozenset({"piper", "kitten"}),
     "kitten_model": frozenset({"pico", "nano", "mini"}),
     "web_depth": frozenset({"basic", "advanced"}),
@@ -159,6 +160,7 @@ SETTING_CHOICES = {
 SETTING_RANGES = {
     "temperature": (0.0, 2.0),
     "voice_volume": (0.0, 1.0),
+    "voice_rate": (-30, 30),
     "mic_gain": (50, 300),
     "mic_sensitivity": (50, 200),
     "wake_timeout": (5, 120),

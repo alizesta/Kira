@@ -28,7 +28,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from ..components.switch_checkbox import SwitchCheckBox
-from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+from kira.settings_schema import (
+    DEFAULTS as SETTINGS_DEFAULTS,
+    SETTING_RANGES as SETTINGS_RANGES,
+    SETTING_CHOICES as SETTINGS_CHOICES,
+)
 
 
 # Gemini Live prebuilt voices: (API name, label shown to the user)
@@ -76,17 +80,17 @@ class VoicePage(QScrollArea):
         self.mic_device = self._row(mic_form, "mic_device", QComboBox())
         self.engine_lbl = self._row(mic_form, "engine", QLabel())
         self.mic_gain = self._row(mic_form, "mic_gain", QSlider(Qt.Horizontal))
-        self.mic_gain.setRange(50, 300)
+        self.mic_gain.setRange(*SETTINGS_RANGES["mic_gain"])
         self.mic_gain.setValue(int(settings.get("mic_gain", SETTINGS_DEFAULTS["mic_gain"])))
         self.mic_sens = self._row(mic_form, "mic_sens", QSlider(Qt.Horizontal))
-        self.mic_sens.setRange(50, 200)
+        self.mic_sens.setRange(*SETTINGS_RANGES["mic_sensitivity"])
         self.mic_sens.setValue(int(settings.get("mic_sensitivity", SETTINGS_DEFAULTS["mic_sensitivity"])))
         self.barge_chk = SwitchCheckBox()
         self.barge_chk.setChecked(bool(settings.get("barge_in", SETTINGS_DEFAULTS["barge_in"])))
         self._register(self.barge_chk.setText, "barge_in")
         mic_form.addRow(self.barge_chk)
         self.wake_timeout = self._row(mic_form, "wake_timeout", QSpinBox())
-        self.wake_timeout.setRange(5, 120)
+        self.wake_timeout.setRange(*SETTINGS_RANGES["wake_timeout"])
         self.wake_timeout.setValue(int(settings.get("wake_timeout", SETTINGS_DEFAULTS["wake_timeout"])))
         self.real_time_asr_chk = SwitchCheckBox(
             "تشخیص زنده با میکروفن (Real-time ASR)"
@@ -105,7 +109,8 @@ class VoicePage(QScrollArea):
         output_form.setHorizontalSpacing(8)
         output_form.setVerticalSpacing(4)
         self.volume = self._row(output_form, "volume", QSlider(Qt.Horizontal))
-        self.volume.setRange(0, 100)
+        volume_min, volume_max = SETTINGS_RANGES["voice_volume"]
+        self.volume.setRange(round(volume_min * 100), round(volume_max * 100))
         self.volume.setValue(int(float(settings.get("voice_volume", SETTINGS_DEFAULTS["voice_volume"])) * 100))
         self.out_device = self._row(output_form, "output_device", QComboBox())
 
@@ -115,7 +120,7 @@ class VoicePage(QScrollArea):
         stt_form.setHorizontalSpacing(8)
         stt_form.setVerticalSpacing(4)
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
-        self.stt_lang.addItems(["fa", "en", "auto"])
+        self.stt_lang.addItems(("fa", "en", "auto"))
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"]))
         selected_asr_engine = str(settings.get("local_voice_asr_backend") or SETTINGS_DEFAULTS["local_voice_asr_backend"]).strip().lower()
         selected_asr_model = str(settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])
@@ -293,7 +298,7 @@ class VoicePage(QScrollArea):
         self.kitten_result.setTextInteractionFlags(Qt.TextSelectableByMouse)
         tts_form.addRow(self.kitten_result)
         self.rate = QSpinBox()
-        self.rate.setRange(-30, 30)
+        self.rate.setRange(*SETTINGS_RANGES["voice_rate"])
         self.rate.setSuffix(" %")
         self.rate.setValue(int(settings.get("voice_rate", SETTINGS_DEFAULTS["voice_rate"])))
         tts_form.addRow("سرعت گفتار محلی", self.rate)

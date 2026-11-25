@@ -204,12 +204,24 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(restored["user_extension"], {"enabled": True, "label": "keep"})
 
     def test_voice_page_uses_canonical_schema_defaults_and_ranges(self):
-        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS, SETTING_RANGES
-        from kira.ui.pages.voice_page import SETTINGS_DEFAULTS
+        from kira.settings_schema import (
+            DEFAULTS as SCHEMA_DEFAULTS,
+            SETTING_RANGES,
+            SETTING_CHOICES,
+        )
+        from kira.ui.pages.voice_page import (
+            SETTINGS_DEFAULTS,
+            SETTINGS_RANGES,
+            SETTINGS_CHOICES,
+        )
 
         self.assertIs(SETTINGS_DEFAULTS, SCHEMA_DEFAULTS)
+        self.assertIs(SETTINGS_RANGES, SETTING_RANGES)
+        self.assertIs(SETTINGS_CHOICES, SETTING_CHOICES)
         self.assertEqual(SETTING_RANGES["wake_timeout"], (5, 120))
+        self.assertEqual(SETTING_RANGES["voice_rate"], (-30, 30))
         self.assertEqual(SETTINGS_DEFAULTS["wake_timeout"], 25)
+        self.assertEqual(SETTING_CHOICES["stt_language"], frozenset({"fa", "en", "auto"}))
 
     def test_settings_migration_is_idempotent(self):
         original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
