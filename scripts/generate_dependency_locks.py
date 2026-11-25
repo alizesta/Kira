@@ -1,14 +1,18 @@
-"""Generate hash-locked Windows dependency groups for Python 3.11 and 3.12.
+"""Generate deterministic, hash-locked dependency groups for Windows Python 3.11/3.12.
 
-Run from the repository root with:
+Core is resolved first and is the only mandatory lock set. Optional groups are
+resolved against the exact core lock; an optional resolution failure is reported
+without blocking a usable core installation.
+
+Run from the repository root:
     py -3.12 -m pip install --upgrade uv
     py -3.12 scripts/generate_dependency_locks.py
-
-Set --index-url (or KIRA_PYPI_INDEX) to use an accessible package mirror.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -21,6 +25,7 @@ from typing import Callable, Sequence
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYTHON_VERSIONS = ("3.11", "3.12")
 DEFAULT_PLATFORM = "x86_64-pc-windows-msvc"
+DEFAULT_SNAPSHOT_CUTOFF = "2026-11-25T00:00:00Z"
 LOCK_ROOT = ROOT / "dependency-locks" / "windows-x86_64"
 
 
@@ -30,36 +35,68 @@ class DependencyGroup:
     requirements: str
     constraints: tuple[str, ...] = ()
     no_deps: bool = False
+    required: bool = False
 
 
 GROUPS = (
-    DependencyGroup("core", "requirements.txt", ("constraints.txt",)),
+    DependencyGroup("core", "requirements.txt", ("constraints.txt",), required=True),
     DependencyGroup("system-optional", "requirements-system-optional.txt", ("constraints.txt",)),
     DependencyGroup("ocr", "requirements-ocr.txt", ("constraints.txt",)),
     DependencyGroup("audio", "requirements-audio.txt", ("constraints.txt",)),
     DependencyGroup("dev", "requirements-dev.txt"),
-    DependencyGroup(
-        "voice-local",
-        "requirements-voice-local.txt",
-        ("constraints.txt", "constraints-voice.txt"),
-    ),
-    DependencyGroup(
-        "voice-kitten",
-        "requirements-voice-kitten.txt",
-        ("constraints.txt", "constraints-voice.txt"),
-    ),
+    DependencyGroup("voice-local", "requirements-voice-local.txt", ("constraints.txt", "constraints-voice.txt")),
+    DependencyGroup("voice-kitten", "requirements-voice-kitten.txt", ("constraints.txt", "constraints-voice.txt")),
     # Kira deliberately installs kittenml with --no-deps to avoid its PyTorch extras.
-    DependencyGroup(
-        "voice-kitten-engine",
-        "requirements-voice-kitten-engine.txt",
-        ("constraints.txt",),
-        no_deps=True,
-    ),
+    DependencyGroup("voice-kitten-engine", "requirements-voice-kitten-engine.txt", ("constraints.txt",), no_deps=True),
 )
 
 
 class LockGenerationError(RuntimeError):
-    """Raised when a generated lock is missing or incomplete."""
+    """Raised when resolver output is missing, incomplete, or inconsistent."""
+
+
+_PACKAGE_PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^\s\\]+)")
+_HASH = re.compile(r"--hash=sha256:[0-9a-fA-F]{64}")
+
+
+def _normalized_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _lock_stanzas(content: str) -> list[tuple[str, str, str]]:
+    """Return normalized package pins and their complete stanza text."""
+    lines = content.splitlines()
+    starts: list[tuple[int, str, str]] = []
+    for index, line in enumerate(lines):
+        match = _PACKAGE_PIN.match(line.strip())
+        if match:
+            starts.append((index, _normalized_name(match.group(1)), match.group(2)))
+    stanzas = []
+    for position, (start, name, version) in enumerate(starts):
+        end = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+        stanzas.append((name, version, "\n".join(lines[start:end])))
+    return stanzas
+
+
+def _validate_lock(path: Path) -> None:
+    """Reject empty, unpinned, duplicate/conflicting, or incompletely hashed output."""
+    if not path.is_file():
+        raise LockGenerationError(f"Resolver did not create {path.name}.")
+    content = path.read_text(encoding="utf-8")
+    if not content.strip():
+        raise LockGenerationError(f"Resolver created an empty lock: {path.name}.")
+    stanzas = _lock_stanzas(content)
+    if not stanzas:
+        raise LockGenerationError(f"Lock has no exact package pins: {path.name}.")
+    seen: dict[str, str] = {}
+    for name, version, stanza in stanzas:
+        previous = seen.get(name)
+        if previous is not None:
+            reason = "conflicting" if previous != version else "duplicate"
+            raise LockGenerationError(f"Lock contains a {reason} pin for {name}: {previous} and {version}.")
+        seen[name] = version
+        if not _HASH.search(stanza):
+            raise LockGenerationError(f"Lock package {name}=={version} has no SHA-256 hash: {path.name}.")
 
 
 def build_compile_command(
@@ -69,40 +106,33 @@ def build_compile_command(
     python_version: str,
     python_platform: str,
     output_file: Path,
+    *,
+    extra_constraints: Sequence[Path] = (),
+    snapshot_cutoff: str = DEFAULT_SNAPSHOT_CUTOFF,
 ) -> list[str]:
-    """Build a deterministic uv command for one OS/Python/group target."""
+    """Build a stable resolver invocation independent of machine-local uv config."""
     command = [
-        uv_executable,
-        "pip",
-        "compile",
-        str(root / group.requirements),
-        "--python-version",
-        python_version,
-        "--python-platform",
-        python_platform,
+        uv_executable, "pip", "compile", str(root / group.requirements),
+        "--python-version", python_version,
+        "--python-platform", python_platform,
+        "--resolution", "highest",
+        "--exclude-newer", snapshot_cutoff,
         "--generate-hashes",
-        "--output-file",
-        str(output_file),
+        "--no-header",
+        "--no-annotate",
+        "--no-emit-index-url",
+        "--no-emit-find-links",
+        "--no-sources",
+        "--no-config",
+        "--output-file", str(output_file),
     ]
-    for constraint in group.constraints:
-        command.extend(("--constraint", str(root / constraint)))
+    constraints = [root / item for item in group.constraints]
+    constraints.extend(Path(item) for item in extra_constraints)
+    for constraint in constraints:
+        command.extend(("--constraint", str(constraint)))
     if group.no_deps:
         command.append("--no-deps")
     return command
-
-
-def _validate_lock(path: Path) -> None:
-    """Reject empty, unpinned, or hashless resolver output."""
-    if not path.is_file():
-        raise LockGenerationError(f"Resolver did not create {path.name}.")
-    content = path.read_text(encoding="utf-8")
-    if not content.strip():
-        raise LockGenerationError(f"Resolver created an empty lock: {path.name}.")
-    package_pins = re.findall(r"(?m)^[A-Za-z0-9][A-Za-z0-9_.-]*==[^\s\\]+", content)
-    if not package_pins:
-        raise LockGenerationError(f"Lock has no exact package pins: {path.name}.")
-    if "--hash=sha256:" not in content:
-        raise LockGenerationError(f"Lock has no SHA-256 hashes: {path.name}.")
 
 
 def _parse_versions(raw: str) -> tuple[str, ...]:
@@ -112,6 +142,70 @@ def _parse_versions(raw: str) -> tuple[str, ...]:
     if len(set(versions)) != len(versions):
         raise argparse.ArgumentTypeError("Python versions must not be repeated.")
     return versions
+
+
+def _group_inputs(root: Path, group: DependencyGroup) -> list[str]:
+    return [name for name in (group.requirements, *group.constraints) if not (root / name).is_file()]
+
+
+def _input_fingerprint(root: Path, python_versions: Sequence[str], python_platform: str, snapshot_cutoff: str) -> str:
+    """Fingerprint all resolver inputs and generator semantics for lock reuse."""
+    digest = hashlib.sha256()
+    digest.update(Path(__file__).read_bytes())
+    digest.update(json.dumps({
+        "python_versions": list(python_versions),
+        "python_platform": python_platform,
+        "snapshot_cutoff": snapshot_cutoff,
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    for group in GROUPS:
+        for name in (group.requirements, *group.constraints):
+            path = root / name
+            digest.update(name.encode("utf-8"))
+            digest.update(path.read_bytes() if path.is_file() else b"<missing>")
+    return digest.hexdigest()
+
+
+def _reusable_locks(output_dir: Path, fingerprint: str, python_versions: Sequence[str]) -> bool:
+    """Reuse generated locks only when every input and every existing lock validates."""
+    try:
+        manifest = json.loads((output_dir / "lock-manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("schema") != 1 or manifest.get("fingerprint") != fingerprint:
+            return False
+        for version in python_versions:
+            core_lock = output_dir / ("python" + version.replace(".", "")) / "core.txt"
+            _validate_lock(core_lock)
+        for lock_file in output_dir.glob("python*/*.txt"):
+            _validate_lock(lock_file)
+        return True
+    except (OSError, ValueError, LockGenerationError):
+        return False
+
+
+def _compile_group(
+    *,
+    runner: Callable,
+    uv_executable: str,
+    root: Path,
+    group: DependencyGroup,
+    version: str,
+    python_platform: str,
+    output_file: Path,
+    core_lock: Path | None,
+    env: dict[str, str],
+    snapshot_cutoff: str,
+) -> tuple[bool, int]:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    shared_constraints = (core_lock,) if core_lock is not None and group.name != "core" else ()
+    command = build_compile_command(
+        uv_executable, root, group, version, python_platform, output_file,
+        extra_constraints=shared_constraints, snapshot_cutoff=snapshot_cutoff,
+    )
+    result = runner(command, cwd=root, env=env, check=False)
+    return_code = int(getattr(result, "returncode", 1))
+    if return_code:
+        return False, return_code
+    _validate_lock(output_file)
+    return True, 0
 
 
 def generate_locks(
@@ -124,8 +218,10 @@ def generate_locks(
     index_url: str | None = None,
     runner: Callable = subprocess.run,
     out: Callable[[str], None] = print,
+    refresh: bool = False,
+    snapshot_cutoff: str = DEFAULT_SNAPSHOT_CUTOFF,
 ) -> int:
-    """Generate every lock in a staging directory; publish only after all resolve."""
+    """Stage all locks; require core, tolerate isolated optional resolver failures."""
     root = Path(root).resolve()
     output_dir = Path(output_dir).resolve()
     uv_executable = uv_executable or shutil.which("uv")
@@ -133,61 +229,89 @@ def generate_locks(
         out("ERROR: uv was not found. Install it with: py -3.12 -m pip install uv")
         return 2
 
-    missing = [
-        name
-        for group in GROUPS
-        for name in (group.requirements, *group.constraints)
-        if not (root / name).is_file()
-    ]
-    if missing:
-        out("ERROR: missing dependency inputs: " + ", ".join(sorted(set(missing))))
+    core = next(group for group in GROUPS if group.required)
+    missing_core = _group_inputs(root, core)
+    if missing_core:
+        out("ERROR: missing core dependency inputs: " + ", ".join(missing_core))
         return 2
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    # Ignore ambient uv configuration and index variables. One explicit index defines
+    # the resolver source; credentials and index URLs are never emitted into lock files.
+    for key in tuple(env):
+        if key.startswith("UV_"):
+            env.pop(key, None)
     env["UV_CUSTOM_COMPILE_COMMAND"] = "python scripts/generate_dependency_locks.py"
-    if index_url:
-        # Use the environment to keep credentials out of the generated command header.
-        env["UV_DEFAULT_INDEX"] = index_url
+    env["UV_NO_PROGRESS"] = "1"
+    selected_index = index_url or os.environ.get("KIRA_PYPI_INDEX")
+    if selected_index:
+        env["UV_DEFAULT_INDEX"] = selected_index
 
+    fingerprint = _input_fingerprint(root, python_versions, python_platform, snapshot_cutoff)
+    if not refresh and _reusable_locks(output_dir, fingerprint, python_versions):
+        out("Dependency locks are current; reusing the existing hash-locked environment.")
+        return 0
+
+    generated: list[Path] = []
+    optional_failures: list[str] = []
     try:
-        with tempfile.TemporaryDirectory(
-            prefix=".kira-lock-stage-", dir=output_dir.parent
-        ) as staging_name:
+        with tempfile.TemporaryDirectory(prefix=".kira-lock-stage-", dir=output_dir.parent) as staging_name:
             staging = Path(staging_name)
             staged_output = staging / output_dir.name
-            staged_files: list[Path] = []
-            total = len(GROUPS) * len(python_versions)
-            completed = 0
 
+            # Core must resolve for every supported interpreter before optional work.
             for version in python_versions:
                 version_name = "python" + version.replace(".", "")
-                for group in GROUPS:
-                    staged_file = staged_output / version_name / f"{group.name}.txt"
-                    staged_file.parent.mkdir(parents=True, exist_ok=True)
-                    command = build_compile_command(
-                        uv_executable,
-                        root,
-                        group,
-                        version,
-                        python_platform,
-                        staged_file,
+                target = staged_output / version_name / "core.txt"
+                try:
+                    ok, code = _compile_group(
+                        runner=runner, uv_executable=uv_executable, root=root,
+                        group=core, version=version, python_platform=python_platform,
+                        output_file=target, core_lock=None, env=env,
+                        snapshot_cutoff=snapshot_cutoff,
                     )
-                    out(f"[{completed + 1}/{total}] Locking {group.name} for Python {version}...")
-                    result = runner(command, cwd=root, env=env, check=False)
-                    return_code = getattr(result, "returncode", 1)
-                    if return_code:
-                        out(
-                            f"ERROR: uv could not resolve {group.name} for Python {version}; "
-                            "existing lock files were left unchanged."
-                        )
-                        return int(return_code)
-                    _validate_lock(staged_file)
-                    staged_files.append(staged_file)
-                    completed += 1
+                except (OSError, LockGenerationError) as exc:
+                    out(f"ERROR: core lock validation failed for Python {version}: {exc}")
+                    return 2
+                if not ok:
+                    out(f"ERROR: core dependencies could not be resolved for Python {version}; previous locks were preserved.")
+                    return code or 2
+                generated.append(target)
 
-            # Swap the complete generated directory so a failed resolver or filesystem
-            # operation cannot leave a mixture of old and new lock files.
+            # Every optional group is constrained by the exact core resolution. An
+            # optional resolver failure omits only that feature's lock, never core.
+            for version in python_versions:
+                version_name = "python" + version.replace(".", "")
+                core_lock = staged_output / version_name / "core.txt"
+                for group in (item for item in GROUPS if not item.required):
+                    missing = _group_inputs(root, group)
+                    if missing:
+                        optional_failures.append(f"{group.name} (missing {', '.join(missing)})")
+                        continue
+                    target = staged_output / version_name / f"{group.name}.txt"
+                    try:
+                        ok, code = _compile_group(
+                            runner=runner, uv_executable=uv_executable, root=root,
+                            group=group, version=version, python_platform=python_platform,
+                            output_file=target, core_lock=core_lock, env=env,
+                            snapshot_cutoff=snapshot_cutoff,
+                        )
+                    except (OSError, LockGenerationError) as exc:
+                        target.unlink(missing_ok=True)
+                        optional_failures.append(f"{group.name} for Python {version} ({exc})")
+                        continue
+                    if not ok:
+                        target.unlink(missing_ok=True)
+                        optional_failures.append(f"{group.name} for Python {version} (resolver exit {code})")
+                        continue
+                    generated.append(target)
+
+            (staged_output / "lock-manifest.json").write_text(
+                json.dumps({"schema": 1, "fingerprint": fingerprint}, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
             backup = staging / "previous-locks"
             had_previous = output_dir.exists()
             if had_previous:
@@ -200,37 +324,36 @@ def generate_locks(
                 raise
             if had_previous:
                 shutil.rmtree(backup, ignore_errors=True)
-    except (OSError, LockGenerationError) as exc:
+    except OSError as exc:
         out(f"ERROR: lock generation was not published: {exc}")
         return 2
 
-    out(f"Generated {len(staged_files)} hash-locked requirement files in {output_dir}.")
+    out(f"Generated {len(generated)} hash-locked files; core is complete for {len(python_versions)} Python targets.")
+    if optional_failures:
+        out("WARNING: optional dependency locks were not generated: " + "; ".join(optional_failures))
+        out("Core installation remains available; affected optional features will be resolved separately and may be skipped.")
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--python-versions",
-        type=_parse_versions,
-        default=DEFAULT_PYTHON_VERSIONS,
-        help="comma-separated supported targets (default: 3.11,3.12)",
-    )
-    parser.add_argument(
-        "--python-platform",
-        default=DEFAULT_PLATFORM,
-        help=f"uv target platform (default: {DEFAULT_PLATFORM})",
-    )
+    parser.add_argument("--python-versions", type=_parse_versions, default=DEFAULT_PYTHON_VERSIONS,
+                        help="comma-separated supported targets (default: 3.11,3.12)")
+    parser.add_argument("--python-platform", default=DEFAULT_PLATFORM,
+                        help=f"uv target platform (default: {DEFAULT_PLATFORM})")
     parser.add_argument("--index-url", default=os.environ.get("KIRA_PYPI_INDEX"))
     parser.add_argument("--uv", dest="uv_executable", help="path to the uv executable")
     parser.add_argument("--output-dir", type=Path, default=LOCK_ROOT)
+    parser.add_argument("--refresh", action="store_true",
+                        help="explicitly re-resolve every group; normal setup reuses matching locks")
+    parser.add_argument("--snapshot-cutoff", default=DEFAULT_SNAPSHOT_CUTOFF,
+                        help="package publication cutoff (advance only for intentional dependency upgrades)")
     args = parser.parse_args(argv)
     return generate_locks(
-        output_dir=args.output_dir,
-        uv_executable=args.uv_executable,
-        python_versions=args.python_versions,
-        python_platform=args.python_platform,
-        index_url=args.index_url,
+        output_dir=args.output_dir, uv_executable=args.uv_executable,
+        python_versions=args.python_versions, python_platform=args.python_platform,
+        index_url=args.index_url, refresh=args.refresh,
+        snapshot_cutoff=args.snapshot_cutoff,
     )
 
 

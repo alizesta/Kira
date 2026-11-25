@@ -143,7 +143,7 @@ if errorlevel 1 (
   echo ERROR: Reproducible dependency lock generation failed. Package installation was not started.
   goto netfail
 )
-echo [DEPENDENCY LOCK] All Python 3.11/3.12 dependency groups are locked and verified.
+echo [DEPENDENCY LOCK] Core locks are verified; optional locks are generated where resolvable.
 
 echo.
 echo [1/6] Resolving and installing core Kira dependencies...

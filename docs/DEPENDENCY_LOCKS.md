@@ -1,45 +1,34 @@
-[فارسی](DEPENDENCY_LOCKS_FA.md) — [Installation guide](USER_GUIDE.md)
-
 # Reproducible dependency locks
 
-Kira targets Windows 11 x86-64 with CPython 3.11 and 3.12. The source requirement files remain the human-maintained compatibility ranges; generated lock files record the complete transitive resolution and SHA-256 hashes for each installation group and Python target.
+Kira targets Windows 11 x86-64 with CPython 3.11 and 3.12. Human-maintained requirement files define compatibility ranges; generated locks capture the complete resolver output, exact versions and SHA-256 hashes for each dependency group and Python target.
+
+## Core and optional dependency boundaries
+
+- `requirements.txt` is the mandatory Core runtime.
+- `requirements-*.txt` files describe independently installed optional features.
+- `requirements-dev.txt` contains development-only tooling.
+- `constraints.txt` and `constraints-voice.txt` express compatibility decisions shared by the relevant groups.
+
+The Core lock is resolved first for each supported Python version. Every optional lock is then resolved against that exact Core lock as an additional constraint. This prevents an optional group from silently selecting a different version of a Core dependency. Optional groups are resolved independently: a conflict or unavailable package in one optional group is reported and omits only that group's lock. It does not prevent Core lock publication or Core installation. The installer can still attempt an unlocked optional group through its normal resolver preflight, and marks that feature unavailable if resolution fails.
+
+The Core requirement intentionally keeps `google-genai<3`; `constraints.txt` currently pins the supported 2.x SDK line. Gemini Live imports `google.genai` from this Core dependency and does not depend on optional local speech packages. The Kitten engine remains a separate `--no-deps` group to avoid pulling its optional PyTorch dependency tree.
 
 ## Generate or refresh the locks
 
-Normal installations and dependency-changing updates generate these locks automatically through `install.bat`; no manual command is required. Maintainers can regenerate them explicitly from the repository root on a Windows machine with access to a Python package index:
+Normal setup runs the generator before installing dependencies. Maintainers can run it from the repository root on a machine with access to a Python package index:
 
 ```powershell
 py -3.12 -m pip install --upgrade uv
 py -3.12 scripts/generate_dependency_locks.py
+
+# Intentional dependency upgrade only:
+py -3.12 scripts/generate_dependency_locks.py --refresh --snapshot-cutoff 2026-12-01T00:00:00Z
 ```
 
-The generator resolves all groups for both supported Python versions against `x86_64-pc-windows-msvc`. It writes the results under `dependency-locks/windows-x86_64/python311/` and `dependency-locks/windows-x86_64/python312/`.
+The generator targets `x86_64-pc-windows-msvc` and writes under `dependency-locks/windows-x86_64/python311/` and `python312/`. Use `--python-versions 3.11` or `--python-versions 3.12` to regenerate one target. An approved PEP 503 mirror can be selected with `--index-url` or `KIRA_PYPI_INDEX`; credentials must not be committed.
 
-If the default Python Package Index is unreachable but an approved mirror is available, pass its PEP 503 simple-index URL:
+Resolver behavior is made explicit: highest compatible versions within a fixed publication cutoff, hash generation, no machine-local uv configuration, and no index or find-links URLs in emitted lock files. The generator stores an input fingerprint with the locks. Normal setup reuses matching locks and does not silently upgrade project dependencies. To intentionally refresh dependencies, run the generator with `--refresh` and advance `--snapshot-cutoff` to the desired publication date. All output is staged. Core resolution or validation failure preserves the previous lock directory. Optional failures are reported separately and do not block Core.
 
-```powershell
-py -3.12 scripts/generate_dependency_locks.py --index-url https://<approved-mirror>/simple
-```
+Each generated package pin must be unique and have its own SHA-256 hash. A matching input fingerprint lets ordinary installs reuse the same lock set; optional locks that were unavailable remain omitted until inputs change or a maintainer explicitly refreshes them. The installer selects a matching Windows x64/Python lock when present and uses pip's `--require-hashes`. If an optional lock is absent, that optional group uses the normal requirement/constraint resolver and remains subject to preflight and rollback.
 
-The same setting can be supplied through `KIRA_PYPI_INDEX`. Do not put credentials in committed files or command transcripts. The generator passes the index to uv through its environment and replaces uv's generated command header with the script name.
-
-Each generated file contains exact package versions and hashes. The generator stages every group first and publishes the new lock directory only after all resolutions succeed. A failed resolution leaves the existing lock directory unchanged. The Kitten engine group intentionally uses `--no-deps`, matching Kira's decision not to install the engine's optional PyTorch dependencies.
-
-## Groups
-
-| Lock name | Source requirements |
-|---|---|
-| `core` | `requirements.txt` |
-| `system-optional` | `requirements-system-optional.txt` |
-| `ocr` | `requirements-ocr.txt` |
-| `audio` | `requirements-audio.txt` |
-| `dev` | `requirements-dev.txt` |
-| `voice-local` | `requirements-voice-local.txt` |
-| `voice-kitten` | `requirements-voice-kitten.txt` |
-| `voice-kitten-engine` | `requirements-voice-kitten-engine.txt` |
-
-The generated `dependency-locks/` directory is local build output and is intentionally ignored by Git. `install.bat` and the updater install uv and regenerate all target lock files automatically before installing any dependency group. Do not hand-edit generated pins or hashes; change the source requirements/constraints and rerun setup instead.
-
-Once the generated files are committed, `install_deps.py` automatically selects the matching Windows x64/Python lock and asks pip to enforce all recorded hashes with `--require-hashes`. Until a matching lock exists, the installer keeps using the original requirement and constraint files.
-
-The generated locks are target-specific. A different operating system, CPU architecture, or Python version requires its own resolver target and lock set.
+The generated `dependency-locks/` directory is local build output and is intentionally ignored by Git. Do not hand-edit generated pins or hashes; update the source requirement/constraint files and regenerate instead. These locks are target-specific; another OS, architecture, or Python version needs a separately defined resolver target.
