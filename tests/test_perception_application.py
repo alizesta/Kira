@@ -126,6 +126,20 @@ class TestPerceptionApplicationService:
             game_mode_enabled=game_mode_enabled,
         )
 
+    def test_worker_start_failure_releases_unstarted_worker_reservation(self):
+        job = self.prepare()
+        worker = FakeWorker()
+        worker.running = False
+        assert self.service.bind_worker(job, worker)
+
+        assert self.service.worker_start_failed(job, worker)
+        assert self.service.worker is None
+
+        self.clock.value += 2.0
+        self.sample = bytes([255]) * 576
+        next_job = self.prepare()
+        assert next_job is not None
+
     def test_changed_frame_creates_job_with_stable_identity_and_policy_event(self):
         job = self.prepare()
 

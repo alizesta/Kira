@@ -234,6 +234,29 @@ class PerceptionApplicationService:
         self._worker = worker
         return True
 
+    def worker_start_failed(
+        self, job: PerceptionOcrJob, worker: CancellableWorker
+    ) -> bool:
+        """Release an unstarted QThread reservation when start() raises."""
+        if self._worker is not worker:
+            return False
+        if self._job is job:
+            self._generation += 1
+            self._job = None
+            self._result = None
+        try:
+            running = bool(worker.isRunning())
+        except RuntimeError:
+            running = False
+        if running:
+            try:
+                worker.cancel()
+            except RuntimeError:
+                pass
+            return False
+        self._worker = None
+        return True
+
     def worker_started(self, job: PerceptionOcrJob) -> None:
         if self._job is not job or self._worker is None:
             return

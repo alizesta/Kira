@@ -66,13 +66,17 @@ class PerceptionWorkerController(QObject):
         try:
             worker.start()
         except RuntimeError as exc:
-            self._service.cancel()
+            released = self._service.worker_start_failed(job, worker)
             self._trace(
                 "perception_ocr_start_failed",
                 source=source,
                 reason=type(exc).__name__,
             )
-            worker.deleteLater()
+            if released:
+                try:
+                    worker.deleteLater()
+                except RuntimeError:
+                    pass
             return
         self._service.worker_started(job)
 
