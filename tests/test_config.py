@@ -322,8 +322,8 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(any("routes[0].num_ctx" in warning for warning in config.LOAD_WARNINGS))
 
     def test_route_and_provider_defaults_are_derived_from_canonical_schema(self):
-        from kira import routes
-        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS
+        from kira import api_manager, ollama_client, routes
+        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS, PROVIDER_DEFAULT_MODELS
 
         self.assertIs(config.DEFAULTS, SCHEMA_DEFAULTS)
         self.assertEqual(routes.DEFAULT_ORDER, SCHEMA_DEFAULTS["provider_order"])
@@ -331,6 +331,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(routes.DEFAULT_CLOUD_TIMEOUT, SCHEMA_DEFAULTS["providers"]["groq"]["timeout"])
         self.assertEqual(routes.DEFAULT_LOCAL_TIMEOUT, SCHEMA_DEFAULTS["providers"]["ollama"]["timeout"])
         self.assertEqual(routes.DEFAULT_COOLDOWN, SCHEMA_DEFAULTS["route_cooldown"])
+        for provider, preferred_models in PROVIDER_DEFAULT_MODELS.items():
+            self.assertEqual(api_manager.SERVICES[provider]["default_models"], preferred_models)
+        ollama_defaults = SCHEMA_DEFAULTS["providers"]["ollama"]
+        self.assertEqual(ollama_client.DEFAULT_NUM_CTX, ollama_defaults["num_ctx"])
+        self.assertEqual(ollama_client.DEFAULT_KEEP_ALIVE, ollama_defaults["keep_alive"])
+        self.assertEqual(ollama_client.DEFAULT_NUM_PREDICT, ollama_defaults["num_predict"])
 
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
