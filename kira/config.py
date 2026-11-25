@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import math
 import os
 import time
 from copy import deepcopy
@@ -225,34 +226,58 @@ def _migrate_settings(saved):
     return migrated
 
 
+def _validate_value(value, default, path, repaired):
+    """Validate a known schema value recursively while preserving unknown user keys."""
+    valid = True
+    if isinstance(default, bool):
+        valid = isinstance(value, bool)
+    elif isinstance(default, int):
+        valid = isinstance(value, int) and not isinstance(value, bool)
+    elif isinstance(default, float):
+        valid = (isinstance(value, (int, float)) and not isinstance(value, bool)
+                 and math.isfinite(value))
+    elif isinstance(default, str):
+        valid = isinstance(value, str)
+    elif isinstance(default, list):
+        valid = isinstance(value, list)
+        if valid and default and isinstance(default[0], str):
+            valid = all(isinstance(item, str) for item in value)
+    elif isinstance(default, dict):
+        valid = isinstance(value, dict)
+        if valid:
+            for child_key, child_default in default.items():
+                if child_key in value:
+                    value[child_key] = _validate_value(
+                        value[child_key], child_default, f"{path}.{child_key}", repaired
+                    )
+    if not valid:
+        repaired.append(path)
+        return deepcopy(default)
+    return value
+
+
 def _validate_settings(settings):
-    """Restore malformed known values from canonical defaults without dropping user keys."""
+    """Repair malformed known values against the canonical schema, retaining unknown keys."""
     if not isinstance(settings, dict):
         raise ValueError("ساختار تنظیمات معتبر نیست.")
     repaired = []
     for key, default in DEFAULTS.items():
-        value = settings.get(key)
-        valid = True
-        if isinstance(default, bool):
-            valid = isinstance(value, bool)
-        elif isinstance(default, int):
-            valid = isinstance(value, int) and not isinstance(value, bool)
-        elif isinstance(default, float):
-            valid = isinstance(value, (int, float)) and not isinstance(value, bool)
-        elif isinstance(default, str):
-            valid = isinstance(value, str)
-        elif isinstance(default, list):
-            valid = isinstance(value, list)
-        elif isinstance(default, dict):
-            valid = isinstance(value, dict)
-        if key in settings and not valid:
-            settings[key] = deepcopy(default)
-            repaired.append(key)
+        if key in settings:
+            settings[key] = _validate_value(settings[key], default, key, repaired)
+
+    # Third-party providers are extensible, but each provider entry must remain a mapping.
+    providers = settings.get("providers")
+    if isinstance(providers, dict):
+        for provider, value in tuple(providers.items()):
+            if not isinstance(value, dict):
+                providers.pop(provider)
+                repaired.append(f"providers.{provider}")
     if repaired:
-        LOAD_WARNINGS.append("مقادیر نامعتبر تنظیمات با پیش‌فرض معتبر جایگزین شدند: " + ", ".join(repaired))
+        LOAD_WARNINGS.append(
+            "مقادیر نامعتبر تنظیمات با پیش‌فرض معتبر جایگزین شدند: " + ", ".join(repaired)
+        )
     settings["settings_version"] = SETTINGS_SCHEMA_VERSION
     return settings
-
 
 def load_settings():
     LOAD_WARNINGS.clear()
@@ -386,8 +411,11 @@ def load_settings():
             LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
         if migrated_local_route_state:
             LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
+        before_validation = deepcopy(merged)
         merged = _validate_settings(merged)
-        if int(source_settings_version or 0) < SETTINGS_SCHEMA_VERSION or migrated_local_model or migrated_local_route_state:
+        settings_repaired = merged != before_validation
+        if (int(source_settings_version or 0) < SETTINGS_SCHEMA_VERSION
+                or migrated_local_model or migrated_local_route_state or settings_repaired):
             save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)

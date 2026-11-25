@@ -7,10 +7,12 @@ from __future__ import annotations
 import json
 import re
 import requests
+from .config import DEFAULTS as SETTINGS_DEFAULTS
 
-DEFAULT_NUM_CTX = 6144
-DEFAULT_KEEP_ALIVE = "2m"
-DEFAULT_NUM_PREDICT = 512          # max reply length in tokens: stops a runaway/slow generation
+_OLLAMA_DEFAULTS = SETTINGS_DEFAULTS["providers"]["ollama"]
+DEFAULT_NUM_CTX = _OLLAMA_DEFAULTS["num_ctx"]
+DEFAULT_KEEP_ALIVE = _OLLAMA_DEFAULTS["keep_alive"]
+DEFAULT_NUM_PREDICT = _OLLAMA_DEFAULTS["num_predict"]          # max reply length in tokens: stops a runaway/slow generation
 MIN_NUM_CTX, MAX_NUM_CTX = 1024, 32768
 REPLY_RESERVE_TOKENS = 768          # room kept free for the model's answer
 CHARS_PER_TOKEN = 2.0               # conservative for Persian text
@@ -162,9 +164,8 @@ class OllamaClient:
     @classmethod
     def from_settings(cls, settings):
         cfg = (settings.get("providers") or {}).get("ollama") or {}
-        from .config import DEFAULTS
-        return cls(settings.get("ollama_url") or cfg.get("base_url") or DEFAULTS["ollama_url"],
-                   settings.get("model") or cfg.get("model") or DEFAULTS["model"],
+        return cls(settings.get("ollama_url") or cfg.get("base_url") or SETTINGS_DEFAULTS["ollama_url"],
+                   settings.get("model") or cfg.get("model") or SETTINGS_DEFAULTS["model"],
                    cfg.get("num_ctx", DEFAULT_NUM_CTX), cfg.get("keep_alive", DEFAULT_KEEP_ALIVE),
                    cfg.get("timeout", 180), cfg.get("num_predict", DEFAULT_NUM_PREDICT))
 

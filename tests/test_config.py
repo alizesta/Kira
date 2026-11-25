@@ -176,10 +176,23 @@ class ConfigTests(unittest.TestCase):
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(saved["role_route_models"]["surface"], [expected])
 
+    def test_nested_provider_values_are_validated_and_repaired_on_disk(self):
+        self.path.write_text(
+            json.dumps({"providers": {"ollama": {"num_ctx": "huge", "keep_alive": []}}}),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        defaults = config.DEFAULTS["providers"]["ollama"]
+        self.assertEqual(settings["providers"]["ollama"]["num_ctx"], defaults["num_ctx"])
+        self.assertEqual(settings["providers"]["ollama"]["keep_alive"], defaults["keep_alive"])
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["providers"]["ollama"]["num_ctx"], defaults["num_ctx"])
+        self.assertTrue(any("providers.ollama.num_ctx" in warning for warning in config.LOAD_WARNINGS))
+
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
         self.assertEqual(s["model"], config.LOCAL_UNCENSORED_MODEL)
-        self.assertEqual(s["providers"]["ollama"]["num_ctx"], 4096)
+        self.assertEqual(s["providers"]["ollama"]["num_ctx"], config.DEFAULTS["providers"]["ollama"]["num_ctx"])
         for n in ("groq", "cloudflare", "mistral", "openrouter"):
             self.assertFalse(s["providers"][n]["enabled"])
             self.assertEqual(s["providers"][n]["api_key"], "")

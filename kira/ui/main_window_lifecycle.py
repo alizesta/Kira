@@ -55,9 +55,9 @@ class LifecycleController(WindowFeatureController):
                     return
         s = self.context.services.settings
         s.update({
-            "assistant_name": self.context.views.name.text().strip() or "Kira",
-            "model": self.context.views.model.text().strip() or self.context.services.settings.get("model"),
-            "ollama_url": self.context.views.url.text().strip() or "http://localhost:11434",
+            "assistant_name": self.context.views.name.text().strip() or DEFAULTS["assistant_name"],
+            "model": self.context.views.model.text().strip() or s.get("model") or DEFAULTS["model"],
+            "ollama_url": self.context.views.url.text().strip() or DEFAULTS["ollama_url"],
             "persona": self.context.views.persona.toPlainText().strip(), "active_modes": self.context.views.modes_chk.isChecked(),
             "temperature": float(self.context.views.temp.currentText()),
             "speak_replies": self.context.views.voice_page.speak_chk.isChecked(), "stream_speech": self.context.views.voice_page.stream_chk.isChecked(),
@@ -65,7 +65,7 @@ class LifecycleController(WindowFeatureController):
             "voice_volume": self.context.views.voice_page.volume.value() / 100.0,
             "output_device": self.context.views.voice_page.out_device.currentData() or "", "mic_device": self.context.views.voice_page.mic_device.currentData() or "",
             "mic_gain": self.context.views.voice_page.mic_gain.value(),
-            "stt_language": self.context.views.voice_page.stt_lang.currentText(), "whisper_model": self.context.views.voice_page.whisper.currentText().strip() or "small",
+            "stt_language": self.context.views.voice_page.stt_lang.currentText(), "whisper_model": self.context.views.voice_page.whisper.currentText().strip() or DEFAULTS["whisper_model"],
             "wake_timeout": self.context.views.voice_page.wake_timeout.value(),
             "mic_sensitivity": self.context.views.voice_page.mic_sens.value(), "barge_in": self.context.views.voice_page.barge_chk.isChecked(),
             "companion_height": self.context.views.character_page.size_sl.value(),
