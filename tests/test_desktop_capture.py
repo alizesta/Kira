@@ -64,6 +64,15 @@ class DesktopCaptureAdapterTests(unittest.TestCase):
         self.assertEqual(service.capture_monitor_for_window(item), "full-monitor")
         service._capture_monitor_screen.assert_called_once_with(secondary, 854, 480)
 
+    def test_full_monitor_capture_accepts_hwnd_pid_rect_without_optional_process_metadata(self):
+        service = DesktopCaptureService()
+        service._is_current_foreground = mock.Mock(return_value=True)
+        service._capture_monitor_screen = mock.Mock(return_value="full-monitor")
+        item = {"hwnd": 10, "pid": 20, "exe": "", "path": "", "title": "",
+                "rect": (0, 0, 1280, 720)}
+        self.assertEqual(service.capture_monitor_for_window(item), "full-monitor")
+        service._capture_monitor_screen.assert_called_once()
+
     def test_full_monitor_capture_rejects_background_window(self):
         service = DesktopCaptureService()
         service._is_current_foreground = mock.Mock(return_value=False)
