@@ -165,6 +165,7 @@ class ConfigTests(unittest.TestCase):
             "local_voice_tts_model": "user-selected-tts-model",
             "providers": {"groq": {"api_key": "preserve-me"}},
             "api_registry": {"groq": {"status": "valid"}},
+            "ollama_models": ["model-a"],
             "model_catalog_refreshed_at": 12345,
             "model_tests": {"groq::model": {"ok": True}},
             "user_extension": {"enabled": True},
@@ -182,7 +183,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(migrated["local_voice_tts_model"], "user-selected-tts-model")
         self.assertEqual(migrated["providers"]["groq"]["api_key"], "preserve-me")
         self.assertEqual(migrated["user_extension"], {"enabled": True})
-        for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+        for runtime_key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests"):
             self.assertNotIn(runtime_key, migrated)
         self.assertEqual(source["api_registry"]["groq"]["status"], "valid")
         self.assertEqual(config._migrate_settings(migrated), migrated)
@@ -205,6 +206,7 @@ class ConfigTests(unittest.TestCase):
                 "settings_version": config.SETTINGS_SCHEMA_VERSION,
                 "assistant_name": "Persisted User Name",
                 "api_registry": {"groq": {"status": "valid"}},
+                "ollama_models": ["model-a"],
                 "model_catalog_refreshed_at": 12345,
                 "model_tests": {"groq::model": {"ok": True}},
                 "route_notes": {"groq": "automatic failure"},
@@ -216,7 +218,7 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(settings["assistant_name"], "Persisted User Name")
         self.assertEqual(settings["user_extension"], {"keep": True})
-        for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+        for key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes"):
             self.assertNotIn(key, settings)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         for key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
@@ -248,6 +250,7 @@ class ConfigTests(unittest.TestCase):
         settings = helpers.fresh_settings()
         settings.update({
             "api_registry": {"groq": {"status": "valid"}},
+            "ollama_models": ["model-a"],
             "model_catalog_refreshed_at": 12345,
             "model_tests": {"groq::model": {"ok": True}},
             "route_notes": {"groq": "model was auto-disabled"},
@@ -255,6 +258,7 @@ class ConfigTests(unittest.TestCase):
         config.save_settings(settings)
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertNotIn("api_registry", saved)
+        self.assertNotIn("ollama_models", saved)
         self.assertNotIn("model_catalog_refreshed_at", saved)
         self.assertNotIn("model_tests", saved)
         self.assertNotIn("route_notes", saved)

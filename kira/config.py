@@ -185,7 +185,7 @@ def _migrate_v2_to_v3(data, warnings=None):
 
 def _migrate_v3_to_v4(data, warnings=None):
     """Move provider/model discovery observations out of persistent user settings."""
-    for key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
+    for key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests"):
         data.pop(key, None)
     return data
 
@@ -359,7 +359,7 @@ def load_settings():
                 raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
             # These names are reserved for process-local observations even when a
             # file claims to be at the current schema version.
-            runtime_keys = ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes")
+            runtime_keys = ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes")
             stripped_runtime_keys = [key for key in runtime_keys if key in saved]
             for key in stripped_runtime_keys:
                 saved.pop(key, None)
@@ -445,7 +445,7 @@ def load_settings():
 def save_settings(settings):
     stored = deepcopy(settings)
     # Runtime and detected observations are process-local; never write them to settings.json.
-    for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests", "route_notes"):
+    for runtime_key in ("api_registry", "ollama_models", "model_catalog_refreshed_at", "model_tests", "route_notes"):
         stored.pop(runtime_key, None)
     # Every persistence boundary validates against the same schema as load-time recovery.
     stored = _validate_settings(stored)
