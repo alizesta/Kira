@@ -154,6 +154,25 @@ class HybridRouter:
             _PREFER.reset(route_token)
             _ROLE.reset(role_token)
 
+    def _usage_blocked_providers(self, candidates):
+        """Runtime usage-limit gate, independent from route policy, health and cooldown."""
+        from . import usage
+        blocked = {
+            str(route.get("provider") or "")
+            for route in candidates
+            if usage.limit_state("provider", str(route.get("provider") or "")) == "block"
+        }
+        if not blocked:
+            return set()
+        remaining = [
+            route for route in candidates
+            if str(route.get("provider") or "") not in blocked
+            and self.eligibility(route, include_cooldown=False)[0]
+        ]
+        # Preserve the existing availability guarantee: a usage cap cannot
+        # strand the conversation when no other configured route can serve it.
+        return blocked if remaining else set()
+
     def _candidates(self):
         """Return the ordered plan produced by RoutePolicyEngine.
 
@@ -161,11 +180,16 @@ class HybridRouter:
         are policy. Provider health and cooldown are runtime state and are evaluated
         separately when a candidate is actually considered.
         """
+        preferred_route_id = _PREFER.get()
+        if preferred_route_id:
+            from . import usage
+            if not usage.role_allowed(_ROLE.get()):
+                preferred_route_id = ""
         ordered, decisions = self.route_policy.select(
             self.routes(),
             self.settings,
             role=_ROLE.get(),
-            preferred_route_id=_PREFER.get(),
+            preferred_route_id=preferred_route_id,
             vision_only=_VISION_ONLY.get(),
             provider_cfg=self._provider_cfg,
             provider_kind=route_model.provider_kind,
@@ -253,9 +277,12 @@ class HybridRouter:
 
     def preview_route(self):
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
-        for route in self._candidates():
+        candidates = self._candidates()
+        usage_blocked = self._usage_blocked_providers(candidates)
+        for route in candidates:
             ok, _ = self.eligibility(route)
-            if ok and not self._quota_status(route):
+            if (ok and str(route.get("provider") or "") not in usage_blocked
+                    and not self._quota_status(route)):
                 return self.route_info(route)
         return None
 
@@ -442,6 +469,7 @@ class HybridRouter:
                        "result": None, "chars": 0, "role": _ROLE.get() or None}
             trace_token = set_trace_request_id(metrics["request_id"])
             candidates = self._candidates()
+            usage_blocked_providers = self._usage_blocked_providers(candidates)
             request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat",
                           candidates=len(candidates), network_policy=self.settings.get("network_policy", "cloud_permitted"),
                           route_decisions=self.last_route_decisions)
@@ -457,6 +485,12 @@ class HybridRouter:
             attempted_route_targets = set()
             quota_blocked_routes = set()
             for candidate in candidates:
+                if str(candidate.get("provider") or "") in usage_blocked_providers:
+                    candidate_id = str(candidate.get("id") or "")
+                    failures.append(f"{candidate_id}: محدودیت مصرف روزانهٔ Provider فعال است")
+                    self.last_attempts.append({"provider": candidate["provider"], "route_id": candidate_id,
+                                               "result": "usage_limit_blocked"})
+                    continue
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 quota_state = self._quota_status(candidate)
@@ -479,7 +513,8 @@ class HybridRouter:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 rid = route["id"]
-                if rid in cooldown_routes or rid in quota_blocked_routes:
+                if (rid in cooldown_routes or rid in quota_blocked_routes
+                        or str(route.get("provider") or "") in usage_blocked_providers):
                     continue
                 ok, reason = self.eligibility(route)
                 if reason == "cooldown":
@@ -725,10 +760,16 @@ class HybridRouter:
         last_route_info = None
         emit = on_event or (lambda event: None)
         try:
-            for route in self._candidates():
+            candidates = self._candidates()
+            usage_blocked = self._usage_blocked_providers(candidates)
+            for route in candidates:
                 provider = None
                 if self._cancel.is_set():
                     return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                if str(route.get("provider") or "") in usage_blocked:
+                    self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
+                                               "result": "usage_limit_blocked"})
+                    continue
                 quota_state = self._quota_status(route)
                 if quota_state:
                     self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
