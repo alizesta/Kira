@@ -605,10 +605,14 @@ class VoiceSettingsController(WindowFeatureController):
             asr_name = str(asr_state.get("engine_name") or asr_state.get("engine_id") or "ASR")
             if asr_state.get("ready"):
                 asr = f"{asr_name} آماده است؛ Runtime و فایل مدل اعتبارسنجی شدند."
+            elif asr_state.get("state") == "failed" and asr_state.get("last_error"):
+                asr = f"{asr_name} پس از خطای اجرا آماده نیست: {asr_state['last_error']}"
+            elif asr_state.get("runtime_installed") and asr_state.get("model_ready"):
+                asr = f"{asr_name} قابل استفاده است، اما هنوز بارگذاری نشده است."
             else:
                 asr = (f"{asr_name} آماده نیست [{asr_state.get('error_code') or 'unavailable'}]: "
                        f"{asr_state.get('error_message') or 'وضعیت موتور نامشخص است.'}")
-            if asr_state.get("initialized"):
+            if asr_state.get("initialized") and asr_state.get("state") != "failed":
                 asr += " · مدل در حافظه بارگذاری شده است"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
@@ -707,7 +711,9 @@ class VoiceSettingsController(WindowFeatureController):
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
-        label = "شنوا"
+        label = self.context.services.voice_application_service.asr_manager.selected_engine_label(
+            self.context.services.settings
+        )
         if ok:
             self.context.views.local_voice_status.setText(f"{label} با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
         else:

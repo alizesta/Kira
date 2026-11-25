@@ -198,9 +198,15 @@ class ASRManager:
                         "error_code": "discovery_failed", "error_message": f"{type(exc).__name__}: {exc}"}
         with self._lock:
             active = self._active_adapter is adapter and self._active_model == model_id
-            snapshot.update(initialized=active, state="ready" if active else
-                            ("available" if snapshot.get("ready") else "unavailable"),
-                            last_error=str(self._last_error) if self._last_error else "")
+            failed = self._state == "failed"
+            snapshot.update(
+                initialized=active,
+                state="failed" if failed else ("ready" if active else
+                       ("available" if snapshot.get("ready") else "unavailable")),
+                last_error=str(self._last_error) if self._last_error else "",
+            )
+            if failed:
+                snapshot["ready"] = False
         return snapshot
 
     def selected_engine_label(self, settings=None):
@@ -220,7 +226,8 @@ class ASRManager:
                 self._state, self._last_error = "failed", exc
                 raise
             adapter = self._adapters[engine_id]
-            if self._active_adapter is adapter and self._active_model == model_id:
+            if (self._active_adapter is adapter and self._active_model == model_id
+                    and self._state != "failed"):
                 return self.discover(settings)
             if self._active_adapter is not None:
                 self._shutdown_locked()
@@ -259,7 +266,9 @@ class ASRManager:
         with self._lock:
             engine_id, model_id = self._ensure_selected(settings)
             try:
-                return str(self._active_adapter.transcribe(audio, int(sample_rate), model_id) or "").strip()
+                result = str(self._active_adapter.transcribe(audio, int(sample_rate), model_id) or "").strip()
+                self._state, self._last_error = "ready", None
+                return result
             except Exception as exc:
                 error = ASRError("inference_failed", f"اجرای ASR ناموفق بود: {type(exc).__name__}: {exc}",
                                  engine_id=engine_id, model_id=model_id)
@@ -270,7 +279,9 @@ class ASRManager:
         with self._lock:
             engine_id, model_id = self._ensure_selected(settings)
             try:
-                return str(self._active_adapter.transcribe_file(str(path), model_id) or "").strip()
+                result = str(self._active_adapter.transcribe_file(str(path), model_id) or "").strip()
+                self._state, self._last_error = "ready", None
+                return result
             except Exception as exc:
                 error = ASRError("inference_failed", f"تشخیص فایل ناموفق بود: {type(exc).__name__}: {exc}",
                                  engine_id=engine_id, model_id=model_id)
@@ -279,7 +290,13 @@ class ASRManager:
 
     def install_selected(self, settings=None, *, cancel_event=None):
         with self._lock:
-            engine_id, model_id = self.select(settings)
+            try:
+                engine_id, model_id = self.select(settings)
+            except ASRError as exc:
+                if self._active_adapter is not None:
+                    self._shutdown_locked()
+                self._state, self._last_error = "failed", exc
+                raise
             if self._active_adapter is not None:
                 self._shutdown_locked()
             self._state = "installing"

@@ -80,6 +80,30 @@ class ASRManagerTests(unittest.TestCase):
         self.assertFalse(state["ready"])
         self.assertEqual(state["error_code"], "unsupported_engine")
 
+    def test_failed_inference_is_not_reported_ready_and_can_recover(self):
+        adapter = FakeAdapter(fail="inference")
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture"}
+        with self.assertRaises(ASRError):
+            manager.transcribe([], 16000, settings)
+        failed = manager.discover(settings)
+        self.assertFalse(failed["ready"])
+        self.assertEqual(failed["state"], "failed")
+        adapter.fail = None
+        self.assertEqual(manager.transcribe([], 16000, settings), "transcript")
+        recovered = manager.discover(settings)
+        self.assertTrue(recovered["ready"])
+        self.assertEqual(recovered["state"], "ready")
+
+    def test_unsupported_switch_releases_previous_engine(self):
+        adapter = FakeAdapter()
+        manager = ASRManager(adapters=[adapter])
+        manager.initialize({"local_voice_asr_backend": "fixture"})
+        with self.assertRaises(ASRError):
+            manager.initialize({"local_voice_asr_backend": "qwen3"})
+        self.assertEqual([c[0] for c in adapter.calls][-1], "shutdown")
+        self.assertEqual(manager.active_engine_id, "")
+
     def test_initialization_and_inference_failures_are_distinct(self):
         with self.subTest(stage="initialization"):
             manager = ASRManager(adapters=[FakeAdapter(fail="initialization")])
