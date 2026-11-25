@@ -31,7 +31,7 @@ from ..components.switch_checkbox import SwitchCheckBox
 from kira.settings_schema import (
     DEFAULTS as SETTINGS_DEFAULTS,
     SETTING_RANGES as SETTINGS_RANGES,
-    SETTING_CHOICES as SETTINGS_CHOICES,
+    STT_LANGUAGE_OPTIONS as SETTINGS_STT_LANGUAGE_OPTIONS,
 )
 
 
@@ -120,7 +120,7 @@ class VoicePage(QScrollArea):
         stt_form.setHorizontalSpacing(8)
         stt_form.setVerticalSpacing(4)
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
-        self.stt_lang.addItems(("fa", "en", "auto"))
+        self.stt_lang.addItems(SETTINGS_STT_LANGUAGE_OPTIONS)
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"]))
         selected_asr_engine = str(settings.get("local_voice_asr_backend") or SETTINGS_DEFAULTS["local_voice_asr_backend"]).strip().lower()
         selected_asr_model = str(settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])

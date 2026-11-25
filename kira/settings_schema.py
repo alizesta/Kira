@@ -7,7 +7,8 @@ Routes, UI, or Provider services.
 LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
-SETTINGS_SCHEMA_VERSION = 4
+STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
+SETTINGS_SCHEMA_VERSION = 5
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,
@@ -43,7 +44,6 @@ DEFAULTS = {
     "desktop_vision_ocr_enabled": True,       # local OCR on changed desktop content when Tesseract already exists
     "vision_ocr_in_game_mode": False,         # OCR stays off during gameplay unless explicitly enabled
     "voice_engine": "gemini_live",       # gemini_live = bidirectional cloud voice; local = selected offline ASR adapter + Piper
-    "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
     "gemini_live_model": "gemini-3.8-live",
     "gemini_voice": "Zephyr",             # Gemini Live prebuilt voice name (see GEMINI_VOICES in ui/pages/voice_page.py)
@@ -141,7 +141,7 @@ DEFAULTS = {
 # Semantic constraints are part of the settings schema, not UI-only assumptions.
 SETTING_CHOICES = {
     "voice_engine": frozenset({"gemini_live", "local"}),
-    "stt_language": frozenset({"fa", "en", "auto"}),
+    "stt_language": frozenset(STT_LANGUAGE_OPTIONS),
     "tts_engine": frozenset({"piper", "kitten"}),
     "kitten_model": frozenset({"pico", "nano", "mini"}),
     "web_depth": frozenset({"basic", "advanced"}),

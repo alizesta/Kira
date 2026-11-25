@@ -117,20 +117,25 @@ def _migrate_v1_to_v2(data, warnings=None):
 
 
 def _migrate_v2_to_v3(data, warnings=None):
-    """Repair a contradictory legacy Ollama enablement state without rewriting model choices."""
+    """Honor a disabled Ollama Provider by disabling contradictory enabled routes."""
     providers = data.get("providers")
     ollama = providers.get("ollama") if isinstance(providers, dict) else None
     routes = data.get("routes")
-    if isinstance(ollama, dict) and not bool(ollama.get("enabled", True)):
-        if isinstance(routes, list) and any(
-            isinstance(route, dict) and route.get("provider") == "ollama"
-            and route.get("enabled", True) for route in routes
-        ):
-            ollama["enabled"] = True
-            if warnings is not None:
-                warnings.append(
-                    "وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد."
-                )
+    disabled_routes = []
+    if isinstance(ollama, dict) and ollama.get("enabled") is False and isinstance(routes, list):
+        for route in routes:
+            if (
+                isinstance(route, dict)
+                and route.get("provider") == "ollama"
+                and route.get("enabled", True)
+            ):
+                route["enabled"] = False
+                disabled_routes.append(str(route.get("id") or "ollama"))
+    if disabled_routes and warnings is not None:
+        warnings.append(
+            "Routeهای Ollama خاموش شدند، چون Provider در تنظیمات کاربر غیرفعال بود: "
+            + ", ".join(disabled_routes)
+        )
     return data
 
 
@@ -138,6 +143,12 @@ def _migrate_v3_to_v4(data, warnings=None):
     """Move provider/model discovery observations out of persistent user settings."""
     for key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
         data.pop(key, None)
+    return data
+
+
+def _migrate_v4_to_v5(data, warnings=None):
+    """Remove the obsolete Voice migration marker; the selected Voice engine is user data."""
+    data.pop("voice_engine_migrated", None)
     return data
 
 
@@ -162,6 +173,7 @@ def _migrate_settings(saved, *, warnings=None):
         1: lambda value: _migrate_v1_to_v2(value, warnings=warnings),
         2: lambda value: _migrate_v2_to_v3(value, warnings=warnings),
         3: lambda value: _migrate_v3_to_v4(value, warnings=warnings),
+        4: lambda value: _migrate_v4_to_v5(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)

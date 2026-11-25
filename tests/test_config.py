@@ -89,7 +89,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             from_v2["role_route_models"]["surface"], ["qwen3.5:4b"]
         )
-        self.assertTrue(from_v2["providers"]["ollama"]["enabled"])
+        self.assertFalse(from_v2["providers"]["ollama"]["enabled"])
+        self.assertFalse(from_v2["routes"][0]["enabled"])
 
     def test_current_version_route_repair_is_persisted(self):
         self.path.write_text(
@@ -153,6 +154,24 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("model_catalog_refreshed_at", saved)
         self.assertNotIn("model_tests", saved)
 
+    def test_v4_migration_removes_only_obsolete_voice_metadata(self):
+        source = {
+            "settings_version": 4,
+            "voice_engine": "local",
+            "voice_local_fallback": False,
+            "voice_engine_migrated": True,
+            "providers": {"groq": {"api_key": "keep-this-key"}},
+            "user_extension": {"keep": True},
+        }
+        migrated = config._migrate_settings(source)
+        self.assertEqual(migrated["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertEqual(migrated["voice_engine"], "local")
+        self.assertFalse(migrated["voice_local_fallback"])
+        self.assertEqual(migrated["providers"]["groq"]["api_key"], "keep-this-key")
+        self.assertEqual(migrated["user_extension"], {"keep": True})
+        self.assertNotIn("voice_engine_migrated", migrated)
+        self.assertIn("voice_engine_migrated", source)
+
     def test_migration_warnings_are_explicit_and_idempotent(self):
         source = {
             "providers": {"groq": {"model": "llama-3.3-70b-versatile"}},
@@ -207,21 +226,21 @@ class ConfigTests(unittest.TestCase):
         from kira.settings_schema import (
             DEFAULTS as SCHEMA_DEFAULTS,
             SETTING_RANGES,
-            SETTING_CHOICES,
+            STT_LANGUAGE_OPTIONS,
         )
         from kira.ui.pages.voice_page import (
             SETTINGS_DEFAULTS,
             SETTINGS_RANGES,
-            SETTINGS_CHOICES,
+            SETTINGS_STT_LANGUAGE_OPTIONS,
         )
 
         self.assertIs(SETTINGS_DEFAULTS, SCHEMA_DEFAULTS)
         self.assertIs(SETTINGS_RANGES, SETTING_RANGES)
-        self.assertIs(SETTINGS_CHOICES, SETTING_CHOICES)
+        self.assertIs(SETTINGS_STT_LANGUAGE_OPTIONS, STT_LANGUAGE_OPTIONS)
         self.assertEqual(SETTING_RANGES["wake_timeout"], (5, 120))
         self.assertEqual(SETTING_RANGES["voice_rate"], (-30, 30))
         self.assertEqual(SETTINGS_DEFAULTS["wake_timeout"], 25)
-        self.assertEqual(SETTING_CHOICES["stt_language"], frozenset({"fa", "en", "auto"}))
+        self.assertEqual(SETTINGS_STT_LANGUAGE_OPTIONS, ("fa", "en", "auto"))
 
     def test_settings_migration_is_idempotent(self):
         original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
@@ -261,6 +280,9 @@ class ConfigTests(unittest.TestCase):
         )
         settings = config.load_settings()
         self.assertEqual(settings["voice_engine"], "local")
+        self.assertNotIn("voice_engine_migrated", settings)
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertNotIn("voice_engine_migrated", saved)
 
     def test_01b_retired_groq_models_migrate(self):
         for old, new in (("llama-3.3-70b-versatile", "openai/gpt-oss-120b"), ("llama-3.1-8b-instant", "openai/gpt-oss-20b")):
