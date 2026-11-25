@@ -37,7 +37,7 @@ from .evidence_memory_embeddings import (
     EmbeddingService, build_embedding_config, cosine_similarity, pack_vector, unpack_vector,
 )
 from .evidence_memory_index import (
-    _EXPLICIT_MEANING_RX, _SMALLTALK, _WORD, EvidenceIndexer, is_definition as _is_definition,
+    _EXPLICIT_MEANING_RX, _SMALLTALK, _STOP, _WORD, EvidenceIndexer, is_definition as _is_definition,
     norm, quote_in, needs_recall, tokens, query_terms, query_tokens as _query_tokens,
     bm25 as _bm25, rank_texts,
 )
@@ -89,17 +89,6 @@ usage_hook = None
 _STORAGE = SQLiteEvidenceStorage(DB_NAME)
 _INDEX = EvidenceIndexer(_tok_cache)
 _EMBEDDING_SERVICE = EmbeddingService()                     # optional callable(dict) set by kira.usage: receives one record per embedding request
-_FACT_REPOSITORY = EvidenceFactRepository(
-    fact_id=_fact_id,
-    normalize=norm,
-    quote_in=quote_in,
-    word_regex=_WORD,
-    stop_words=_STOP,
-    categories=CATEGORIES,
-    single_valued=SINGLE_VALUED,
-    cache=_tok_cache,
-)
-
 # ----------------------------------------------------------------------------------------------- indexing primitives are implemented in evidence_memory_index.py
 
 # ----------------------------------------------------------------------------------------------- settings / storage
@@ -170,6 +159,17 @@ def _find_message_id(role, content):
     except Exception:                                                  # noqa: BLE001 - provenance is best effort
         return None
 
+
+_FACT_REPOSITORY = EvidenceFactRepository(
+    fact_id=_fact_id,
+    normalize=norm,
+    quote_in=quote_in,
+    word_regex=_WORD,
+    stop_words=_STOP,
+    categories=CATEGORIES,
+    single_valued=SINGLE_VALUED,
+    cache=_tok_cache,
+)
 
 # ----------------------------------------------------------------------------------------------- writing
 def _quarantine(con, reason, payload) -> None:
