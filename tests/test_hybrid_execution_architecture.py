@@ -160,6 +160,45 @@ class HybridExecutionArchitectureTests(unittest.TestCase):
         self.assertEqual(result["tool_calls"][0]["tool"], "open_app")
         self.assertEqual([attempt["route_id"] for attempt in router.last_attempts], ["capable"])
 
+    def test_google_quota_scope_separates_credentials_without_leaking_keys(self):
+        settings = {
+            "providers": {
+                "google-a": {
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "api_key": "project-key-a",
+                },
+                "google-b": {
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "api_key": "project-key-b",
+                },
+                "google-a-alias": {
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "api_key": "project-key-a",
+                },
+            },
+            "routes": [],
+        }
+        router = HybridRouter(settings)
+        route_a = {"id": "a", "provider": "google-a", "model": "gemini-4-hydrogen"}
+        route_b = {"id": "b", "provider": "google-b", "model": "gemini-4-hydrogen"}
+        route_alias = {"id": "alias", "provider": "google-a-alias", "model": "gemini-4-hydrogen"}
+
+        scope_a = router._google_quota_scope(route_a)
+        scope_b = router._google_quota_scope(route_b)
+        scope_alias = router._google_quota_scope(route_alias)
+
+        self.assertNotEqual(scope_a, scope_b)
+        self.assertEqual(scope_a, scope_alias)
+        self.assertNotIn("project-key-a", repr(scope_a))
+        self.assertNotIn("project-key-b", repr(scope_b))
+
+        settings["providers"]["google-b"]["quota_scope"] = "shared-project"
+        settings["providers"]["google-a"]["quota_scope"] = "shared-project"
+        self.assertEqual(
+            router._google_quota_scope(route_a),
+            router._google_quota_scope(route_b),
+        )
+
     def test_cancellation_token_combines_router_and_external_events(self):
         internal, external = threading.Event(), threading.Event()
         token = CancellationToken(internal, external)

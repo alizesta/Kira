@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import hashlib
 import json
 import re
 import threading
@@ -385,7 +386,15 @@ class HybridRouter:
         project_scope = str(cfg.get("quota_scope") or "").strip().casefold()
         if project_scope:
             return ("google-project-model", project_scope, model)
-        return ("google-provider-model", str(route.get("provider") or "").strip().casefold(), model)
+        # Without an explicit shared project scope, different API credentials
+        # must not inherit one another's quota observations. Store only a
+        # one-way fingerprint; never place the API key itself in runtime state.
+        credential = str(cfg.get("api_key") or "").strip()
+        identity = (
+            hashlib.sha256(credential.encode("utf-8")).hexdigest()[:24]
+            if credential else f"provider:{str(route.get('provider') or '').strip().casefold()}"
+        )
+        return ("google-credential-model", identity, model)
 
     def _quota_status(self, route):
         """Return an active quota block from this router's explicit quota scope."""
