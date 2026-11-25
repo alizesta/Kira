@@ -1456,6 +1456,13 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         if frame_context is None:
             frame_context = getattr(self.context.session, "_vision_frame_context", None)
+        if frame_context is None and getattr(self.context.session, "_vision_worker", None) is not None:
+            vision_trace(
+                "analysis_discarded", source=_FRAME_SOURCE.get("value") or "unknown",
+                reason="missing_frame_context",
+            )
+            self.context.session._vision_frame_context = None
+            return
         if frame_context is not None and not service.frame_orchestrator.is_current(frame_context):
             vision_trace(
                 "analysis_discarded",
