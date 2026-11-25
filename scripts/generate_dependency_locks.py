@@ -261,8 +261,12 @@ def generate_locks(
     env = os.environ.copy()
     # Ignore ambient uv configuration and index variables. One explicit index defines
     # the resolver source; credentials and index URLs are never emitted into lock files.
+    ignored_resolver_environment = {
+        "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS",
+        "PIP_NO_INDEX", "PIP_CONSTRAINT", "PIP_REQUIREMENT",
+    }
     for key in tuple(env):
-        if key.startswith("UV_"):
+        if key.startswith("UV_") or key in ignored_resolver_environment:
             env.pop(key, None)
     env["UV_CUSTOM_COMPILE_COMMAND"] = "python scripts/generate_dependency_locks.py"
     env["UV_NO_PROGRESS"] = "1"
