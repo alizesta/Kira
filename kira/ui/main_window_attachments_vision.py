@@ -1,20 +1,17 @@
 """Attachment and vision feature controller for the desktop window."""
-from PySide6.QtCore import Slot
+import time
+
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtWidgets import QSystemTrayIcon
+
+from ..chat import attachments as att
+from ..chat.attachment_content import format_desktop_context
+from ..config import save_settings
+from ..game_mode import CAPTURE_JPEG_QUALITY
+from ..perception.events import PerceptionEvent
 from ..request_trace import vision_trace
 from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, wants_detail_capture
-from ..perception.events import PerceptionEvent
-from ..chat.attachment_content import format_desktop_context
-from .main_window_attachments_vision_support import (
-    CAPTURE_JPEG_QUALITY,
-    QSystemTrayIcon,
-    QTimer,
-    VisionAnalysisWorker,
-    att,
-    save_settings,
-    time,
-)
-
-
+from .workers import VisionAnalysisWorker
 from .window_feature_controller import WindowFeatureController
 
 
