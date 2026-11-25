@@ -613,7 +613,7 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
         con.execute("CREATE TABLE persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)")
-        con.execute("INSERT INTO persistence_schema(version, applied_at, description) VALUES (2, '2026-01-01', 'future')")
+        con.execute("INSERT INTO persistence_schema(version, applied_at, description) VALUES (99, '2026-01-01', 'future')")
         con.commit()
         con.close()
 
@@ -630,7 +630,7 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
         con.execute("INSERT INTO messages VALUES (1, 'user', 'newer data', '2026-01-01 00:00:00')")
-        con.execute("PRAGMA user_version = 2")
+        con.execute("PRAGMA user_version = 99")
         con.commit()
         con.close()
 
@@ -642,7 +642,7 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         columns = {row[1] for row in con.execute("PRAGMA table_info(messages)")}
         rows = con.execute("SELECT content FROM messages").fetchall()
         con.close()
-        self.assertEqual(version, 2)
+        self.assertEqual(version, 99)
         self.assertNotIn("conversation_id", columns)
         self.assertEqual(rows, [("newer data",)])
 

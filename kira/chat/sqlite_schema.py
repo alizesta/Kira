@@ -100,8 +100,16 @@ class SqliteSchemaManager:
         )
         con.execute(
             "INSERT OR IGNORE INTO persistence_schema(version, applied_at, description) VALUES (?, ?, ?)",
-            (self._schema_version, self._now(), "conversation ids, message metadata and stream status"),
+            (1, self._now(), "conversation ids, message metadata and stream status"),
         )
+        if self._schema_version >= 2:
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS persistence_receipts (token TEXT PRIMARY KEY NOT NULL)"
+            )
+            con.execute(
+                "INSERT OR IGNORE INTO persistence_schema(version, applied_at, description) VALUES (?, ?, ?)",
+                (2, self._now(), "idempotent durable pending-message replay receipts"),
+            )
         con.execute(f"PRAGMA user_version = {self._schema_version}")
 
     def migrate(self, con):

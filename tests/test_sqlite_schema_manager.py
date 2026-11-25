@@ -33,6 +33,14 @@ class SqliteSchemaManagerTests(unittest.TestCase):
             self.assertIn("messages", tables)
             self.assertIn("conversations", tables)
             self.assertIn("persistence_schema", tables)
+            self.assertIn("persistence_receipts", tables)
+            with sqlite3.connect(database) as connection:
+                self.assertEqual(
+                    [row[0] for row in connection.execute(
+                        "SELECT version FROM persistence_schema ORDER BY version"
+                    )],
+                    [1, 2],
+                )
 
     def test_legacy_message_migration_remains_additive_and_preserves_rows(self):
         with tempfile.TemporaryDirectory(prefix="kira-schema-legacy-") as directory:
