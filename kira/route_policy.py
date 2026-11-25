@@ -135,14 +135,25 @@ class RoutePolicyEngine:
                 if isinstance(raw_models, (list, tuple, set, frozenset))
                 else set()
             )
-            # Surface may use any configured Ollama route when Ollama itself is
-            # explicitly allowlisted; all non-Ollama routes remain model-limited.
+            # For ordinary chat, explicitly allowlisted Cloud providers are
+            # governed by the provider allowlist + network privacy boundary.
+            # The legacy exact-model list remains a local-model restriction and
+            # must not silently make the new Cloud permission unusable.
             local_surface_routes = role == "surface" and "ollama" in allow
+            surface_cloud_routes = (
+                role == "surface"
+                and not vision_only
+                and network_policy == CLOUD_PERMITTED
+            )
             routes = filter_routes(
                 routes,
                 lambda route: (
                     local_surface_routes
                     and str(route.get("provider") or "").strip().lower() == "ollama"
+                ) or (
+                    surface_cloud_routes
+                    and provider_kind(route.get("provider"), provider_cfg(route)) == "cloud"
+                    and provider_allowed(route)
                 ) or str(route.get("model") or "").strip().lower() in allowed_models,
                 "blocked_by_role_model_allowlist",
             )
