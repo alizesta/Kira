@@ -238,14 +238,26 @@ class TestPerceptionApplicationService:
 
         assert second is None
 
-    def test_worker_lifetime_prevents_overlapping_jobs_until_finished_signal(self):
+    def test_cancelled_worker_stays_owned_until_finished_signal_is_consumed(self):
         first = self.prepare()
         worker = FakeWorker()
         assert self.service.bind_worker(first, worker)
+
+        # The native thread has stopped, but Qt's queued finished signal has not run.
         worker.running = False
+        self.service.cancel()
+
+        assert self.service.worker is worker
         self.clock.value += 2.0
-
-        # The worker object remains owned until finish_worker consumes its signal.
         second = self.prepare()
-
         assert second is None
+
+        outcome = self.service.finish_worker(
+            closing=False, game_mode_enabled=True
+        )
+        assert outcome.status == "discarded"
+        assert self.service.worker is None
+
+        self.sample = bytes([255]) * 576
+        third = self.prepare()
+        assert third is not None

@@ -271,10 +271,9 @@ class PerceptionApplicationService:
             try:
                 if worker.isRunning():
                     worker.cancel()
-                if not worker.isRunning():
-                    self._worker = None
             except RuntimeError:
-                self._worker = None
+                # The finished signal still owns final disposal of this worker.
+                pass
 
     def finish_worker(
         self,
@@ -402,4 +401,5 @@ class PerceptionApplicationService:
     def dispose(self) -> bool:
         self._disposed = True
         self.cancel()
-        return self._worker is None or not self.worker_running
+        # A stopped QThread is still owned until its queued finished signal is consumed.
+        return self._worker is None
