@@ -129,6 +129,22 @@ def completed(stdout="", stderr="", returncode=0):
 
 
 class VisionOcrTests(unittest.TestCase):
+    def test_native_setup_requires_consent_before_winget_install(self):
+        from kira import vision_ocr
+        runtime = mock.Mock()
+        runtime.discover.return_value = {"native_engine_installed": False}
+        runner = mock.Mock()
+        with mock.patch("kira.vision_ocr_runtime.TesseractRuntime", return_value=runtime), \
+             mock.patch("kira.vision_ocr.os.name", "nt"), \
+             mock.patch("kira.vision_ocr.shutil.which", return_value="winget"):
+            result = vision_ocr.setup_native_tesseract(
+                input_fn=lambda _prompt: "n",
+                output_fn=lambda _message: None,
+                runner=runner,
+            )
+        self.assertEqual(result, 1)
+        runner.assert_not_called()
+
     def test_result_metadata_and_normalization(self):
         result = OcrResult(
             " line one\n line two ", "fas+eng", 1.4,
