@@ -98,7 +98,8 @@ class NativeConversionTests(unittest.TestCase):
                         "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "open_app", "arguments": "{\"name\": \"x\"}"}}]},
                        {"role": "tool", "tool_call_id": "c1", "name": "open_app", "content": "[ok] done"}]}
         body = _openai_to_native(payload)
-        self.assertEqual(body["generationConfig"], {"temperature": 0.3, "maxOutputTokens": 77, "thinkingConfig": {"thinkingLevel": "low"}})
+        self.assertEqual(body["generationConfig"], {"temperature": 0.3, "maxOutputTokens": 77, "thinkingConfig": {"thinkingLevel": "low"},
+                                                "mediaResolution": "MEDIA_RESOLUTION_LOW"})
         self.assertEqual(body["tools"][0]["functionDeclarations"][0]["parametersJsonSchema"], schema["parameters"])
         user, model, result = body["contents"]
         self.assertEqual(user["parts"][1], {"inlineData": {"mimeType": "image/png", "data": "QUJD"}})

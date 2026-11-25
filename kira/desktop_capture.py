@@ -11,9 +11,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
-CAPTURE_MAX_WIDTH = 854
-CAPTURE_MAX_HEIGHT = 480
-CAPTURE_JPEG_QUALITY = 68
+CAPTURE_MAX_WIDTH = 768
+CAPTURE_MAX_HEIGHT = 432
+CAPTURE_JPEG_QUALITY = 78
+# Escalated capture for small text / dense UI / OCR (used only when the question or a failed read needs it).
+CAPTURE_DETAIL_MAX_WIDTH = 1280
+CAPTURE_DETAIL_MAX_HEIGHT = 720
+CAPTURE_DETAIL_JPEG_QUALITY = 80
 
 
 def fit_capture_size(width: int, height: int, max_width: int = CAPTURE_MAX_WIDTH,
@@ -285,7 +289,7 @@ class DesktopCaptureService:
                 target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
                 if pixmap.width() > target[0] or pixmap.height() > target[1]:
                     pixmap = pixmap.scaled(
-                        target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation
+                        target[0], target[1], Qt.KeepAspectRatio, Qt.SmoothTransformation
                     )
                 return pixmap
             except Exception:  # noqa: BLE001 - try other backend, then Qt fallback
@@ -305,7 +309,7 @@ class DesktopCaptureService:
             return None
         target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
-            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
+            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
         return pixmap
 
     def capture_monitor(self, monitor_id: str | None = None,
@@ -377,5 +381,5 @@ class DesktopCaptureService:
             return None
         target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
-            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
+            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
         return pixmap

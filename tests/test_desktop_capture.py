@@ -28,7 +28,7 @@ class FakeScreen:
 
 class DesktopCaptureAdapterTests(unittest.TestCase):
     def test_geometry_helpers_remain_compatible(self):
-        self.assertEqual(fit_capture_size(1920, 1080), (853, 480))
+        self.assertEqual(fit_capture_size(1920, 1080), (768, 432))
         self.assertEqual(fit_capture_region((-100, 50, 900, 800),
                                             Geometry(0, 0, 800, 600)),
                          (0, 50, 800, 600))
@@ -122,7 +122,7 @@ class DesktopCaptureAdapterTests(unittest.TestCase):
         # title/executable/path may be unavailable for desktop surfaces or overlays.
         item = {"hwnd": 10, "pid": 20, "rect": (2000, 100, 3000, 900)}
         self.assertEqual(service.capture_monitor_for_window(item), "full-monitor")
-        service._capture_monitor_screen.assert_called_once_with(secondary, 854, 480)
+        service._capture_monitor_screen.assert_called_once_with(secondary, 768, 432)
 
     def test_full_monitor_capture_rejects_background_window(self):
         service = DesktopCaptureService()

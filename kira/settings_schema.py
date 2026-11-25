@@ -188,6 +188,14 @@ SETTING_RANGES = {
     "routes.cooldown": (0, 3600),
 }
 
+# Free-tier Google vision chain in fallback order (enable these Routes in this order in the Models panel).
+# All accept screenshots; each has its own free quota. Hydrogen is the optional deep-reasoning route (hard
+# puzzles/bosses, thinking_level low by default) because its daily quota drains first; the Gemma 4 models
+# have a free quota separate from Gemini. Verify the exact IDs with the models list before relying on them.
+GOOGLE_FREE_VISION_CHAIN = ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+                            "gemma-4-31b-it", "gemma-4-26b-a4b-it")
+GOOGLE_DEEP_REASONING_MODEL = "gemini-4-hydrogen"
+
 # Preferred starting models are selected only if a provider actually reports them.
 # They are policy defaults, not live observations.
 PROVIDER_DEFAULT_MODELS = {
@@ -195,6 +203,8 @@ PROVIDER_DEFAULT_MODELS = {
     "mistral": (DEFAULTS["providers"]["mistral"]["model"],),
     "cloudflare": (DEFAULTS["providers"]["cloudflare"]["model"],),
     "openrouter": (),
-    "google": ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash"),
+    # ONE starting model: the first of these that the account really lists (see api_manager.pick_default_model).
+    "google": ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+               "gemini-flash-latest", "gemini-2.5-flash"),
     "apinex": ("free/deepseek-v4.1-flash", "free/gemini-3.8-flash", "free/qwen-3.8-max"),
 }

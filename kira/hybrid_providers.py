@@ -243,7 +243,9 @@ def _gemini_usage(obj):
 # Google's OpenAI-compatible layer (/v1beta/openai) was timing out / returning 503 for the newest models while the
 # native generateContent API answered. Kira keeps building OpenAI-shaped payloads (tests, tools, history all unchanged);
 # for the models below the payload is translated to the native format at send time and the reply is translated back.
-NATIVE_GEMINI_MODELS = {"gemini-3.8-flash", "gemini-4-hydrogen"}
+NATIVE_GEMINI_MODELS = {"gemini-3.8-flash", "gemini-4-hydrogen", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                        "gemini-3.1-flash-lite", "gemini-3-flash-preview"}
+_MEDIA_RESOLUTIONS = {"low": "MEDIA_RESOLUTION_LOW", "medium": "MEDIA_RESOLUTION_MEDIUM", "high": "MEDIA_RESOLUTION_HIGH"}
 _THOUGHT_SIG_BYPASS = "skip_thought_signature_validator"   # Google's documented value for history that carries no signature
 _FINISH_MAP = {"STOP": "stop", "MAX_TOKENS": "length", "SAFETY": "content_filter", "RECITATION": "content_filter",
                "BLOCKLIST": "content_filter", "PROHIBITED_CONTENT": "content_filter", "SPII": "content_filter"}
@@ -312,6 +314,10 @@ def _openai_to_native(payload):
         gen["maxOutputTokens"] = int(payload["max_tokens"])
     if payload.get("reasoning_effort"):
         gen["thinkingConfig"] = {"thinkingLevel": str(payload["reasoning_effort"])}
+    if any("inlineData" in part for content in contents for part in content["parts"]):
+        # Images default to LOW media resolution (cheapest); callers set payload["media_resolution"] to medium/high for fine OCR.
+        level = str(payload.get("media_resolution") or "low").strip().lower()
+        gen["mediaResolution"] = _MEDIA_RESOLUTIONS.get(level, _MEDIA_RESOLUTIONS["low"])
     if gen:
         body["generationConfig"] = gen
     decls = []

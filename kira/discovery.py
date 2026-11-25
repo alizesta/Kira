@@ -133,7 +133,7 @@ def _gemini_free(mid):
         return True
     if any(x in low for x in ("pro", "ultra", "argon", "carbon", "neon", "deep-research")):
         return False
-    return True if "flash" in low else None
+    return True if ("flash" in low or low.startswith("gemma-4")) else None
 
 
 def _gemini(pid, cfg, timeout, meta=None):

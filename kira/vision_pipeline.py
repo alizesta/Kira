@@ -22,10 +22,31 @@ class VisionPolicy:
 
 # Frames are kept small on purpose: every analysed frame is uploaded to a cloud vision model.
 POLICIES = {
-    "economic": VisionPolicy("economic", 5.0, 0.045, 640, 360, 45),
-    "smart": VisionPolicy("smart", 1.0, 0.035, 768, 432, 50),
-    "fast": VisionPolicy("fast", 0.5, 0.025, 960, 540, 55),
+    "economic": VisionPolicy("economic", 5.0, 0.045, 768, 432, 75),
+    "smart": VisionPolicy("smart", 1.0, 0.035, 768, 432, 78),
+    "fast": VisionPolicy("fast", 0.5, 0.025, 960, 540, 80),
 }
+
+# Words that mean the user needs to read small text / fine UI: such a question escalates the capture to 1280x720.
+DETAIL_HINTS = (
+    "متن", "ریز", "کوچک", "بخوان", "منو", "منوی", "زیرنویس", "دیالوگ", "استت", "آمار", "عدد", "اعداد", "جزئیات",
+    "small text", "tiny", "read", "text", "menu", "dialogue", "dialog", "subtitle", "stats", "number", "detail", "ocr",
+)
+# Phrases in a model reply that mean it could not read the frame: one automatic retry at the detail size.
+UNREADABLE_HINTS = (
+    "نمی‌تونم بخونم", "نمی‌توانم بخوانم", "خوانا نیست", "تار", "خیلی ریز", "قابل خواندن نیست",
+    "too small", "blurry", "unreadable", "illegible", "can't read", "cannot read", "not legible",
+)
+
+
+def wants_detail_capture(question: str | None) -> bool:
+    low = str(question or "").casefold()
+    return any(hint in low for hint in DETAIL_HINTS)
+
+
+def reply_was_unreadable(reply: str | None) -> bool:
+    low = str(reply or "").casefold()
+    return any(hint in low for hint in UNREADABLE_HINTS)
 
 
 def policy_for(name: str | None) -> VisionPolicy:

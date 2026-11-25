@@ -107,3 +107,19 @@ class VisionPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DetailEscalationTests(unittest.TestCase):
+    def test_policies_default_to_768x432_and_quality_75_to_80(self):
+        from kira.vision_pipeline import POLICIES
+        for name in ("economic", "smart"):
+            self.assertEqual((POLICIES[name].max_width, POLICIES[name].max_height), (768, 432))
+        self.assertTrue(all(75 <= p.jpeg_quality <= 80 for p in POLICIES.values()))
+
+    def test_detail_question_and_unreadable_reply_detection(self):
+        from kira.vision_pipeline import reply_was_unreadable, wants_detail_capture
+        self.assertTrue(wants_detail_capture("متن ریز منو رو بخون"))
+        self.assertTrue(wants_detail_capture("read the small text"))
+        self.assertFalse(wants_detail_capture("الان کجای نقشه‌ام؟"))
+        self.assertTrue(reply_was_unreadable("the text is too small to read"))
+        self.assertFalse(reply_was_unreadable("یه دشمن سمت چپه"))
