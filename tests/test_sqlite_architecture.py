@@ -53,8 +53,7 @@ class SqlitePersistenceBoundaryTests(unittest.TestCase):
             read_rows=lambda _path: [],
             read_conversations=lambda _path: [],
             merge_rows=lambda *rows: [],
-            write_rows=lambda _rows: None,
-            restore_conversations=lambda _rows: None,
+            write_recovery_state=lambda _rows, _conversations: None,
             db_name="chat.sqlite3",
             persistence_error=RuntimeError,
         )
