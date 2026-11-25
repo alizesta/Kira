@@ -106,5 +106,49 @@ assert not loaded, sorted(loaded)
 
 
 
+    def test_importing_one_service_does_not_import_the_other_service_modules(self):
+        code = """
+import importlib
+import sys
+importlib.import_module("kira.services.chat_history_service")
+forbidden = {
+    "kira.services.character_service",
+    "kira.services.memory_service",
+    "kira.services.mood_service",
+}
+loaded = forbidden.intersection(sys.modules)
+assert not loaded, sorted(loaded)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_legacy_package_level_service_exports_remain_lazy_and_compatible(self):
+        code = """
+import sys
+from kira.services import SqliteChatHistoryService
+assert SqliteChatHistoryService.__name__ == "SqliteChatHistoryService"
+assert "kira.services.chat_history_service" in sys.modules
+for name in ("kira.services.character_service", "kira.services.memory_service", "kira.services.mood_service"):
+    assert name not in sys.modules, name
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+
+
 if __name__ == "__main__":
     unittest.main()
