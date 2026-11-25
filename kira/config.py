@@ -24,7 +24,7 @@ APP_NAME = "Project Kira"  # change this to rebrand the desktop application
 PROJECT_URL = "https://github.com/alizesta/Kira"
 RELEASES_URL = PROJECT_URL + "/releases/latest"
 VERSION = "1.2.6"
-SETTINGS_SCHEMA_VERSION = 2
+SETTINGS_SCHEMA_VERSION = 3
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
@@ -203,8 +203,83 @@ def prepare_user_data():
     return notes
 
 
+def _migrate_v0_to_v1(data):
+    """Remove settings retired before schema versioning; preserve all supported choices."""
+    for key in ("web_engine", "web_read_pages", "voice_fa", "voice_en", "voice_ja",
+                "voice_pitch", "voice_style", "voice_style_degree", "cloud_voice_provider",
+                "cloud_voice_id", "cloud_voices"):
+        data.pop(key, None)
+    profiles = data.get("character_voice")
+    if isinstance(profiles, dict):
+        for profile in profiles.values():
+            if isinstance(profile, dict):
+                for key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style",
+                            "voice_style_degree", "cloud_voice_provider", "cloud_voice_id"):
+                    profile.pop(key, None)
+    return data
+
+
+def _migrate_v1_to_v2(data):
+    """Replace only provider model IDs that the provider has explicitly retired."""
+    providers = data.get("providers")
+    groq = providers.get("groq") if isinstance(providers, dict) else None
+    old_model = groq.get("model") if isinstance(groq, dict) else None
+    if old_model in RETIRED_GROQ_MODELS:
+        groq["model"] = RETIRED_GROQ_MODELS[old_model]
+        LOAD_WARNINGS.append(
+            f"مدل Groq «{old_model}» توسط Groq بازنشسته شده؛ به {groq['model']} تغییر کرد."
+        )
+    return data
+
+
+def _migrate_v2_to_v3(data):
+    """Migrate the former bundled local model and its dependent route allowlists."""
+    migrated_model = False
+    providers = data.get("providers")
+    ollama = providers.get("ollama") if isinstance(providers, dict) else None
+    if isinstance(ollama, dict):
+        if str(ollama.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
+            ollama["model"] = LOCAL_UNCENSORED_MODEL
+            migrated_model = True
+    if str(data.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
+        data["model"] = LOCAL_UNCENSORED_MODEL
+        migrated_model = True
+    routes = data.get("routes")
+    if isinstance(routes, list):
+        for route in routes:
+            if (isinstance(route, dict) and route.get("provider") == "ollama"
+                    and str(route.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS):
+                route["model"] = LOCAL_UNCENSORED_MODEL
+                migrated_model = True
+    allowlist = data.get("role_route_models")
+    if isinstance(allowlist, dict):
+        for role, models in list(allowlist.items()):
+            if isinstance(models, (list, tuple)):
+                migrated = [
+                    LOCAL_UNCENSORED_MODEL
+                    if str(model or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS else model
+                    for model in models
+                ]
+                if migrated != list(models):
+                    allowlist[role] = migrated
+                    migrated_model = True
+    if migrated_model:
+        LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
+
+    if isinstance(ollama, dict) and not bool(ollama.get("enabled", True)):
+        if isinstance(routes, list) and any(
+            isinstance(route, dict) and route.get("provider") == "ollama"
+            and route.get("enabled", True) for route in routes
+        ):
+            ollama["enabled"] = True
+            LOAD_WARNINGS.append(
+                "وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد."
+            )
+    return data
+
+
 def _migrate_settings(saved):
-    """Apply deterministic, versioned migrations to a private copy of persisted settings."""
+    """Apply each schema migration once to a private copy of persisted settings."""
     if not isinstance(saved, dict):
         raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
     migrated = deepcopy(saved)
@@ -215,9 +290,15 @@ def _migrate_settings(saved):
         version = int(raw_version)
     except (TypeError, ValueError) as exc:
         raise ValueError("نسخهٔ تنظیمات معتبر نیست.") from exc
+    if isinstance(raw_version, float) and not raw_version.is_integer():
+        raise ValueError("نسخهٔ تنظیمات معتبر نیست.")
     if version < 0 or version > SETTINGS_SCHEMA_VERSION:
         raise ValueError(f"نسخهٔ تنظیمات پشتیبانی نمی‌شود: {version}")
-    migrations = {0: lambda data: data, 1: lambda data: data}
+    migrations = {
+        0: _migrate_v0_to_v1,
+        1: _migrate_v1_to_v2,
+        2: _migrate_v2_to_v3,
+    }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
         version += 1
@@ -327,19 +408,6 @@ def load_settings():
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
             return deepcopy(DEFAULTS)
         merged = {**DEFAULTS, **saved}
-        # Remove obsolete cloud TTS voice selections; Gemini Live is primary and local Piper remains fallback.
-        for stale_voice_key in (
-            "voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree",
-            "cloud_voice_provider", "cloud_voice_id", "cloud_voices",
-        ):
-            merged.pop(stale_voice_key, None)
-        profiles = merged.get("character_voice")
-        if isinstance(profiles, dict):
-            for profile in profiles.values():
-                if isinstance(profile, dict):
-                    for stale_voice_key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style",
-                                            "voice_style_degree", "cloud_voice_provider", "cloud_voice_id"):
-                        profile.pop(stale_voice_key, None)
         merged["api_registry"] = deepcopy(saved["api_registry"]) if isinstance(saved.get("api_registry"), dict) else {}      # never share DEFAULTS' dict
         # Stock persona texts from earlier versions are not user customisation: Kira's character now
         # lives in kira/personality.py, so clear them. A persona the user really edited is preserved
@@ -357,12 +425,6 @@ def load_settings():
         merged = _validate_settings(merged)
         settings_repaired = merged != before_validation
         merged["provider_order"] = normalize_provider_order(saved.get("provider_order"))
-        # Migrate retired Groq model IDs (the old ID would only produce 404/400 errors).
-        groq_cfg = merged["providers"]["groq"]
-        old_model = groq_cfg.get("model")
-        if old_model in RETIRED_GROQ_MODELS:
-            groq_cfg["model"] = RETIRED_GROQ_MODELS[old_model]
-            LOAD_WARNINGS.append(f"مدل Groq «{old_model}» توسط Groq بازنشسته شده؛ به {groq_cfg['model']} تغییر کرد.")
         for provider, pcfg in list(merged["providers"].items()):
             if not isinstance(pcfg, dict):
                 merged["providers"].pop(provider)
@@ -385,34 +447,8 @@ def load_settings():
             except Exception as exc:
                 merged["tavily_api_key"] = ""
                 LOAD_WARNINGS.append(f"کلید Tavily با این حساب ویندوز رمزگشایی نشد ({exc}). دوباره وارد کن.")
-        for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
-            merged.pop(stale, None)
         _validate_route_overrides(merged)
         route_model.ensure_routes(merged)
-        # Repair configurations written by versions where a local Route could be
-        # switched on while the Ollama Provider master switch stayed off.
-        migrated_local_route_state = False
-        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
-        if (
-            not bool(ollama_cfg.get("enabled", True))
-            and any(route.get("provider") == "ollama" and route.get("enabled", True)
-                    for route in route_model.get_routes(merged))
-        ):
-            ollama_cfg["enabled"] = True
-            migrated_local_route_state = True
-
-        # Migrate only the former bundled default; keep any user-selected model intact.
-        migrated_local_model = False
-        if str(ollama_cfg.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
-            ollama_cfg["model"] = LOCAL_UNCENSORED_MODEL
-            migrated_local_model = True
-        if str(merged.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
-            merged["model"] = LOCAL_UNCENSORED_MODEL
-            migrated_local_model = True
-        for local_route in route_model.get_routes(merged):
-            if local_route.get("provider") == "ollama" and str(local_route.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
-                route_model.update_route(merged, local_route["id"], model=LOCAL_UNCENSORED_MODEL)
-                migrated_local_model = True
         allowlist = merged.get("role_provider_allowlist")
         if not isinstance(allowlist, dict):
             merged["role_provider_allowlist"] = deepcopy(DEFAULTS["role_provider_allowlist"])
@@ -427,33 +463,11 @@ def load_settings():
             for role, default_values in DEFAULTS["role_route_models"].items():
                 value = model_allowlist.get(role)
                 merged["role_route_models"][role] = list(value) if isinstance(value, (list, tuple)) else list(default_values)
-        # The previous migration changed the Ollama model and Route but left the
-        # role-level exact model allowlist untouched. That silently filtered the
-        # only permitted local route, making ordinary chat report that Ollama
-        # was unavailable even when the new model was installed and running.
-        model_allowlist = merged.get("role_route_models") or {}
-        for role, value in list(model_allowlist.items()):
-            if not isinstance(value, (list, tuple)):
-                continue
-            migrated = [
-                LOCAL_UNCENSORED_MODEL
-                if str(model or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS
-                else model
-                for model in value
-            ]
-            if migrated != list(value):
-                model_allowlist[role] = migrated
-                migrated_local_model = True
-        if migrated_local_model:
-            LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
-        if migrated_local_route_state:
-            LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
-        before_validation = deepcopy(merged)
         before_final_validation = deepcopy(merged)
         merged = _validate_settings(merged)
         settings_repaired = settings_repaired or merged != before_final_validation
         if (int(source_settings_version or 0) < SETTINGS_SCHEMA_VERSION
-                or migrated_local_model or migrated_local_route_state or settings_repaired):
+                or settings_repaired):
             save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)
