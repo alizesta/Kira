@@ -43,7 +43,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["model"], "qwen2.5:3b")            # user's model is NOT overwritten
         self.assertEqual(s["assistant_name"], "Mina")
         self.assertEqual(s["providers"]["groq"]["api_key"], "plain-old-key-123")
-        self.assertEqual(s["providers"]["ollama"]["num_ctx"], 6144)   # new key got its default
+        self.assertEqual(s["providers"]["ollama"]["num_ctx"], config.DEFAULTS["providers"]["ollama"]["num_ctx"])
         self.assertEqual(s["providers"]["ollama"]["keep_alive"], "2m")
         self.assertEqual(s["provider_order"], ["cloudflare", "groq", "mistral", "openrouter", "ollama"])
         self.assertEqual(s["settings_version"], config.SETTINGS_SCHEMA_VERSION)
