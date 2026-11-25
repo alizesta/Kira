@@ -222,6 +222,23 @@ class CompositionRootContractTests(unittest.TestCase):
         )
 
 
+class AttachmentControllerOwnershipTests(unittest.TestCase):
+    def test_drag_drop_and_attachment_ui_are_owned_by_lazy_attachment_controller(self):
+        main_window = parse("kira/ui/main_window.py")
+        vision = parse("kira/ui/main_window_attachments_vision.py")
+        attachments = parse("kira/ui/main_window_attachments.py")
+        registrations = {
+            node.value for node in ast.walk(main_window)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertIn("attachments", registrations)
+        self.assertIn("attachments", (ROOT / "kira" / "ui" / "main_window.py").read_text(encoding="utf-8"))
+        self.assertIn("pick_attachments", {node.name for node in ast.walk(attachments) if isinstance(node, ast.FunctionDef)})
+        self.assertIn("on_upload_event", {node.name for node in ast.walk(attachments) if isinstance(node, ast.FunctionDef)})
+        self.assertIn("self.feature_controller(\"attachments\")", (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8"))
+        self.assertNotIn("def pick_attachments", {node.name for node in ast.walk(vision) if isinstance(node, ast.FunctionDef)})
+
+
 class BrainReflectionCompositionTests(unittest.TestCase):
     def test_brain_and_reflection_services_are_required_and_injected(self):
         bootstrap = parse("kira/ui/bootstrap.py")
