@@ -22,10 +22,11 @@ class StreamWorker(QThread):
 
     def __init__(
         self, router, messages, prompt, temperature, retry_index=0,
-        agent=None, plan=None, role="", route_id="",
+        agent=None, plan=None, role="", route_id="", conversation_id=None,
     ):
         super().__init__()
         self.role, self.route_id = role, route_id                 # brain stage (kira/brain.py); "" = normal routing
+        self.conversation_id = str(conversation_id) if conversation_id else None
         self.router, self.messages, self.prompt, self.temperature, self.retry_index = router, messages, prompt, temperature, retry_index
         self.agent, self.plan = agent, plan                       # tool loop (kira/tools); plan None = an ordinary chat turn
 
