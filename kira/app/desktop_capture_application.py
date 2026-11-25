@@ -108,15 +108,16 @@ class DesktopCaptureApplicationService:
             "title": self._normal(window_info.get("title")),
             "path": self._normal(window_info.get("path")),
         }
-        if (not window_info.get("hwnd") or not window_info.get("pid")
-                or not identity["exe"] or not identity["title"] or not identity["path"]
-                or not window_info.get("rect")):
+        # The selected monitor is the capture target, not the foreground app.
+        # HWND/PID/rect must still be trustworthy, while app metadata may be absent
+        # for desktop surfaces, overlays and some games.
+        if not window_info.get("hwnd") or not window_info.get("pid") or not window_info.get("rect"):
             return False, "foreground_window_identity_incomplete"
         blocked = [
             (kind, pattern)
             for kind in _RULE_KINDS
             for pattern in self._blocklist[kind]
-            if self._matches(identity[kind], pattern)
+            if identity[kind] and self._matches(identity[kind], pattern)
         ]
         if not blocked:
             return True, "allowed"

@@ -66,15 +66,15 @@ def _is_google_provider(provider_id: str, provider: dict) -> bool:
 
 
 def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
-    """Read the key from the existing Connections provider; never duplicate secrets."""
+    """Resolve only the selected Google connection; auto-select only when none was chosen."""
     providers = settings.get("providers") or {}
     selected = str(provider_id or settings.get("gemini_live_provider") or "").strip()
     if selected:
         provider = providers.get(selected)
-        if isinstance(provider, dict):
-            key = str(provider.get("api_key") or "").strip()
-            if key:
-                return key
+        if not isinstance(provider, dict) or not _is_google_provider(selected, provider):
+            return ""
+        return str(provider.get("api_key") or "").strip()
+
     for pid, provider in providers.items():
         if not isinstance(provider, dict):
             continue
@@ -82,7 +82,6 @@ def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
         if key and _is_google_provider(pid, provider):
             return key
     return ""
-
 
 def _device_index(sd, wanted: str, *, input_device: bool):
     """Resolve the selected PortAudio endpoint; input uses host-API-aware identities."""
