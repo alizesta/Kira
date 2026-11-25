@@ -310,7 +310,8 @@ class AttachmentsVisionController(WindowFeatureController):
             if source == "desktop" else foreground_identity
         )
         if foreground_identity is None or (
-            source == "game" and not _same_live_window(current, window_info)
+            source == "game" and window_info is not None
+            and not _same_live_window(current, window_info)
         ):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
