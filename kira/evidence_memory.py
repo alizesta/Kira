@@ -168,6 +168,7 @@ _FACT_REPOSITORY = EvidenceFactRepository(
     stop_words=_STOP,
     categories=CATEGORIES,
     single_valued=SINGLE_VALUED,
+    max_rows=MAX_ROWS,
     cache=_tok_cache,
 )
 
@@ -266,20 +267,12 @@ def add_manual(text, now=None, persona_id=None, predicate="note") -> bool:
 
 
 def delete_by_persona_id(persona_id) -> int:
-    """The person deleted an item in the memory window. A single-valued predicate loses its whole history (the knowledge is gone)."""
+    """Remove evidence rows owned by a deleted persona-memory item."""
     if not persona_id:
         return 0
     try:
         with _lock, _db() as con:
-            rows = con.execute("SELECT id, subject, predicate FROM facts WHERE persona_id=?", (persona_id,)).fetchall()
-            ids = []
-            for r in rows:
-                if r["predicate"] in SINGLE_VALUED:
-                    ids += [x[0] for x in con.execute("SELECT id FROM facts WHERE subject=? AND predicate=?", (r["subject"], r["predicate"]))]
-                else:
-                    ids.append(r["id"])
-            _delete_rows(con, set(ids))
-            return len(set(ids))
+            return _FACT_REPOSITORY.delete_persona_item(con, persona_id)
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not delete evidence for a removed persona-memory item")
         raise
@@ -295,45 +288,9 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
     now = time.time() if now is None else now
     try:
         with _lock, _db() as con:
-            row = con.execute(
-                "SELECT subject, predicate FROM facts WHERE persona_id=? LIMIT 1",
-                (old_persona_id,),
-            ).fetchone()
-            predicate = row["predicate"] if row else "note"
-            subject = row["subject"] if row else "user"
-            rows = con.execute(
-                "SELECT id, subject, predicate FROM facts WHERE persona_id=?",
-                (old_persona_id,),
-            ).fetchall()
-            ids = []
-            for item in rows:
-                if item["predicate"] in SINGLE_VALUED:
-                    ids.extend(
-                        found[0]
-                        for found in con.execute(
-                            "SELECT id FROM facts WHERE subject=? AND predicate=?",
-                            (item["subject"], item["predicate"]),
-                        )
-                    )
-                else:
-                    ids.append(item["id"])
-            _delete_rows(con, set(ids))
-            stored_id = _ingest(
-                con,
-                subject=subject,
-                predicate=predicate,
-                value=text,
-                text=text,
-                category="permanent",
-                quote=text,
-                speaker="user",
-                message_id=None,
-                source_kind="manual",
-                now=now,
-                persona_id=new_persona_id,
+            _FACT_REPOSITORY.update_persona_item(
+                con, old_persona_id, new_persona_id, text, now=now
             )
-            if stored_id is None:
-                raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
         if _embedding_config():
             schedule_vector_backfill()
         return True
@@ -345,16 +302,13 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
 def forget_all() -> None:
     """Delete all evidence-backed memory; explicit management failures are raised to the caller."""
     try:
-        # Resolve the history watermark before opening the write transaction. If
-        # it cannot be read, do not clear data with a zero cursor that could
-        # cause the forgotten history to be imported again on the next startup.
+        # Resolve the history watermark before the transaction; otherwise forgotten
+        # messages could be imported again on the next startup.
         history_watermark = _chat_max_id()
         with _lock, _db() as con:
-            for table in ("vectors", "embedding_indexes", "evidence", "facts", "quarantine"):
-                con.execute(f"DELETE FROM {table}")
-            _meta_set(con, "backfilled", "1")
-            _meta_set(con, "seen_upto", history_watermark)
-            _meta_set(con, "writer_upto", history_watermark)
+            _FACT_REPOSITORY.clear_all(
+                con, history_watermark=history_watermark, meta_set=_meta_set
+            )
         _INDEX.clear()
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not clear evidence memory")
