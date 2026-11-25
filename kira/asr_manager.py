@@ -203,13 +203,30 @@ class ASRManager:
                 and self._last_error.engine_id == engine_id
                 and self._last_error.model_id == model_id
             )
-            failed = self._state == "failed" and error_matches_selection
+            cleanup_pending = bool(
+                self._state == "failed"
+                and self._last_error is not None
+                and self._last_error.code in {"shutdown_failed", "initialization_cleanup_failed"}
+                and self._active_adapter is not None
+            )
+            failed = self._state == "failed" and (
+                error_matches_selection or cleanup_pending
+            )
             snapshot.update(
                 initialized=active,
                 state="failed" if failed else ("ready" if active else
                        ("available" if snapshot.get("ready") else "unavailable")),
-                last_error=str(self._last_error) if error_matches_selection else "",
+                last_error=(
+                    str(self._last_error)
+                    if error_matches_selection or cleanup_pending else ""
+                ),
             )
+            if cleanup_pending:
+                snapshot["error_code"] = self._last_error.code
+                snapshot["error_message"] = (
+                    f"آزادسازی منابع موتور «{self._last_error.engine_id}» ناموفق بود؛ "
+                    f"تا پاک‌سازی آن، موتور دیگری قابل بارگذاری نیست: {self._last_error}"
+                )
             if failed:
                 snapshot["ready"] = False
         return snapshot
@@ -258,9 +275,13 @@ class ASRManager:
                 except Exception as cleanup_exc:
                     cleanup_error = cleanup_exc
                 message = f"بارگذاری ASR ناموفق بود: {type(exc).__name__}: {exc}"
+                error_code = "initialization_failed"
                 if cleanup_error is not None:
                     message += f"؛ آزادسازی منابع پس از خطا نیز ناموفق بود: {type(cleanup_error).__name__}: {cleanup_error}"
-                error = ASRError("initialization_failed", message,
+                    # Keep ownership so a later shutdown can retry the incomplete cleanup.
+                    self._active_adapter, self._active_model = adapter, model_id
+                    error_code = "initialization_cleanup_failed"
+                error = ASRError(error_code, message,
                                  engine_id=engine_id, model_id=model_id)
                 self._state, self._last_error = "failed", error
                 raise error from exc
@@ -270,9 +291,19 @@ class ASRManager:
 
     def _ensure_selected(self, settings):
         engine_id, model_id = self.select(settings)
-        if (self._active_adapter is None or self._active_adapter.engine_id != engine_id
-                or self._active_model != model_id):
-            self.initialize(settings)
+        with self._lock:
+            cleanup_pending = bool(
+                self._state == "failed"
+                and self._last_error is not None
+                and self._last_error.code in {"shutdown_failed", "initialization_cleanup_failed"}
+                and self._active_adapter is not None
+            )
+            if cleanup_pending:
+                # Never run inference while a previous adapter may still own native resources.
+                self._shutdown_locked()
+            if (self._active_adapter is None or self._active_adapter.engine_id != engine_id
+                    or self._active_model != model_id):
+                self.initialize(settings)
         return engine_id, model_id
 
     def transcribe(self, audio, sample_rate, settings=None):
@@ -336,7 +367,8 @@ class ASRManager:
         except Exception as exc:
             error = ASRError("shutdown_failed", f"بستن ASR ناموفق بود: {type(exc).__name__}: {exc}",
                              engine_id=adapter.engine_id, model_id=self._active_model)
-            self._active_adapter, self._active_model = None, ""
+            # Retain the adapter/model pair: releasing its resources was not confirmed,
+            # so callers must be able to retry shutdown before any new inference.
             self._state, self._last_error = "failed", error
             raise error from exc
         self._active_adapter, self._active_model = None, ""
