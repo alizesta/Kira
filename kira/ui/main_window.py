@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
                 if not callable(setter) or field.toPlainText().strip():
                     return
                 front = getattr(context.state, "front", None)
-                setter(getattr(front, "cid", "kira"), context.services.settings.get("ui_lang", "fa"))
+                setter(getattr(front, "cid", "kira"), context.services.settings.get("ui_lang", "en"))
             except Exception:  # noqa: BLE001 - a placeholder must never break the window
                 pass
 
