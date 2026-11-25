@@ -1,33 +1,33 @@
-# Character profiles and application identity
+# پروفایل‌های شخصیت و هویت برنامه
 
-The desktop application is a character-capable AI client. Its product name is configured independently in `kira/config.py`:
+برنامهٔ دسکتاپ یک کلاینت هوش مصنوعی با قابلیت انتخاب شخصیت است. هویت محصول مستقل از شخصیت فعال و در `kira/config.py` پیکربندی می‌شود:
 
-- `APP_NAME`: product/window/tray name.
-- `PROJECT_URL` and `RELEASES_URL`: official source and update destination.
-- `VERSION`: displayed application version.
+- `APP_NAME`: نام محصول، پنجره و System Tray.
+- `PROJECT_URL` و `RELEASES_URL`: منبع رسمی و مقصد به‌روزرسانی.
+- `VERSION`: نسخه‌ای که در برنامه نمایش داده می‌شود.
 
-The active character is selected by profile ID. Kira is the built-in starter profile, not the app's identity or a provider/model. The character data lives in `kira/characters/kira.py`; the generic profile registry lives in `kira/characters/registry.py`.
+شخصیت فعال با شناسهٔ پروفایل انتخاب می‌شود. Kira پروفایل پیش‌فرض و داخلی است، نه هویت برنامه، Provider یا مدل. داده‌های شخصیت در `kira/characters/kira.py` و Registry عمومی پروفایل‌ها در `kira/characters/registry.py` قرار دارند.
 
-## UI sections
+## بخش‌های رابط کاربری
 
-- **Chat**: current conversation and selected character.
-- **Characters**: select, create, edit and remove profiles. The built-in Kira profile cannot be deleted.
-- **Voice**: shared speech input/output settings. The selected character's wake phrase follows its profile name; Kira retains legacy wake aliases. TTS voice/rate/pitch are still app-wide settings, not separate per-character settings.
-- **Personality**: baseline behavioral traits for the active profile.
-- **Preferences**: language, appearance, desktop companion and general behavior.
-- **Route**: providers, models, priorities, failover and local Ollama tuning.
-- **Help**: current app version, release page, repository and about information.
+- **Chat:** گفتگوی فعلی و شخصیت انتخاب‌شده.
+- **Characters:** انتخاب، ساخت، ویرایش و حذف پروفایل‌ها. پروفایل داخلی Kira قابل حذف نیست.
+- **Voice:** تنظیمات مشترک ورودی و خروجی گفتار. عبارت بیدارباش شخصیت انتخاب‌شده از نام پروفایل آن پیروی می‌کند؛ Kira نام‌های قدیمی بیدارباش را نیز حفظ می‌کند. صدا، سرعت و زیر‌وبمی TTS همچنان تنظیمات سراسری برنامه هستند و برای هر شخصیت جداگانه نیستند.
+- **Personality:** ویژگی‌های رفتاری پایهٔ پروفایل فعال.
+- **Preferences:** زبان، ظاهر، همراه دسکتاپ و رفتار عمومی.
+- **Route:** Providerها، مدل‌ها، اولویت‌ها، Failover و تنظیمات محلی Ollama.
+- **Help:** نسخهٔ فعلی برنامه، صفحهٔ انتشار، مخزن و اطلاعات دربارهٔ برنامه.
 
-## Data ownership
+## مالکیت داده‌ها
 
-All profile files live under the external application data directory, in `characters/profiles.json`. Character-specific emotional state, relationship state, learned trait adjustments and voice-style samples live under `characters/<profile-id>/`. Kira retains the existing legacy mood and voice-memory files so upgrades do not discard its stored state.
+فایل پروفایل‌ها در پوشهٔ دادهٔ خارجی برنامه و در `characters/profiles.json` نگهداری می‌شود. وضعیت عاطفی، وضعیت رابطه، تغییرات یادگرفته‌شدهٔ صفات و نمونه‌های سبک گفتار هر شخصیت در `characters/<profile-id>/` ذخیره می‌شوند. Kira فایل‌های قدیمی Mood و حافظهٔ صوتی خود را حفظ می‌کند تا به‌روزرسانی‌ها وضعیت ذخیره‌شده را از بین نبرند.
 
-User facts, dated events, conversation summaries and the evidence index remain shared application memory. This allows each character to know the same user-provided facts without copying or conflating their individual speaking style. Chat history is currently shared as well.
+حقایق مربوط به کاربر، رویدادهای تاریخ‌دار، خلاصه‌های گفتگو و فهرست شواهد، حافظهٔ مشترک برنامه هستند. به این ترتیب همهٔ شخصیت‌ها می‌توانند از اطلاعاتی که کاربر ارائه کرده استفاده کنند، بدون اینکه سبک گفتار اختصاصی آن‌ها با هم مخلوط شود. تاریخچهٔ چت نیز در حال حاضر مشترک است.
 
-The desktop companion artwork and TTS voice selection are still shared UI settings; per-character avatar and voice selection are not implemented yet. The provider/router layer does not depend on the selected character. A profile supplies identity, description, notes and baseline traits to the shared prompt and decision engines; it does not choose the model or provider.
+تصویر همراه دسکتاپ و انتخاب صدای TTS همچنان تنظیمات مشترک رابط هستند؛ انتخاب آواتار و صدای مستقل برای هر شخصیت هنوز پیاده‌سازی نشده است. لایهٔ Provider/Router به شخصیت فعال وابسته نیست. پروفایل فقط هویت، توضیح، یادداشت‌ها و صفات پایه را به موتورهای مشترک Prompt و تصمیم‌گیری می‌دهد؛ انتخاب مدل یا Provider بر عهدهٔ پروفایل نیست.
 
-Every character receives the same shared capability contract: the same routed model, tool registry and permissions, planner, task modes, memory/context access, safety rules, reasoning quality bar and result-verification requirements. Character profiles may change only conversational expression (tone, temperament, humour, warmth, assertiveness, emotional style and relationship style). They cannot add or remove tools, change the model, bypass confirmations, or reduce task quality. This is also enforced by one shared ToolAgent and HybridRouter instance in the application, not only by prompt wording.
+همهٔ شخصیت‌ها قرارداد قابلیت مشترکی دریافت می‌کنند: مدل Routeشده، Tool Registry و مجوزهای یکسان، Planner، حالت‌های وظیفه، دسترسی حافظه و Context، قواعد ایمنی، معیار کیفیت استدلال و الزامات تأیید نتیجه. پروفایل فقط می‌تواند شیوهٔ بیان در گفتگو را تغییر دهد (لحن، خلق‌وخو، شوخ‌طبعی، گرمی، قاطعیت، سبک احساسی و سبک رابطه). پروفایل اجازهٔ افزودن یا حذف ابزار، تغییر مدل، دورزدن تأییدها یا کاهش کیفیت کار را ندارد. این محدودیت فقط در متن Prompt نیست؛ در برنامه یک نمونهٔ مشترک ToolAgent و HybridRouter آن را نیز اعمال می‌کند.
 
-## Add another profile
+## افزودن پروفایل دیگر
 
-Use **Characters → New character**. Give it a name, description and character-specific notes, then use **Personality** to set its baseline traits. Its emotional state and voice-style samples are stored separately from Kira's.
+از مسیر **Characters → New character** استفاده کنید. نام، توضیح و یادداشت‌های اختصاصی شخصیت را وارد کنید، سپس در بخش **Personality** صفات پایه را تنظیم کنید. وضعیت عاطفی و نمونه‌های سبک گفتار پروفایل جدید جدا از Kira ذخیره می‌شوند.
