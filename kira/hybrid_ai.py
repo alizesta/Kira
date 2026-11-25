@@ -211,9 +211,13 @@ class HybridRouter:
         """
         token = _VISION_ONLY.set(True)
         try:
-            for route in self._candidates():
+            candidates = self._candidates()
+            usage_blocked = self._usage_blocked_providers(candidates)
+            for route in candidates:
                 ok, _ = self.eligibility(route)
-                if ok and self._route_supports_vision(route, self._provider_cfg(route)):
+                if (ok and str(route.get("provider") or "") not in usage_blocked
+                        and not self._quota_status(route)
+                        and self._route_supports_vision(route, self._provider_cfg(route))):
                     return str(route.get("id") or "")
             return None
         finally:
@@ -1043,5 +1047,7 @@ class HybridRouter:
                                                  if d["route_id"] == str(route.get("id") or "")), None),
                         "network_policy": self.settings.get("network_policy", "local_only"),
                         "quota_block": (self._quota_status(route) or {}).get("kind"),
+                        "usage_limit": __import__("kira.usage", fromlist=["limit_state"]).limit_state(
+                            "provider", str(route.get("provider") or "")),
                         "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
         return out
