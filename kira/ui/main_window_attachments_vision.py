@@ -380,6 +380,13 @@ class AttachmentsVisionController(WindowFeatureController):
         if not runtime.send_gemini_video_frame(jpeg):
             return False
         selector.commit(sample)
+        interval_seconds, configured_frames_per_minute = self._live_budget_values()
+        effective_frames_per_minute = min(
+            configured_frames_per_minute, int(60.0 / interval_seconds), 60
+        )
+        effective_fps = min(
+            1.0, 1.0 / interval_seconds, effective_frames_per_minute / 60.0
+        )
         vision_trace(
             "live_video_frame_queued", source=source,
             reason=decision.reason, mean_change=round(decision.mean_change, 4),
@@ -390,20 +397,10 @@ class AttachmentsVisionController(WindowFeatureController):
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
             max_bytes=MAX_VIDEO_FRAME_BYTES,
-            min_interval_seconds=self._live_budget_values()[0],
-            max_frames_per_minute=min(
-                self._live_budget_values()[1],
-                int(60.0 / self._live_budget_values()[0]),
-                60,
-            ),
-            max_fps=round(min(1.0, 1.0 / self._live_budget_values()[0],
-                              min(self._live_budget_values()[1],
-                                  int(60.0 / self._live_budget_values()[0]), 60) / 60.0), 4),
-            approx_kib_per_second=round(
-                (len(jpeg) / 1024.0) * min(1.0, 1.0 / self._live_budget_values()[0],
-                    min(self._live_budget_values()[1],
-                        int(60.0 / self._live_budget_values()[0]), 60) / 60.0), 2
-            ),
+            min_interval_seconds=interval_seconds,
+            max_frames_per_minute=effective_frames_per_minute,
+            max_fps=round(effective_fps, 4),
+            approx_kib_per_second=round((len(jpeg) / 1024.0) * effective_fps, 2),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
@@ -1358,7 +1355,8 @@ class AttachmentsVisionController(WindowFeatureController):
             and bool(privacy.enabled)
         )
         desktop_allowed, desktop_block_reason = (
-            privacy.evaluate_window(current) if desktop_source_active else (False, "source_disabled")
+            privacy.evaluate_window(current, allow_partial_identity=True)
+            if desktop_source_active else (False, "source_disabled")
         )
         # A desktop frame represents the entire selected monitor. A foreground
         # switch after capture must not invalidate the visual analysis result.
@@ -1402,6 +1400,7 @@ class AttachmentsVisionController(WindowFeatureController):
             result=result,
             source=source,
             window_info=current,
+            allow_partial_identity=(source == "desktop"),
         )
         vision_trace(
             "analysis_result",
