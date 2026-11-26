@@ -34,8 +34,7 @@ class NewsFeedPanel(QFrame):
         self._character_id = "kira"
         self._expanded = True
         self.setObjectName("newsFeedPanel")
-        self.setSizePolicy(self.sizePolicy().horizontalPolicy(), self.sizePolicy().verticalPolicy())
-        self.setMaximumHeight(190)
+        self.setMaximumHeight(205)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
