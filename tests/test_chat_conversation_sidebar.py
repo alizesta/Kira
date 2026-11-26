@@ -210,11 +210,22 @@ class ConversationSidebarTests(unittest.TestCase):
         input_start = style.index("QPlainTextEdit#chatInput {{")
         input_end = style.index("QToolButton#expandInputBtn {{", input_start)
         input_style = style[input_start:input_end]
-        self.assertIn("background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});", input_style)
-        self.assertIn("border: 1px solid rgba({mr},{mg},{mb},0.30);", input_style)
-        self.assertIn("QPlainTextEdit#chatInput:hover {{", input_style)
-        self.assertIn("QPlainTextEdit#chatInput:focus {{", input_style)
-        self.assertNotIn("background: transparent;", input_style)
+        surface_start = style.index("QFrame#chatInputSurface {{")
+        surface_end = style.index("QToolButton#expandInputBtn {{", surface_start)
+        surface_style = style[surface_start:surface_end]
+        self.assertIn("background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});", surface_style)
+        self.assertIn("border: 1px solid rgba({mr},{mg},{mb},0.30);", surface_style)
+        self.assertIn("QFrame#chatInputSurface:hover {{", surface_style)
+        self.assertIn("QFrame#chatInputSurface:focus-within {{", surface_style)
+        self.assertIn("QPlainTextEdit#chatInput {{", surface_style)
+        self.assertIn("background: transparent;", surface_style)
+        composer_start = self.composer_source.index("self.input_surface = QFrame(self)")
+        composer_end = self.composer_source.index("for name in self._OWNER_ALIASES", composer_start)
+        composer = self.composer_source[composer_start:composer_end]
+        self.assertLess(composer.index("input_surface_layout.addWidget(self.input, 1)"), composer.index("input_surface_layout.addLayout(bar)"))
+        self.assertIn("input_surface_layout.addLayout(input_tools_row)", composer)
+        self.assertIn("input_surface_layout.addLayout(bar)", composer)
+        self.assertIn("co.addWidget(self.input_surface)", composer)
 
     def test_chat_surfaces_share_the_avatar_background_without_frames(self):
         self.assertIn('page.setObjectName("chatPage")', self.builder)
