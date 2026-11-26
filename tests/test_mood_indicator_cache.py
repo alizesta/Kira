@@ -78,8 +78,23 @@ class MoodIndicatorCacheTests(unittest.TestCase):
         self.assertEqual(len(face.pixmaps), 1)
         self.assertEqual(len(face.styles), 1)
         self.assertEqual(len(face.tooltips), 1)
+        self.assertTrue(face.visible)
         self.assertEqual(energy.clears, 1)
+        self.assertFalse(energy.visible)
         self.assertEqual(len(energy.tooltips), 1)
+
+    def test_emotion_face_is_visible_when_rendering_falls_back(self):
+        controller, face, energy = self.make_controller({})
+        controller.context.services.mood_service.current = lambda character_id: (_ for _ in ()).throw(
+            RuntimeError("mood state unavailable")
+        )
+        with patch("kira.ui.main_window_session.make_icon", return_value=_Icon()):
+            SessionController.update_mood_indicator(controller)
+
+        self.assertEqual(len(face.pixmaps), 1)
+        self.assertTrue(face.visible)
+        self.assertEqual(energy.clears, 1)
+        self.assertFalse(energy.visible)
 
     def test_changed_energy_refreshes_the_indicator(self):
         state = {
@@ -98,6 +113,7 @@ class MoodIndicatorCacheTests(unittest.TestCase):
 
         self.assertEqual(make_icon.call_count, 3)  # face icon for each state, plus the energy glyph
         self.assertEqual(len(face.pixmaps), 2)
+        self.assertTrue(face.visible)
         self.assertTrue(energy.visible)
         self.assertEqual(len(energy.pixmaps), 1)
 
