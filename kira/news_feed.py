@@ -362,6 +362,34 @@ def fundamental_lens(category: str) -> str:
     return lenses.get(str(category or ""), "")
 
 
+_RECOMMENDATION_MARKERS = re.compile(
+    r"(?:توصیه|پیشنهاد|پرهیز|اجتناب|واکسین|واکسن|ماسک|شست.?وشو|بهداشت|مراجعه|"
+    r"stay home|avoid|wash|wear a mask|vaccin|seek medical|seek care|consult|"
+    r"prevention|protect|recommend|should|must)",
+    re.I,
+)
+
+
+def extract_source_recommendations(summary: str, *, limit: int = 3) -> list[str]:
+    """Extract only explicitly stated recommendation sentences; never invent health advice."""
+    sentences = re.split(
+        r"(?<=[.!؟?؛])\s+|(?<=[.!؟?؛])(?=[A-Zآ-ی])",
+        str(summary or ""),
+    )
+    found = []
+    seen = set()
+    for sentence in sentences:
+        clean = re.sub(r"\s+", " ", sentence).strip(" •-")
+        key = clean.casefold()
+        if len(clean) < 20 or key in seen or not _RECOMMENDATION_MARKERS.search(clean):
+            continue
+        seen.add(key)
+        found.append(clean[:320])
+        if len(found) >= max(1, min(int(limit), 5)):
+            break
+    return found
+
+
 _NEWS_INTENT = re.compile(
     r"(خبر|اخبار|تازه.?ترین|آخرین|تحولات|چه خبر|چه خبره|وضعیت بازار|این هفته|هفته.? اخیر|امروز|news|latest|today|recent|breaking|headlines|updates)",
     re.I,
