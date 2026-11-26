@@ -612,6 +612,7 @@ def initialize_main_window(
             self.services.settings,
             self.host,
             chat_client=self.session.client,
+            state=self.state,
         )
         dialog.exec()
     self.views.news_feed_btn.clicked.connect(_open_news_feed)
