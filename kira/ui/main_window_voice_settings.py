@@ -111,6 +111,7 @@ class VoiceSettingsController(WindowFeatureController):
 
         # A per-character conversation history column. The character tabs above remain
         # independent; this list switches durable conversations within the selected character.
+        lang = self.context.services.settings.get("ui_lang", "en")
         conversation_sidebar = QFrame(page)
         conversation_sidebar.setObjectName("conversationSidebar")
         conversation_sidebar.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
@@ -119,7 +120,6 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(2, 4, 2, 4)
         sidebar_layout.setSpacing(5)
-        lang = self.context.services.settings.get("ui_lang", "en")
         self.context.views.conversation_list_title = QLabel(
             "مکالمه‌ها" if lang == "fa" else "Conversations",
             conversation_sidebar,
