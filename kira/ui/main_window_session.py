@@ -14,10 +14,12 @@ from .main_window_session_support import (
     QFormLayout,
     QFrame,
     QGroupBox,
+    QHBoxLayout,
     QImage,
     QLabel,
-        QListWidgetItem,
+    QListWidgetItem,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSize,
@@ -325,10 +327,40 @@ class SessionController(WindowFeatureController):
             widget.clear()
             selected = None
             for conversation_id, label, tooltip in items:
-                item = QListWidgetItem(label)
+                item = QListWidgetItem()
                 item.setData(Qt.UserRole, conversation_id)
                 item.setToolTip(tooltip)
                 widget.addItem(item)
+
+                row_widget = QWidget(widget)
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(2, 2, 2, 2)
+                row_layout.setSpacing(3)
+
+                open_button = QPushButton(label, row_widget)
+                open_button.setObjectName("conversationOpenButton")
+                open_button.setFlat(True)
+                open_button.setCursor(Qt.PointingHandCursor)
+                open_button.setToolTip(tooltip)
+                open_button.clicked.connect(
+                    lambda checked=False, cid=conversation_id: self.switch_conversation(cid)
+                )
+
+                delete_button = QPushButton("×", row_widget)
+                delete_button.setObjectName("conversationDeleteButton")
+                delete_button.setFixedSize(22, 22)
+                delete_button.setFocusPolicy(Qt.NoFocus)
+                delete_button.setToolTip(
+                    "حذف گفتگو" if lang == "fa" else "Delete conversation"
+                )
+                delete_button.clicked.connect(
+                    lambda checked=False, cid=conversation_id: self.delete_conversation(cid)
+                )
+
+                row_layout.addWidget(open_button, 1)
+                row_layout.addWidget(delete_button, 0)
+                item.setSizeHint(row_widget.sizeHint())
+                widget.setItemWidget(item, row_widget)
                 if conversation_id == current_id:
                     selected = item
             if selected is not None:
@@ -340,6 +372,75 @@ class SessionController(WindowFeatureController):
         finally:
             widget.blockSignals(was_blocked)
         return True
+
+    def delete_conversation(self, conversation_id):
+        """Move one owned conversation to trash after explicit user confirmation."""
+        session = self.context.state.cur
+        service = self.context.services.chat_application_service
+        target_id = str(conversation_id or "").strip()
+        if not target_id:
+            return False
+
+        lang = self.context.services.settings.get("ui_lang", "en")
+        if session.busy or service.pending_count(session.session_id):
+            self.context.views.status.setText(
+                "برای حذف گفتگو، ابتدا پاسخ فعلی را متوقف یا کامل کن."
+                if lang == "fa"
+                else "Finish or stop the current response before deleting a chat."
+            )
+            return False
+
+        try:
+            record = service.get_conversation(target_id)
+            if (
+                not isinstance(record, dict)
+                or str(record.get("id") or "") != target_id
+                or str(record.get("character_id") or "") != str(session.cid)
+                or str(record.get("status") or "active") not in ("active", "closed")
+            ):
+                raise ValueError("این گفتگو برای شخصیت فعال در دسترس نیست.")
+
+            answer = QMessageBox.question(
+                self.window,
+                "حذف گفتگو" if lang == "fa" else "Delete conversation",
+                (
+                    "این گفتگو به سطل منتقل می‌شود و تاریخچهٔ آن قابل بازیابی خواهد بود. ادامه می‌دهی؟"
+                    if lang == "fa"
+                    else "Move this conversation to trash? Its history can still be restored."
+                ),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return False
+
+            was_current = target_id == str(session.conversation_id or "")
+            if was_current and not self.new_chat():
+                return False
+
+            result = service.trash_conversation(target_id)
+            if not getattr(result, "success", False):
+                if was_current:
+                    self.switch_conversation(target_id)
+                raise RuntimeError("ذخیره‌ساز نتوانست گفتگو را به سطل منتقل کند.")
+
+            session._conversation_drafts.pop(target_id, None)
+            self.refresh_conversation_list()
+            self.context.views.status.setText(
+                "گفتگو به سطل منتقل شد."
+                if lang == "fa"
+                else "Conversation moved to trash."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not move conversation %s to trash", target_id)
+            self.context.views.status.setText(
+                "حذف گفتگو ناموفق بود: " + str(exc)[:160]
+                if lang == "fa"
+                else "Could not delete conversation: " + str(exc)[:160]
+            )
+            self.refresh_conversation_list()
+            return False
 
     def switch_conversation(self, conversation_id):
         """Reopen one saved conversation without deleting or merging any history."""
