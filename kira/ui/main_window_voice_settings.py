@@ -132,6 +132,10 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.new_chat_btn.setMinimumHeight(34)
         self.context.views.new_chat_btn.setCursor(Qt.PointingHandCursor)
         self.context.views.new_chat_btn.setFocusPolicy(Qt.NoFocus)
+        self.context.views.new_chat_btn.setToolTip(
+            "شروع گفتگوی تازه؛ گفتگوهای قبلی در فهرست باقی می‌مانند"
+            if lang == "fa" else "Start a new conversation; previous chats stay in the list"
+        )
         self.context.views.new_chat_btn.clicked.connect(
             lambda checked=False: self.feature_controller("session").new_chat()
         )
