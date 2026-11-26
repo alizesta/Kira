@@ -98,6 +98,13 @@ class ChatComposer(QFrame):
         self.input.returnPressed.connect(owner.send_message)
         self.input.textChanged.connect(lambda: owner.on_input_changed(self.input.text()))
 
+        # Keep the editor and every composer action inside one visible input surface.
+        self.input_surface = QFrame(self)
+        self.input_surface.setObjectName("chatInputSurface")
+        input_surface_layout = QVBoxLayout(self.input_surface)
+        input_surface_layout.setContentsMargins(8, 6, 8, 6)
+        input_surface_layout.setSpacing(2)
+
         input_tools_row = QHBoxLayout()
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
@@ -121,8 +128,8 @@ class ChatComposer(QFrame):
         self.expand_btn.toggled.connect(self._set_input_expanded)
         input_tools_row.addWidget(self.expand_btn)
         input_tools_row.addStretch(1)
-        co.addLayout(input_tools_row)
-        co.addWidget(self.input)
+        input_surface_layout.addLayout(input_tools_row)
+        input_surface_layout.addWidget(self.input, 1)
 
         bar = QHBoxLayout()
         bar.setSpacing(2)
@@ -267,7 +274,8 @@ class ChatComposer(QFrame):
         bar.addSpacing(4)
         bar.addWidget(self.gen_stop_btn)
         bar.addWidget(self.send_btn)
-        co.addLayout(bar)
+        input_surface_layout.addLayout(bar)
+        co.addWidget(self.input_surface)
 
         for name in self._OWNER_ALIASES:
             setattr(owner, name, getattr(self, name))
