@@ -660,9 +660,6 @@ def build_context(
             "در تحلیل بنیادی، محرک‌ها، اثر کوتاه‌مدت/بلندمدت، فرض‌ها و ریسک‌های مخالف را جدا کن. "
             "از این خلاصه‌ها قیمت لحظه‌ای یا سیگنال خریدوفروش نساز."
         )
-    elif character_id == "kira":
-        lines.append("این فید فقط اخبار صنعت بازی و فناوری مرتبط با گیم است.")
-    elif character_id == "ren":
         state = get_refresh_state("ren", db_path=db_path, now=now)
         if state and state.get("analysis"):
             analyzed_at = datetime.fromtimestamp(
@@ -672,6 +669,8 @@ def build_context(
                 f"[تحلیل بنیادی تولیدشده با Route پیکربندی‌شدهٔ Kira؛ {analyzed_at} — برداشت تحلیلی، نه واقعیت خبر]"
             )
             lines.append(str(state["analysis"])[:6000])
+    elif character_id == "kira":
+        lines.append("این فید فقط اخبار صنعت بازی و فناوری مرتبط با گیم است.")
     for index, item in enumerate(items, 1):
         published = item.get("published_at") or "تاریخ انتشار نامشخص"
         source_type = "مرجع سلامت/دامنهٔ دولتی؛ نوع نهاد را بررسی کن" if item.get("source_official") else str(item.get("source") or "منبع نامشخص")
