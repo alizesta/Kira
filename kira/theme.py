@@ -66,9 +66,13 @@ QLabel#status { color: #8E9BC4; font-size: 8.5pt; }
 QLabel#sectionTitle { color: #C8B8FF; font-size: 11pt; font-weight: 700; }
 QToolTip { background: #120F26; color: #F0F6FF; border: 1px solid #8C63FF; border-radius: 7px; padding: 5px 8px; }
 
-QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
-QFrame#conversationSidebar, QFrame#composer {
+QWidget#chatPage {
     background: #0A0A1C;
+    border: none;
+    border-radius: 0px;
+}
+QFrame#avatarCard, QFrame#chatCard, QFrame#conversationSidebar, QFrame#composer {
+    background: transparent;
     border: none;
     border-radius: 0px;
 }
@@ -536,9 +540,13 @@ def character_style(theme, effect="off", appearance=None):
         a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
     # The avatar, history, chat and composer use one flat character-coloured surface.
     return f"""
-QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
-QFrame#conversationSidebar, QFrame#composer {{
+QWidget#chatPage {{
     background: rgba({r},{g},{b},{a_card});
+    border: none;
+    border-radius: 0px;
+}}
+QFrame#avatarCard, QFrame#chatCard, QFrame#conversationSidebar, QFrame#composer {{
+    background: transparent;
     border: none;
     border-radius: 0px;
 }}
