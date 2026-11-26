@@ -139,9 +139,11 @@ class NewsFeedRuntime(QObject):
         self.refresh_due(force=True, characters=("mika",))
 
     def _start_worker(self, worker, callback) -> None:
+        worker.setParent(self.window)
         self._worker = worker
         self.state._news_feed_worker = worker
         worker.done.connect(callback)
+        worker.finished.connect(worker.deleteLater)
         worker.start()
 
     def refresh_due(self, *, force: bool = False, characters=None) -> None:
