@@ -60,6 +60,7 @@ class LifecycleController(WindowFeatureController):
         previous_health_region = str(s.get("health_news_region") or "").strip()
         if new_health_region != previous_health_region:
             s["health_news_region_source"] = "manual" if new_health_region else ""
+        s["health_news_region_prompted"] = True
         s.update({
             "assistant_name": self.context.views.name.text().strip() or DEFAULTS["assistant_name"],
             "model": self.context.views.model.text().strip() or s.get("model") or DEFAULTS["model"],
@@ -108,6 +109,10 @@ class LifecycleController(WindowFeatureController):
         except Exception as exc:
             QMessageBox.critical(self.window, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
             return
+        if new_health_region != previous_health_region:
+            news_runtime = getattr(self.context.state, "_news_feed_runtime", None)
+            if news_runtime is not None:
+                news_runtime.region_changed()
         # Build every Session-owned Vision replacement before mutating live routers.
         provider_service = self.context.services.provider_application_service
         sessions = tuple(self.context.services.session_manager.list_sessions())
