@@ -75,6 +75,9 @@ class NewsFeedPage(QWidget):
 
         self.location_suggestion_ready.connect(self.apply_location_suggestion)
         self._load_region_from_settings()
+        region = self._settings.get("news_health_region") or {}
+        if not (isinstance(region, dict) and region.get("confirmed") is True):
+            self.character_tabs.setCurrentIndex(2)
         self._timer = QTimer(self)
         self._timer.setInterval(5000)
         self._timer.timeout.connect(self.refresh_view)
