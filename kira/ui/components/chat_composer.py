@@ -317,17 +317,17 @@ class ChatComposer(QFrame):
         bar.addWidget(self.send_btn)
         input_surface_layout.addLayout(bar)
 
-        # Keep the composer narrower than the chat viewport and centered.
-        self.input_surface.setFixedWidth(560)
+        # Let the input surface track the chat card's available width instead of
+        # freezing it at 560 px. The parent layout supplies the responsive width.
+        self.input_surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_surface.setMinimumWidth(0)
         self.input_surface_host = QWidget(self)
         self.input_surface_host.setObjectName("chatInputSurfaceHost")
         self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         surface_host_layout = QHBoxLayout(self.input_surface_host)
         surface_host_layout.setContentsMargins(0, 0, 0, 0)
         surface_host_layout.setSpacing(0)
-        surface_host_layout.addStretch(1)
-        surface_host_layout.addWidget(self.input_surface, 0, Qt.AlignHCenter)
-        surface_host_layout.addStretch(1)
+        surface_host_layout.addWidget(self.input_surface, 1)
         co.addWidget(self.input_surface_host)
 
         for name in self._OWNER_ALIASES:
