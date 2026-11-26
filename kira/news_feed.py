@@ -418,7 +418,7 @@ def build_context(
     items = get_items(
         character_id, region=region, limit=MAX_CONTEXT_ITEMS, now=now, db_path=db_path
     )
-    if not items:
+    if not items and not (character_id == "mika" and region):
         return ""
     name = CHARACTER_LABELS.get(character_id, character_id)
     lines = [
@@ -427,9 +427,11 @@ def build_context(
     ]
     if character_id == "mika":
         lines.append(
-            f"منطقهٔ موردنظر کاربر: {region or 'هنوز تأیید نشده'}. "
+            f"منطقهٔ بلندمدت و تأییدشدهٔ کاربر: {region or 'هنوز تأیید نشده'}. "
+            "این مقدار را از تنظیمات پایدار گرفته‌ای؛ دوباره برای دانستن منطقه سؤال نکن مگر کاربر بخواهد تغییرش دهد. "
             "هشدار محلی و توصیهٔ پیشگیری را فقط بر پایهٔ اطلاعیهٔ رسمیِ مرتبط با همین منطقه بیان کن. "
-            "برای منبع رسانه‌ای، آن را هشدار رسمی جلوه نده. تشخیص، تجویز و توصیهٔ شخصی دارویی نده."
+            "برای منبع رسانه‌ای، آن را هشدار رسمی جلوه نده. توصیه را به آنچه اطلاعیهٔ منبع صریحاً می‌گوید محدود کن؛ "
+            "از روی تیتر یا خلاصه، توصیهٔ بیماری‌محور نساز. تشخیص، تجویز و توصیهٔ شخصی دارویی نده."
         )
     elif character_id == "ren":
         lines.append(
@@ -440,7 +442,7 @@ def build_context(
         lines.append("این فید فقط اخبار صنعت بازی و فناوری مرتبط با گیم است.")
     for index, item in enumerate(items, 1):
         published = item.get("published_at") or "تاریخ انتشار نامشخص"
-        source_type = "منبع رسمی سلامت" if item.get("source_official") else str(item.get("source") or "منبع نامشخص")
+        source_type = "دامنهٔ رسمی/دولتی؛ نوع نهاد را بررسی کن" if item.get("source_official") else str(item.get("source") or "منبع نامشخص")
         lines.append(
             f"{index}. [{item.get('category_label')}] {item.get('title')} "
             f"({published}؛ {source_type})\n"
