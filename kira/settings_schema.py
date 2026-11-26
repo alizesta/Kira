@@ -8,7 +8,7 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
-SETTINGS_SCHEMA_VERSION = 8
+SETTINGS_SCHEMA_VERSION = 9
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,
@@ -16,6 +16,9 @@ DEFAULTS = {
     "model": LOCAL_UNCENSORED_MODEL,
     "assistant_name": "Kira",
     "active_character_id": "kira",
+    # Confirmed user location is shared user context, not a character-specific news preference.
+    "user_location": {"city": "", "country": "", "source": "", "confirmed": False, "updated_at": ""},
+    "news_feed_refresh_interval_hours": 6,
     # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
     "persona": "",
     "temperature": 0.7,
