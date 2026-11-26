@@ -169,7 +169,7 @@ class GuiTests(unittest.TestCase):
         from PySide6.QtWidgets import QSizePolicy
 
         window = self.win
-        composer = window.chat_composer
+        composer = window.presentation_context.views.chat_composer
         surface = composer.input_surface
         host = composer.input_surface_host
 
