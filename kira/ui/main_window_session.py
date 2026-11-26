@@ -77,6 +77,9 @@ class SessionController(WindowFeatureController):
                 "شروع یک گفتگوی مستقل؛ تاریخچهٔ قبلی حفظ می‌شود."
                 if lang == "fa" else "Start a separate conversation; previous history is preserved."
             )
+        conversation_title = getattr(self.context.views, "conversation_list_title", None)
+        if conversation_title is not None:
+            conversation_title.setText("مکالمه‌ها" if lang == "fa" else "Conversations")
         for setter, key in self.context.state._tr:
             setter(self.t(key))
         input_widget = self.context.views.input
@@ -214,7 +217,7 @@ class SessionController(WindowFeatureController):
         QTimer.singleShot(0, callback)
 
     def new_chat(self):
-        """Start a fresh durable conversation without clearing the previous one."""
+        """Create a separate durable conversation; older conversations remain selectable."""
         session = self.context.state.cur
         service = self.context.services.chat_application_service
         if session.busy or service.pending_count(session.session_id):
@@ -232,18 +235,23 @@ class SessionController(WindowFeatureController):
             )
             if not conversation_id:
                 raise RuntimeError("ذخیره‌ساز شناسهٔ گفتگوی جدید را برنگرداند.")
+
+            previous_id = str(session.conversation_id or "")
+            if previous_id:
+                session._conversation_drafts[previous_id] = self.context.views.input.text()
             session.conversation_id = str(conversation_id)
             session.draft = ""
             session.loaded = True
+            self.context.views.input.clear()
             if session.view is not None:
                 session.view.clear()
             with self._as(session):
                 self.add_chat("assistant", self.greeting_text())
-            self.refresh_tab_buttons()
+            self.refresh_conversation_list()
             self.context.views.status.setText(
-                "گفتگوی جدید آماده است."
+                "گفتگوی جدید ساخته شد؛ گفتگوهای قبلی در فهرست کنار چت باقی مانده‌اند."
                 if self.context.services.settings.get("ui_lang", "en") == "fa"
-                else "New conversation is ready."
+                else "New conversation created. Previous chats remain in the sidebar."
             )
             return True
         except Exception as exc:
@@ -252,6 +260,194 @@ class SessionController(WindowFeatureController):
                 "ساخت گفتگوی جدید ناموفق بود: " + str(exc)[:180]
             )
             return False
+
+    def refresh_conversation_list(self):
+        """Render active durable conversations for the character currently in front."""
+        widget = getattr(self.context.views, "conversation_list", None)
+        session = getattr(self.context.state, "front", None) or getattr(self.context.state, "cur", None)
+        if widget is None or session is None:
+            return False
+
+        service = self.context.services.chat_application_service
+        lang = self.context.services.settings.get("ui_lang", "en")
+        try:
+            records = service.list_conversations(session.cid)
+        except Exception:
+            _log.exception("Could not load the durable conversation sidebar")
+            return False
+
+        items = []
+        current_id = str(session.conversation_id or "")
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            conversation_id = str(record.get("id") or record.get("conversation_id") or "")
+            if not conversation_id or str(record.get("status") or "active") != "active":
+                continue
+
+            title = " ".join(str(record.get("title") or "").split())
+            preview = ""
+            if not title:
+                try:
+                    recent = service.recent_messages(
+                        8, character_id=session.cid, conversation_id=conversation_id
+                    )
+                    preview = next(
+                        (
+                            " ".join(str(message.get("content") or "").split())
+                            for message in reversed(recent)
+                            if message.get("role") == "user"
+                            and str(message.get("content") or "").strip()
+                        ),
+                        "",
+                    )
+                except Exception:
+                    _log.debug("Could not load conversation preview %s", conversation_id, exc_info=True)
+            label = title or preview
+            if not label:
+                created = str(record.get("created_at") or "").replace("T", " ")
+                stamp = created[:16].strip()
+                label = (
+                    f"گفتگوی جدید · {stamp}" if lang == "fa" and stamp
+                    else f"New chat · {stamp}" if stamp
+                    else "گفتگوی جدید" if lang == "fa" else "New chat"
+                )
+            if len(label) > 54:
+                label = label[:53].rstrip() + "…"
+            items.append((conversation_id, label, preview or title or label))
+
+        was_blocked = widget.blockSignals(True)
+        try:
+            widget.clear()
+            selected = None
+            for conversation_id, label, tooltip in items:
+                item = QListWidgetItem(label)
+                item.setData(Qt.UserRole, conversation_id)
+                item.setToolTip(tooltip)
+                widget.addItem(item)
+                if conversation_id == current_id:
+                    selected = item
+            if selected is not None:
+                widget.setCurrentItem(selected)
+            widget.setToolTip(
+                "برای باز کردن یک گفتگوی قبلی، آن را انتخاب کن."
+                if lang == "fa" else "Select a conversation to reopen it."
+            )
+        finally:
+            widget.blockSignals(was_blocked)
+        return True
+
+    def switch_conversation(self, conversation_id):
+        """Reopen one saved conversation without deleting or merging any history."""
+        session = self.context.state.cur
+        service = self.context.services.chat_application_service
+        target_id = str(conversation_id or "").strip()
+        if not target_id:
+            return False
+        if target_id == str(session.conversation_id or ""):
+            self.refresh_conversation_list()
+            return True
+        if session.busy or service.pending_count(session.session_id):
+            self.context.views.status.setText(
+                "برای جابه‌جایی گفتگو، ابتدا پاسخ فعلی را متوقف یا کامل کن."
+                if self.context.services.settings.get("ui_lang", "en") == "fa"
+                else "Finish or stop the current response before switching chats."
+            )
+            self.refresh_conversation_list()
+            return False
+
+        try:
+            record = service.get_conversation(target_id)
+            if (
+                not isinstance(record, dict)
+                or str(record.get("id") or "") != target_id
+                or str(record.get("character_id") or "") != str(session.cid)
+                or str(record.get("status") or "active") != "active"
+            ):
+                raise ValueError("این گفتگو برای شخصیت فعال در دسترس نیست.")
+            history = service.recent_messages(
+                40, character_id=session.cid, conversation_id=target_id
+            )
+            if session.view is None:
+                raise RuntimeError("نمای گفتگوی فعال آماده نیست.")
+
+            previous_id = str(session.conversation_id or "")
+            previous_draft = self.context.views.input.text()
+            previous_html = session.view.toHtml()
+            drafts = session._conversation_drafts
+            if previous_id:
+                drafts[previous_id] = previous_draft
+            next_draft = drafts.pop(target_id, "")
+
+            try:
+                session.view.clear()
+                session.conversation_id = target_id
+                session.draft = next_draft
+                self.context.views.input.setText(next_draft)
+                was_suppressed = getattr(self, "_suppress_conversation_refresh", False)
+                self._suppress_conversation_refresh = True
+                try:
+                    with self._as(session):
+                        self._render_history_items(history)
+                finally:
+                    self._suppress_conversation_refresh = was_suppressed
+            except Exception:
+                session.conversation_id = previous_id or None
+                session.draft = previous_draft
+                drafts[target_id] = next_draft
+                self.context.views.input.setText(previous_draft)
+                session.view.setHtml(previous_html)
+                raise
+
+            bubble = getattr(self.context.adapters, "bubble", None)
+            if bubble is not None:
+                with self._as(session):
+                    self.sync_bubble_history(bubble)
+            self.refresh_conversation_list()
+            self.context.views.status.setText(
+                "گفتگوی قبلی باز شد؛ تاریخچهٔ آن حفظ شده است."
+                if self.context.services.settings.get("ui_lang", "en") == "fa"
+                else "Previous conversation reopened. Its history is intact."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not reopen conversation %s", target_id)
+            self.context.views.status.setText("باز کردن گفتگو ناموفق بود: " + str(exc)[:160])
+            self.refresh_conversation_list()
+            return False
+
+    def _schedule_conversation_list_refresh(self):
+        """Coalesce refreshes from live message bubbles after persistence has completed."""
+        if getattr(self, "_suppress_conversation_refresh", False):
+            return
+        if getattr(self, "_conversation_list_refresh_scheduled", False):
+            return
+        self._conversation_list_refresh_scheduled = True
+        QTimer.singleShot(350, self._run_conversation_list_refresh)
+
+    def _run_conversation_list_refresh(self):
+        self._conversation_list_refresh_scheduled = False
+        self.refresh_conversation_list()
+
+    def _render_history_items(self, history):
+        """Paint a bounded message page into the selected conversation view."""
+        shown = 0
+        for item in history:
+            role = item.get("role")
+            if role == "assistant":
+                text = self.context.adapters.director.parse_reply(item.get("content", "")).text
+            elif role == "user":
+                text = item.get("content", "")
+            else:
+                continue
+            if str(text).strip():
+                self.add_chat(role, text)
+                shown += 1
+        if shown:
+            self.add_chat("system", self.t("history_restored"))
+        else:
+            self.add_chat("assistant", self.greeting_text())
+        return shown
 
     def _ensure_session_conversation(self, session):
         return self.context.services.session_application_service.bind_conversation(session)
@@ -523,6 +719,7 @@ class SessionController(WindowFeatureController):
         elif character_controller is not None:
             character_controller.refresh_personality_controls()
         self.update_mood_indicator()
+        self.refresh_conversation_list()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
         if save:
@@ -595,22 +792,13 @@ class SessionController(WindowFeatureController):
             # Leave the Session unloaded so the next synchronization retries history.
             _log.exception("Could not restore persisted chat history")
             return False
-        shown = 0
-        for item in history:
-            role = item.get("role")
-            if role == "assistant":
-                text = self.context.adapters.director.parse_reply(item.get("content", "")).text      # emotion tags never shown
-            elif role == "user":
-                text = item.get("content", "")
-            else:
-                continue
-            if text.strip():
-                self.add_chat(role, text)
-                shown += 1
-        if shown:
-            self.add_chat("system", self.t("history_restored"))
-        else:
-            self.add_chat("assistant", self.greeting_text())
+        was_suppressed = getattr(self, "_suppress_conversation_refresh", False)
+        self._suppress_conversation_refresh = True
+        try:
+            self._render_history_items(history)
+        finally:
+            self._suppress_conversation_refresh = was_suppressed
+        self.refresh_conversation_list()
         return True
 
     def add_chat(self, kind, text, name=None, images=None):
@@ -628,6 +816,8 @@ class SessionController(WindowFeatureController):
             self.context.adapters.bubble.push(kind, name, text, ui_dir)
         bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
+        if kind in ("user", "assistant"):
+            self._schedule_conversation_list_refresh()
 
     def maybe_proactive_checkin(self):
         """Apply desktop-only safety gates, then delegate Initiative policy to its application service."""
