@@ -70,6 +70,13 @@ class ConversationLifecycleService:
         self._events = event_publisher
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
+    def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
+        """Return one durable conversation record through the lifecycle boundary."""
+        conv_id = str(conversation_id or "").strip()
+        if not conv_id:
+            return None
+        return self._repository.get_conversation(conv_id)
+
     def _now(self) -> str:
         value = self._clock()
         if not isinstance(value, datetime):
