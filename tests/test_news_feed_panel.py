@@ -77,6 +77,11 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.panel.set_character("mika")
         self.assertFalse(self.panel.region_row.isHidden())
 
+    def test_empty_feed_still_displays_refresh_guidance(self):
+        self.panel.set_character("mika")
+        self.panel.refresh_view()
+        self.assertIn("هنوز خبری دریافت نشده", self.panel.feed_browser.toPlainText())
+
 
 if __name__ == "__main__":
     unittest.main()
