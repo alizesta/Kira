@@ -128,10 +128,10 @@ class NewsFeedTests(unittest.TestCase):
             "ren", {}, now=self.now, db_path=self.db, search_fn=search
         )
         self.assertTrue(news_feed.can_answer_from_feed(
-            "ren", "آخرین اخبار بیت کوین", {}, now=self.now
+            "ren", "آخرین اخبار بیت کوین", {}, now=self.now, db_path=self.db
         ))
         self.assertFalse(news_feed.can_answer_from_feed(
-            "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now
+            "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now, db_path=self.db
         ))
 
     def test_context_contains_sources_and_does_not_mix_characters(self):
@@ -153,13 +153,13 @@ class NewsFeedTests(unittest.TestCase):
             search_fn=mika_search,
         )
         block = news_feed.build_context(
-            "mika", "medical research", {"health_news_region": "Test City, Testland"}, now=self.now
+            "mika", "medical research", {"health_news_region": "Test City, Testland"}, now=self.now, db_path=self.db
         )
         self.assertIn("Medical research headline", block)
         self.assertIn("https://medical.example.org/study", block)
         self.assertNotIn("بنیادی", block)
         self.assertEqual(
-            news_feed.build_context("ren", "economy", {}, now=self.now),
+            news_feed.build_context("ren", "economy", {}, now=self.now, db_path=self.db),
             "",
         )
 
