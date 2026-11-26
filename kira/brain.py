@@ -365,10 +365,12 @@ def extend_prompt(prompt, decision, settings=None, router=None, *, character_id:
         # Recent news is external reference material, not persona memory. Keep
         # its recall explicitly scoped to the character active for this turn.
         try:
-            from .news_feed import NewsFeedStore
-            news_context = NewsFeedStore().build_context(character_id or "kira")
-            if news_context:
-                extras.append(news_context)
+            from .news_feed import CHARACTER_CATEGORIES, NewsFeedStore
+            news_owner = str(character_id or "kira").strip().lower()
+            if news_owner in CHARACTER_CATEGORIES:
+                news_context = NewsFeedStore().build_context(news_owner)
+                if news_context:
+                    extras.append(news_context)
         except Exception:  # noqa: BLE001 - news-feed failure must never block chat
             _log.exception("Could not load recent news context for character %s", character_id)
         # Turning reflection off invalidates any pending note as well as
