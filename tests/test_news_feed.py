@@ -55,6 +55,20 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertIn("Ren-only market update", ren)
         self.assertNotIn("Kira-only game update", ren)
 
+    def test_confirmed_region_is_injected_only_into_mika_context(self):
+        region_settings = {
+            "news_health_region": {
+                "city": "Abadan", "country": "Iran", "confirmed": True,
+                "source": "user_confirmed", "confirmed_at": "2026-11-27T00:00:00+00:00",
+            }
+        }
+        mika = build_prompt_context("mika", self.temp.name, settings=region_settings)
+        kira = build_prompt_context("kira", self.temp.name, settings=region_settings)
+        ren = build_prompt_context("ren", self.temp.name, settings=region_settings)
+        self.assertIn("Abadan, Iran", mika)
+        self.assertNotIn("Abadan", kira)
+        self.assertNotIn("Abadan", ren)
+
     def test_local_health_alerts_require_official_sources(self):
         self.assertTrue(is_official_health_source("https://www.who.int/news"))
         self.assertTrue(is_official_health_source("https://www.cdc.gov/flu/"))
