@@ -128,7 +128,11 @@ class NewsFeedPage(QWidget):
             )
 
     def set_region_confirmed(self, city: str, country: str):
-        self._settings["news_health_region"] = {"city": city, "country": country, "confirmed": True, "source": "user_confirmed"}
+        region = self._settings.get("news_health_region")
+        if not isinstance(region, dict):
+            region = {}
+        region.update({"city": city, "country": country, "confirmed": True, "source": "user_confirmed"})
+        self._settings["news_health_region"] = region
         self.region_edit.setText(f"{city}, {country}")
         self.region_status.setText(f"موقعیت تأییدشده و ذخیره‌شده: {city}, {country}")
 
