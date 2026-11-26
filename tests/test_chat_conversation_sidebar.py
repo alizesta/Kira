@@ -227,6 +227,29 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn('"new_chat_btn"', self.context_source.split('"voice_settings": {', 1)[1].split('"peers":', 1)[0])
         self.assertIn("QPushButton#newChatButton", (ROOT / "kira" / "theme.py").read_text(encoding="utf-8"))
 
+    def test_expand_and_collapse_icons_match_the_reference_pair_without_neon_bloom(self):
+        expand = (ROOT / "assets" / "icons" / "expand.svg").read_text(encoding="utf-8")
+        collapse = (ROOT / "assets" / "icons" / "collapse.svg").read_text(encoding="utf-8")
+        self.assertIn('<polyline points="15 3 21 3 21 9"/>', expand)
+        self.assertIn('<polyline points="9 21 3 21 3 15"/>', expand)
+        self.assertIn('<polyline points="4 14 10 14 10 20"/>', collapse)
+        self.assertIn('<polyline points="20 10 14 10 14 4"/>', collapse)
+        self.assertEqual(expand.count("<polyline "), collapse.count("<polyline "))
+        self.assertEqual(expand.count("<line "), collapse.count("<line "))
+        self.assertIn("def _plain_reference_icon(name):", self.composer_source)
+        self.assertIn("QSvgRenderer(QByteArray(source.encode(\"utf-8\")))", self.composer_source)
+        self.assertIn("'stroke=\"currentColor\"', 'stroke=\"#D4D4D4\"'", self.composer_source)
+        self.assertIn('self._expand_icon = _plain_reference_icon("expand")', self.composer_source)
+        self.assertIn('self._collapse_icon = _plain_reference_icon("collapse")', self.composer_source)
+        self.assertIn("self.expand_btn.setIconSize(QSize(20, 20))", self.composer_source)
+
+    def test_composer_input_surface_is_narrower_and_centered(self):
+        self.assertIn("self.input_surface.setMaximumWidth(560)", self.composer_source)
+        self.assertIn("self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)", self.composer_source)
+        self.assertIn("surface_host_layout.addStretch(1)", self.composer_source)
+        self.assertIn("surface_host_layout.addWidget(self.input_surface, 0, Qt.AlignHCenter)", self.composer_source)
+        self.assertIn("co.addWidget(self.input_surface_host)", self.composer_source)
+
     def test_chat_input_has_a_distinct_character_tinted_surface(self):
         theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
         start = theme_source.index("def character_style(")
