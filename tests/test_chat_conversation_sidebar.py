@@ -113,6 +113,7 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("QFrame#chatCard, QFrame#conversationSidebar", theme)
         self.assertIn("QListWidget#conversationList", theme)
         self.assertIn("QPushButton#conversationOpenButton", theme)
+        self.assertIn("QWidget#conversationRow { background: transparent; border: none; }", theme)
         self.assertIn("QToolButton#conversationMenuButton", theme)
         self.assertIn("cv.addWidget(self.context.views.chat_stack, 1)", self.builder)
         self.assertIn("open_button.clicked.connect", self.refresh)
