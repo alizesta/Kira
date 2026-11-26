@@ -22,7 +22,7 @@ _LOG = logging.getLogger(__name__)
 DB_PATH = DATA_DIR / "kira_news_feed.sqlite3"
 RETENTION_SECONDS = 7 * 24 * 60 * 60
 MAX_ITEMS_PER_CHARACTER = 60
-MAX_CONTEXT_ITEMS = 5
+MAX_CONTEXT_ITEMS = 4
 
 CHARACTER_LABELS = {
     "mika": "میکا",
@@ -38,10 +38,16 @@ def _queries(character_id: str, region: str) -> tuple[tuple[str, str, str], ...]
             if region else
             "local public health disease outbreak epidemic alerts health ministry latest news past 7 days"
         )
-        return (
-            ("epidemic", "هشدارهای سلامت و اپیدمی", local, region),
-            ("medical_science", "پژوهش‌های پزشکی", "medical science health research clinical study discovery latest news past 7 days", ""),
-        )
+        queries = []
+        if region:
+            queries.append(("epidemic", "هشدارهای سلامت و اپیدمی", local, region))
+        queries.append((
+            "medical_science",
+            "پژوهش‌های پزشکی",
+            "medical science health research clinical study discovery latest news past 7 days",
+            "",
+        ))
+        return tuple(queries)
     if character_id == "ren":
         return (
             ("economy", "اقتصاد کلان", "global economy inflation central banks interest rates monetary policy latest news past 7 days", ""),
@@ -202,7 +208,7 @@ def _insert_result(
     url = str(result.get("url") or "").strip()
     url_key = _canonical_url(url)
     title = re.sub(r"\s+", " ", str(result.get("title") or "")).strip()[:220]
-    summary = re.sub(r"\s+", " ", str(result.get("snippet") or result.get("text") or "")).strip()[:900]
+    summary = re.sub(r"\s+", " ", str(result.get("snippet") or result.get("text") or "")).strip()[:520]
     if not url_key or not title:
         return False
 
@@ -371,7 +377,9 @@ def can_answer_from_feed(character_id: str, query: str, settings: dict, *, now: 
         return False
     region = str(settings.get("health_news_region") or "").strip()
     items = get_items(character_id, region=region, limit=MAX_ITEMS_PER_CHARACTER, now=now)
-    if not items:
+    # An unknown publication date is useful as a lead, but it cannot prove that
+    # a stored story is recent enough to replace a fresh search.
+    if not any(item.get("published_ts") for item in items):
         return False
     tokens = {
         token for token in re.findall(r"[\w\u0600-\u06ff]{3,}", str(query or "").lower())
