@@ -192,6 +192,37 @@ class GuiTests(unittest.TestCase):
             self.assertLessEqual(surface.geometry().right(), host.rect().right())
             self.assertLessEqual(host.geometry().right(), composer.rect().right())
 
+        # Collapsed composer is a compact single surface. The input can grow
+        # to three lines, while every action/model control stays inside it.
+        APP.processEvents()
+        self.assertLessEqual(surface.height(), 120)
+        self.assertGreaterEqual(surface.height(), 88)
+        for widget in (
+            composer.input,
+            composer.expand_btn,
+            composer.route_badge,
+            composer.attach_btn,
+            composer.search_btn,
+            composer.mic_btn,
+            composer.voice_btn,
+            composer.game_mode_btn,
+            composer.send_btn,
+        ):
+            self.assertTrue(surface.isAncestorOf(widget), widget.objectName())
+            self.assertGreaterEqual(widget.geometry().left(), 0)
+            self.assertGreaterEqual(widget.geometry().top(), 0)
+            self.assertLessEqual(widget.geometry().right(), surface.width())
+            self.assertLessEqual(widget.geometry().bottom(), surface.height())
+
+        self.assertEqual(composer.input.MIN_LINES, 1)
+        self.assertEqual(composer.input.MAX_LINES, 3)
+        composer.input.set_expanded(True)
+        APP.processEvents()
+        self.assertGreater(composer.input.height(), 120)
+        composer.input.set_expanded(False)
+        APP.processEvents()
+        self.assertLessEqual(surface.height(), 120)
+
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
