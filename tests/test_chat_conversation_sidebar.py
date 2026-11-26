@@ -246,7 +246,7 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("self.expand_btn.setIconSize(QSize(20, 20))", self.composer_source)
 
     def test_composer_input_surface_is_narrower_and_centered(self):
-        self.assertIn("self.input_surface.setMaximumWidth(560)", self.composer_source)
+        self.assertIn("self.input_surface.setFixedWidth(560)", self.composer_source)
         self.assertIn("self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)", self.composer_source)
         self.assertIn("surface_host_layout.addStretch(1)", self.composer_source)
         self.assertIn("surface_host_layout.addWidget(self.input_surface, 0, Qt.AlignHCenter)", self.composer_source)
