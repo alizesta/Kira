@@ -45,6 +45,8 @@ class NewsFeedRuntime(QObject):
             QTimer.singleShot(1800, self.refresh_due)
 
     def _begin_region_setup(self) -> None:
+        if self._shutting_down:
+            return
         from PySide6.QtWidgets import QMessageBox
         from ..location import request_windows_location_permission
 
@@ -73,6 +75,8 @@ class NewsFeedRuntime(QObject):
     @Slot(bool)
     def _on_windows_permission_result(self, allowed: bool) -> None:
         self._location_operation = None
+        if self._shutting_down:
+            return
         if allowed:
             self._start_location_worker(prefer_windows=True)
         else:
@@ -98,6 +102,8 @@ class NewsFeedRuntime(QObject):
         self._start_worker(TaskWorker(detect_ip_region), self._on_region_detected)
 
     def _on_region_detected(self, outcome) -> None:
+        if self._shutting_down:
+            return
         detected = None
         if isinstance(outcome, tuple) and outcome and outcome[0] is True:
             detected = outcome[1] if isinstance(outcome[1], dict) else None
