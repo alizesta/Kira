@@ -47,6 +47,7 @@ from .main_window_session_support import (
     message_html,
     save_settings,
     theme_mod,
+    textwrap,
     time,
 )
 
@@ -318,8 +319,8 @@ class SessionController(WindowFeatureController):
                     else f"New chat · {stamp}" if stamp
                     else "گفتگوی جدید" if lang == "fa" else "New chat"
                 )
-            if len(label) > 54:
-                label = label[:53].rstrip() + "…"
+            if len(label) > 48:
+                label = label[:47].rstrip() + "…"
             items.append((conversation_id, label, preview or title or label))
 
         was_blocked = widget.blockSignals(True)
@@ -337,9 +338,22 @@ class SessionController(WindowFeatureController):
                 row_layout.setContentsMargins(2, 2, 2, 2)
                 row_layout.setSpacing(3)
 
-                open_button = QPushButton(label, row_widget)
+                row_widget.setObjectName("conversationRow")
+                row_widget.setLayoutDirection(Qt.LeftToRight)
+                row_widget.setMinimumHeight(60)
+                open_button = QPushButton(
+                    "\n".join(textwrap.wrap(
+                        label, width=16, max_lines=3, placeholder="…",
+                        break_long_words=True, break_on_hyphens=True,
+                    )),
+                    row_widget,
+                )
                 open_button.setObjectName("conversationOpenButton")
                 open_button.setFlat(True)
+                open_button.setMinimumWidth(0)
+                open_button.setMinimumHeight(56)
+                open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                open_button.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
                 open_button.setCursor(Qt.PointingHandCursor)
                 open_button.setToolTip(tooltip)
                 open_button.clicked.connect(
@@ -359,7 +373,7 @@ class SessionController(WindowFeatureController):
 
                 row_layout.addWidget(open_button, 1)
                 row_layout.addWidget(delete_button, 0)
-                item.setSizeHint(row_widget.sizeHint())
+                item.setSizeHint(QSize(0, 60))
                 widget.setItemWidget(item, row_widget)
                 if conversation_id == current_id:
                     selected = item
