@@ -22,7 +22,10 @@ from .kode_activity import KodeActivityPanel
 def _plain_reference_icon(name):
     """Render the reference expand/minimize SVG without Kira's neon bloom."""
     path = Path(__file__).resolve().parents[3] / "assets" / "icons" / f"{name}.svg"
-    source = path.read_text(encoding="utf-8")
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return QIcon()
     source = source.replace('stroke="currentColor"', 'stroke="#D4D4D4"')
     source = source.replace('fill="currentColor"', 'fill="#D4D4D4"')
     renderer = QSvgRenderer(QByteArray(source.encode("utf-8")))
@@ -315,9 +318,7 @@ class ChatComposer(QFrame):
         input_surface_layout.addLayout(bar)
 
         # Keep the composer narrower than the chat viewport and centered.
-        self.input_surface.setMinimumWidth(0)
-        self.input_surface.setMaximumWidth(560)
-        self.input_surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_surface.setFixedWidth(560)
         self.input_surface_host = QWidget(self)
         self.input_surface_host.setObjectName("chatInputSurfaceHost")
         self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
