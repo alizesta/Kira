@@ -578,6 +578,62 @@ _LIVE_VALUE = re.compile(
 )
 
 
+def _query_tokens(query: str) -> set[str]:
+    stopwords = {
+        "خبر", "اخبار", "latest", "news", "today", "recent", "breaking",
+        "headline", "headlines", "updates", "about", "what", "whats",
+        "the", "and", "for", "with", "from", "this", "that", "are",
+        "درباره", "چیست", "چیه", "چه", "خبرها", "آخرین", "جدیدترین",
+        "امروز", "هفته", "اخیر", "این", "مربوط", "وضعیت", "بازار",
+    }
+    return {
+        token for token in re.findall(r"[\w\u0600-\u06ff]{3,}", str(query or "").lower())
+        if token not in stopwords
+    }
+
+
+def _item_query_tokens(item: dict, tokens: set[str]) -> set[str]:
+    haystack = (
+        f"{item.get('title', '')} {item.get('summary', '')} "
+        f"{item.get('category_label', '')}"
+    ).lower()
+    return {token for token in tokens if token in haystack}
+
+
+def _select_context_items(items: list[dict], query: str, limit: int) -> list[dict]:
+    """Choose the most query-relevant articles before filling remaining context by recency."""
+    tokens = _query_tokens(query)
+    if not tokens:
+        return items[:limit]
+
+    remaining = list(items)
+    selected: list[dict] = []
+    covered: set[str] = set()
+    while remaining and len(selected) < limit:
+        best = max(
+            remaining,
+            key=lambda item: (
+                len(_item_query_tokens(item, tokens) - covered),
+                len(_item_query_tokens(item, tokens)),
+                float(item.get("published_ts") or item.get("fetched_at") or 0),
+            ),
+        )
+        matched = _item_query_tokens(best, tokens)
+        if not matched:
+            break
+        selected.append(best)
+        covered.update(matched)
+        remaining.remove(best)
+
+    if len(selected) < limit:
+        remaining.sort(
+            key=lambda item: float(item.get("published_ts") or item.get("fetched_at") or 0),
+            reverse=True,
+        )
+        selected.extend(remaining[: limit - len(selected)])
+    return selected
+
+
 def can_answer_from_feed(
     character_id: str,
     query: str,
@@ -601,24 +657,10 @@ def can_answer_from_feed(
     items = [item for item in items if item.get("published_ts")]
     if not items:
         return False
-    stopwords = {
-        "خبر", "اخبار", "latest", "news", "today", "recent", "breaking",
-        "headline", "headlines", "updates", "about", "what", "whats",
-        "the", "and", "for", "with", "from", "this", "that", "are",
-        "درباره", "چیست", "چیه", "چه", "خبرها", "آخرین", "جدیدترین",
-        "امروز", "هفته", "اخیر", "این", "مربوط", "وضعیت", "بازار",
-    }
-    tokens = {
-        token for token in re.findall(r"[\w\u0600-\u06ff]{3,}", str(query or "").lower())
-        if token not in stopwords
-    }
+    tokens = _query_tokens(query)
     if not tokens:
         return True
-    haystack = " ".join(
-        f"{item.get('title', '')} {item.get('summary', '')} {item.get('category_label', '')}"
-        for item in items
-    ).lower()
-    matched_tokens = sum(token in haystack for token in tokens)
+    matched_tokens = len(set().union(*(_item_query_tokens(item, tokens) for item in items)))
     return matched_tokens >= max(1, (len(tokens) + 1) // 2)
 
 
@@ -639,7 +681,8 @@ def build_context(
     )
     # Stories without publication dates stay visible in the feed but are not
     # promoted into the assistant's recent factual context.
-    items = [item for item in items if item.get("published_ts")][:MAX_CONTEXT_ITEMS]
+    items = [item for item in items if item.get("published_ts")]
+    items = _select_context_items(items, query, MAX_CONTEXT_ITEMS)
     if not items and not (character_id == "mika" and region):
         return ""
     name = CHARACTER_LABELS.get(character_id, character_id)
