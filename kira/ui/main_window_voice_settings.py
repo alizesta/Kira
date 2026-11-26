@@ -166,7 +166,7 @@ class VoiceSettingsController(WindowFeatureController):
         chat_area = QHBoxLayout(chat_area_widget)
         chat_area.setDirection(QHBoxLayout.LeftToRight)
         chat_area.setContentsMargins(0, 0, 0, 0)
-        chat_area.setSpacing(8)
+        chat_area.setSpacing(0)
         chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chat_area.addWidget(conversation_sidebar, 0)
         chat_area.addWidget(chat_card, 1)
