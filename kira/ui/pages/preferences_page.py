@@ -85,7 +85,8 @@ class PreferencesPage(QScrollArea):
         self.web_test_btn.clicked.connect(self.web_search_test_requested.emit)
         language_form.addRow("", self.web_test_btn)
 
-        news_box, news_form = self._group("g_news_region")
+        news_box = QGroupBox("هشدارهای سلامت")
+        news_form = QFormLayout(news_box)
         self.health_news_region = QLineEdit(str(settings.get("health_news_region") or ""))
         self.health_news_region.setPlaceholderText("مثلاً: آبادان، ایران")
         self.health_news_region.setToolTip(
