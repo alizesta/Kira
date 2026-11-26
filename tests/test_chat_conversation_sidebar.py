@@ -40,6 +40,9 @@ class ConversationSidebarTests(unittest.TestCase):
         cls.switch = _method_source(
             "kira/ui/main_window_session.py", "SessionController", "switch_conversation"
         )
+        cls.delete = _method_source(
+            "kira/ui/main_window_session.py", "SessionController", "delete_conversation"
+        )
         cls.builder = _method_source(
             "kira/ui/main_window_voice_settings.py",
             "VoiceSettingsController",
@@ -71,6 +74,12 @@ class ConversationSidebarTests(unittest.TestCase):
 
     def test_reopening_checks_ownership_and_reads_only_that_conversation(self):
         self.assertIn("service.get_conversation(target_id)", self.switch)
+        service = (ROOT / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
+        facade = (ROOT / "kira" / "chat" / "history_facade.py").read_text(encoding="utf-8")
+        lifecycle = (ROOT / "kira" / "chat" / "conversation_lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn("return self._history.get_conversation(conversation_id)", service)
+        self.assertIn("return self._require_conversation_lifecycle().get_conversation(conversation_id)", facade)
+        self.assertIn("return self._repository.get_conversation(conv_id)", lifecycle)
         self.assertIn('record.get("character_id")', self.switch)
         self.assertIn('record.get("status")', self.switch)
         self.assertIn('not in ("active", "closed")', self.switch)
@@ -82,10 +91,23 @@ class ConversationSidebarTests(unittest.TestCase):
     def test_chat_page_contains_a_vertical_clickable_history_list(self):
         self.assertIn("QVBoxLayout(conversation_sidebar)", self.builder)
         self.assertIn("QListWidget(conversation_sidebar)", self.builder)
-        self.assertIn("conversation_list.itemClicked.connect", self.builder)
-        self.assertIn("switch_conversation(", self.builder)
+        self.assertIn("conversation_row.setDirection(QHBoxLayout.LeftToRight)", self.builder)
+        self.assertIn("conversation_sidebar.setFixedWidth(154)", self.builder)
         self.assertIn("conversation_row.addWidget(conversation_sidebar", self.builder)
         self.assertIn("conversation_row.addWidget(self.context.views.chat_stack", self.builder)
+        self.assertIn("open_button.clicked.connect", self.refresh)
+        self.assertIn("switch_conversation(cid)", self.refresh)
+        self.assertIn("delete_button.clicked.connect", self.refresh)
+        self.assertIn("delete_conversation(cid)", self.refresh)
+
+    def test_delete_button_uses_owned_conversation_trash_lifecycle(self):
+        self.assertIn("service.get_conversation(target_id)", self.delete)
+        self.assertIn('record.get("character_id")', self.delete)
+        self.assertIn('record.get("status")', self.delete)
+        self.assertIn("QMessageBox.question(", self.delete)
+        self.assertIn("service.trash_conversation(target_id)", self.delete)
+        self.assertIn('getattr(result, "success", False)', self.delete)
+        self.assertNotIn("permanently_delete_conversation(", self.delete)
 
     def test_qt_sidebar_widgets_are_reexported_into_their_feature_controllers(self):
         voice_controller = (
