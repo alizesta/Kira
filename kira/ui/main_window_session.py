@@ -172,6 +172,10 @@ class SessionController(WindowFeatureController):
         view.anchorClicked.connect(self.on_chat_link)
         view.setReadOnly(True)
         view.setFrameShape(QFrame.NoFrame)
+        # The QTextBrowser must be allowed to shrink when the composer expands;
+        # its own scroll bar then keeps the latest conversation reachable.
+        view.setMinimumHeight(0)
+        view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         delete_key(view, lambda: self.feature_controller("runtime").clear_chat())     # Delete in the chat = clear it (asks first)
         return view
 
