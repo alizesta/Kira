@@ -95,7 +95,11 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.status.setWordWrap(True)
         av.addWidget(self.tagline)
         av.addWidget(self.context.views.status)
-        self.context.views.avatar_card.setFixedWidth(250)
+        # Keep the avatar column at its reference width when space allows, but
+        # let it yield width to the chat on restored/narrow windows.
+        self.context.views.avatar_card.setMinimumWidth(120)
+        self.context.views.avatar_card.setMaximumWidth(250)
+        self.context.views.avatar_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         root.addWidget(self.context.views.avatar_card)
         # --- chat card: compact header, conversation, composer
         chat_card = QFrame()
@@ -118,8 +122,10 @@ class VoiceSettingsController(WindowFeatureController):
         conversation_sidebar = QFrame(page)
         conversation_sidebar.setObjectName("conversationSidebar")
         conversation_sidebar.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
-        conversation_sidebar.setFixedWidth(154)
-        conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        # The history rail is secondary to the message editor on narrow windows.
+        conversation_sidebar.setMinimumWidth(96)
+        conversation_sidebar.setMaximumWidth(154)
+        conversation_sidebar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
@@ -191,6 +197,9 @@ class VoiceSettingsController(WindowFeatureController):
         chat_area.setDirection(QHBoxLayout.LeftToRight)
         chat_area.setContentsMargins(0, 0, 0, 0)
         chat_area.setSpacing(0)
+        chat_area_widget.setMinimumWidth(0)
+        chat_card.setMinimumWidth(0)
+        composer.setMinimumWidth(0)
         chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chat_area.addWidget(conversation_sidebar, 0)
         chat_area.addWidget(chat_card, 1)
