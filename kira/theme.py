@@ -549,7 +549,13 @@ QListWidget#conversationList {{
 }}
 QListWidget#conversationList::item {{ background: transparent; border: none; padding: 0px; }}
 QListWidget#conversationList::item:selected {{ background: transparent; color: #FFFFFF; }}
-QWidget#conversationRow {{ background: transparent; border: none; }}
+QWidget#conversationRow {{ background: transparent; border: none; border-radius: 10px; }}
+QWidget#conversationRow[active="true"] {{
+    background: rgba(255,255,255,0.10); border: none; border-radius: 10px;
+}}
+QWidget#conversationRow:hover {{
+    background: rgba(255,255,255,0.055); border: none; border-radius: 10px;
+}}
 QPushButton#conversationOpenButton {{
     background: transparent; border: none; border-radius: 0px;
     padding: 2px 4px; color: #EAF2FF; text-align: right; font-size: 9pt;
@@ -563,6 +569,18 @@ QToolButton#conversationMenuButton {{
 }}
 QToolButton#conversationMenuButton:hover {{
     background: rgba({sr},{sg},{sb},0.14); border: none; color: #FFFFFF;
+}}
+QWidget#conversationRow[active="true"] QPushButton#conversationOpenButton {{
+    background: transparent; border: none; color: #FFFFFF;
+}}
+QWidget#conversationRow[active="true"] QToolButton#conversationMenuButton {{
+    background: rgba(255,255,255,0.10); border: none; color: #FFFFFF;
+}}
+QToolButton#conversationPinIndicator {{
+    background: transparent; border: none; border-radius: 7px; padding: 0px;
+}}
+QToolButton#conversationPinIndicator:hover {{
+    background: rgba(255,255,255,0.08); border: none;
 }}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
