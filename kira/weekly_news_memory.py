@@ -224,10 +224,24 @@ class WeeklyNewsMemoryService:
                 self.refresh_due()
             except Exception:  # noqa: BLE001 - background news must never affect chat/UI
                 _LOG.exception("Weekly news refresh cycle failed")
-            settings = self._settings_snapshot()
-            interval = self._refresh_interval(settings)
-            if self._stop_event.wait(interval):
+            if self._stop_event.wait(self.next_refresh_delay()):
                 break
+
+    def next_refresh_delay(self, *, now: float | None = None) -> float:
+        """Wait only until the earliest character is due, including after app restart."""
+        settings = self._settings_snapshot()
+        interval = self._refresh_interval(settings)
+        current = time.time() if now is None else float(now)
+        remaining = []
+        with self._lock:
+            for character_id in ("mika", "ren"):
+                entry = self._state["characters"].get(character_id, {})
+                try:
+                    last_attempt = float(entry.get("last_attempt_at") or 0)
+                except (TypeError, ValueError, OverflowError):
+                    last_attempt = 0
+                remaining.append(max(0.0, last_attempt + interval - current) if last_attempt > 0 else 0.0)
+        return min(remaining) if remaining else interval
 
     def stop(self) -> None:
         """Request a graceful stop without blocking Qt shutdown on a network timeout."""

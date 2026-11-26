@@ -162,6 +162,18 @@ def test_news_domains_do_not_cross_between_mika_and_ren(tmp_path):
     assert not service.covers_query("ren", "نرخ دلار چنده؟", now=now)
 
 
+
+
+def test_refresh_scheduler_waits_only_for_remaining_interval_after_restart(tmp_path):
+    service = WeeklyNewsMemoryService(lambda: {}, tmp_path, search_fn=lambda *_: {})
+    now = datetime.now(timezone.utc).timestamp()
+    interval = 6 * 3600
+    service._state["characters"]["mika"]["last_attempt_at"] = now
+    service._state["characters"]["ren"]["last_attempt_at"] = now
+    assert service.next_refresh_delay(now=now + 3600) == interval - 3600
+    assert service.next_refresh_delay(now=now + interval + 1) == 0
+
+
 def test_automatic_search_uses_cached_news_but_explicit_web_still_wins(monkeypatch):
     service = WebSearchApplicationService()
     monkeypatch.setattr(websearch, "plan", lambda text: ("latest medical science", False))
