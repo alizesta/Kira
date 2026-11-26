@@ -75,26 +75,39 @@ QFrame#chatCard, QFrame#conversationSidebar {
 }
 QListWidget#conversationList {
     background: transparent; alternate-background-color: transparent; color: #EAF2FF;
-    border: none; outline: none; padding: 2px;
+    border: none; outline: none; padding: 0px;
 }
 QListWidget#conversationList::item { background: transparent; border: none; padding: 0px; }
 QListWidget#conversationList::item:selected { background: transparent; color: #FFFFFF; }
-QWidget#conversationRow { background: transparent; border: none; }
-QLabel#conversationListTitle { color: #EAF2FF; font-weight: 700; padding: 3px 5px; }
-QWidget#conversationRow { background: transparent; border: none; }
-QPushButton#conversationOpenButton {
-    background: transparent; border: none; border-radius: 0px;
-    padding: 2px 4px; color: #EAF2FF; text-align: right; font-size: 9pt;
+QWidget#conversationRow { background: transparent; border: none; border-radius: 10px; }
+QWidget#conversationRow[active="true"] {
+    background: rgba(255,255,255,0.10); border: none; border-radius: 10px;
 }
-QPushButton#conversationOpenButton:hover {
-    background: rgba(140,99,255,0.12); border: none; color: #FFFFFF;
+QWidget#conversationRow:hover {
+    background: rgba(255,255,255,0.055); border: none; border-radius: 10px;
+}
+QLabel#conversationListTitle { color: #EAF2FF; font-weight: 700; padding: 3px 5px; }
+QPushButton#conversationOpenButton {
+    background: transparent; border: none; border-radius: 8px;
+    padding: 1px 6px; color: #C5C7CE; text-align: right; font-size: 8.5pt;
+}
+QPushButton#conversationOpenButton:hover,
+QWidget#conversationRow[active="true"] QPushButton#conversationOpenButton {
+    background: transparent; border: none; color: #FFFFFF;
 }
 QToolButton#conversationMenuButton {
-    background: transparent; border: none; border-radius: 5px;
-    padding: 0px; color: #C8D4F0; font-size: 15pt;
+    background: transparent; border: none; border-radius: 8px;
+    padding: 0px; color: #D0D2D8; font-size: 14pt;
 }
-QToolButton#conversationMenuButton:hover {
-    background: rgba(53,217,242,0.14); border: none; color: #FFFFFF;
+QToolButton#conversationMenuButton:hover,
+QWidget#conversationRow[active="true"] QToolButton#conversationMenuButton {
+    background: rgba(255,255,255,0.10); border: none; color: #FFFFFF;
+}
+QToolButton#conversationPinIndicator {
+    background: transparent; border: none; border-radius: 7px; padding: 0px;
+}
+QToolButton#conversationPinIndicator:hover {
+    background: rgba(255,255,255,0.08); border: none;
 }
 QFrame#composer {
     background: rgba(140,99,255,0.08); border: 1px solid rgba(140,99,255,0.72); border-radius: 16px;
