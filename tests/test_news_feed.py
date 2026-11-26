@@ -155,6 +155,9 @@ class NewsFeedTests(unittest.TestCase):
         self.assertFalse(news_feed.can_answer_from_feed(
             "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now, db_path=self.db
         ))
+        self.assertFalse(news_feed.can_answer_from_feed(
+            "ren", "latest NASA rocket launch news", {}, now=self.now, db_path=self.db
+        ))
 
     def test_ren_generates_source_bound_fundamental_analysis_and_expires_it(self):
         class FakeRouter:
@@ -194,6 +197,13 @@ class NewsFeedTests(unittest.TestCase):
         context = news_feed.build_context("ren", "news", {}, now=self.now, db_path=self.db)
         self.assertIn("تحلیل بنیادی تولیدشده", context)
         self.assertIn("اثر احتمالی بر حاشیه سود", context)
+        self.assertNotIn(
+            "اثر احتمالی بر حاشیه سود",
+            news_feed.build_context(
+                "mika", "hello", {"health_news_region": "Test City, Testland"},
+                now=self.now, db_path=self.db
+            ),
+        )
 
         expired = news_feed.get_refresh_state(
             "ren",
