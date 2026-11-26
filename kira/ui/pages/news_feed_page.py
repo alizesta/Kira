@@ -17,7 +17,7 @@ class NewsFeedPage(QWidget):
     refresh_requested = Signal(str)
     region_confirm_requested = Signal(str)
     location_detection_requested = Signal()
-    location_suggestion_ready = Signal(str, str, str)
+    location_suggestion_ready = Signal(str, str, str, str)
 
     def __init__(self, service, settings: dict, parent=None):
         super().__init__(parent)
@@ -48,6 +48,7 @@ class NewsFeedPage(QWidget):
         root.addWidget(self.status_label)
 
         region_box = QGroupBox("موقعیت میکا برای هشدارهای سلامت محلی")
+        self.region_box = region_box
         region_layout = QVBoxLayout(region_box)
         region_row = QHBoxLayout()
         self.region_edit = QLineEdit()
@@ -64,6 +65,7 @@ class NewsFeedPage(QWidget):
         self.region_status.setWordWrap(True)
         region_layout.addWidget(self.region_status)
         root.addWidget(region_box)
+        self.region_box.hide()
 
         self.feed_browser = QTextBrowser()
         self.feed_browser.setOpenExternalLinks(True)
@@ -87,13 +89,14 @@ class NewsFeedPage(QWidget):
             self.region_status.setText(f"موقعیت تأییدشده و ذخیره‌شده: {city}, {country}")
         else:
             self.region_status.setText(
-                "موقعیت هنوز تأیید نشده است؛ پیشنهاد IP فقط برای انتخاب اولیه است و تا تأیید تو هشدار محلی فعال نمی‌شود."
+                "ابتدا موقعیت دستگاه با مجوز سیستم بررسی می‌شود؛ اگر در دسترس نباشد، IP فقط پیشنهاد اولیه می‌دهد. تا تأیید تو هشدار محلی فعال نمی‌شود."
             )
 
     def _select_character(self, index: int):
         ids = ("kira", "ren", "mika")
         if 0 <= index < len(ids):
             self._character_id = ids[index]
+            self.region_box.setVisible(self._character_id == "mika")
             self.refresh_view()
 
     def current_character_id(self) -> str:
@@ -107,17 +110,18 @@ class NewsFeedPage(QWidget):
         if character_id == self._character_id:
             self.status_label.setText("در حال دریافت و ذخیرهٔ خبرهای همین شخصیت…")
 
-    def apply_location_suggestion(self, city: str, country: str, error: str):
+    def apply_location_suggestion(self, city: str, country: str, source: str, error: str):
         self.detect_button.setEnabled(True)
         region = self._settings.get("news_health_region") or {}
         if city and country and not (isinstance(region, dict) and region.get("confirmed") is True):
             self.region_edit.setText(f"{city}, {country}")
+            source_label = "موقعیت دستگاه (GPS)" if source == "device_gps" else "موقعیت تقریبی IP"
             self.region_status.setText(
-                f"پیشنهاد تقریبی براساس IP: {city}, {country} — هنوز تأیید نشده؛ برای ذخیره روی «تأیید و ذخیره» بزن."
+                f"پیشنهاد {source_label}: {city}, {country} — هنوز تأیید نشده؛ برای ذخیره روی «تأیید و ذخیره» بزن."
             )
         elif error and not (isinstance(region, dict) and region.get("confirmed") is True):
             self.region_status.setText(
-                "موقعیت تقریبی از IP دریافت نشد. شهر و کشور را دستی وارد کن؛ بدون تأیید، هشدار محلی میکا فعال نمی‌شود."
+                "موقعیت دستگاه و IP دریافت نشد. شهر و کشور را دستی وارد کن؛ بدون تأیید، هشدار محلی میکا فعال نمی‌شود."
             )
 
     def set_region_confirmed(self, city: str, country: str):
