@@ -1009,6 +1009,7 @@ class SessionController(WindowFeatureController):
         except Exception:                               # noqa: BLE001 - never block switching tabs
             _log.debug("Could not activate character mood runtime", exc_info=True)
         self.context.views.chat_stack.setCurrentWidget(sess.view)
+        self.feature_controller("voice_settings").set_news_character(cid)
         if old is not sess:
             self.context.views.input.setText(sess.draft)
         self.apply_chat_theme()
