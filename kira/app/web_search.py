@@ -50,6 +50,11 @@ class WebSearchApplicationService:
         return cls.MISSING_KEY_MESSAGE
 
     @staticmethod
+    def explicit_no_web(text: str) -> bool:
+        """Whether the current user message explicitly forbids internet lookup."""
+        return websearch.explicit_no_web(text)
+
+    @staticmethod
     def can_search(settings: Mapping[str, Any]) -> bool:
         return bool(str(settings.get("tavily_api_key", "")).strip() or settings.get("web_fallback", True))
 
