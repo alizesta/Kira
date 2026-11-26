@@ -113,6 +113,7 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("display_label = label if len(label) <= 19", self.refresh)
         self.assertIn('pin_button.setObjectName("conversationPinIndicator")', self.refresh)
         self.assertIn('more_button.setFixedSize(26, 26)', self.refresh)
+        self.assertTrue((ROOT / "assets" / "icons" / "pin.svg").is_file())
         theme = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
         self.assertIn("QFrame#chatCard, QFrame#conversationSidebar", theme)
         self.assertIn("background: transparent; border: none; border-radius: 0px;", theme)
