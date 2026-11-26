@@ -24,7 +24,7 @@ from .main_window_voice_settings_support import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QInputDialog,
-        QListWidget,
+    QListWidget,
     QLabel,
     QMessageBox,
     QSizePolicy,
@@ -113,12 +113,11 @@ class VoiceSettingsController(WindowFeatureController):
         # independent; this list switches durable conversations within the selected character.
         conversation_sidebar = QFrame(chat_card)
         conversation_sidebar.setObjectName("conversationSidebar")
-        conversation_sidebar.setMinimumWidth(150)
-        conversation_sidebar.setMaximumWidth(210)
-        conversation_sidebar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        conversation_sidebar.setFixedWidth(154)
+        conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
-        sidebar_layout.setContentsMargins(4, 4, 4, 4)
-        sidebar_layout.setSpacing(6)
+        sidebar_layout.setContentsMargins(2, 4, 2, 4)
+        sidebar_layout.setSpacing(5)
         lang = self.context.services.settings.get("ui_lang", "en")
         self.context.views.conversation_list_title = QLabel(
             "مکالمه‌ها" if lang == "fa" else "Conversations",
@@ -128,21 +127,20 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout.addWidget(self.context.views.conversation_list_title)
         self.context.views.conversation_list = QListWidget(conversation_sidebar)
         self.context.views.conversation_list.setObjectName("conversationList")
-        self.context.views.conversation_list.setMinimumWidth(135)
+        self.context.views.conversation_list.setMinimumWidth(0)
         self.context.views.conversation_list.setAlternatingRowColors(True)
-        self.context.views.conversation_list.setSpacing(3)
-        self.context.views.conversation_list.setWordWrap(True)
-        self.context.views.conversation_list.itemClicked.connect(
-            lambda item: self.feature_controller("session").switch_conversation(
-                item.data(Qt.UserRole)
-            )
-        )
+        self.context.views.conversation_list.setSpacing(2)
+        self.context.views.conversation_list.setWordWrap(False)
         sidebar_layout.addWidget(self.context.views.conversation_list, 1)
 
         conversation_row = QHBoxLayout()
+        conversation_row.setDirection(QHBoxLayout.LeftToRight)
         conversation_row.setContentsMargins(0, 0, 0, 0)
         conversation_row.setSpacing(8)
         self.context.views.chat_stack = QStackedWidget()  # one live view per character
+        self.context.views.chat_stack.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         conversation_row.addWidget(conversation_sidebar, 0)
         conversation_row.addWidget(self.context.views.chat_stack, 1)
         cv.addLayout(conversation_row, 1)
