@@ -78,21 +78,22 @@ QListWidget#conversationList {
     border: none; outline: none; padding: 2px;
 }
 QListWidget#conversationList::item { background: transparent; border: none; padding: 0px; }
-QListWidget#conversationList::item:selected { background: rgba(140,99,255,0.18); border-radius: 8px; }
+QListWidget#conversationList::item:selected { background: transparent; color: #FFFFFF; }
 QLabel#conversationListTitle { color: #EAF2FF; font-weight: 700; padding: 3px 5px; }
+QWidget#conversationRow { background: transparent; border: none; }
 QPushButton#conversationOpenButton {
-    background: rgba(140,99,255,0.14); border: 1px solid rgba(140,99,255,0.34);
-    border-radius: 7px; padding: 2px 5px; color: #FFFFFF; text-align: right; font-size: 9pt;
+    background: transparent; border: none; border-radius: 0px;
+    padding: 2px 4px; color: #EAF2FF; text-align: right; font-size: 9pt;
 }
 QPushButton#conversationOpenButton:hover {
-    background: rgba(140,99,255,0.28); border: 1px solid rgba(53,217,242,0.65);
+    background: rgba(140,99,255,0.12); border: none; color: #FFFFFF;
 }
-QPushButton#conversationDeleteButton {
-    background: rgba(255,105,155,0.12); border: 1px solid rgba(255,145,185,0.52);
-    border-radius: 6px; padding: 0px; color: #FFE5EF;
+QToolButton#conversationMenuButton {
+    background: transparent; border: none; border-radius: 5px;
+    padding: 0px; color: #C8D4F0; font-size: 15pt;
 }
-QPushButton#conversationDeleteButton:hover {
-    background: rgba(255,105,155,0.28); border: 1px solid #FFB5CF;
+QToolButton#conversationMenuButton:hover {
+    background: rgba(53,217,242,0.14); border: none; color: #FFFFFF;
 }
 QFrame#composer {
     background: rgba(140,99,255,0.08); border: 1px solid rgba(140,99,255,0.72); border-radius: 16px;
