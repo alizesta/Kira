@@ -161,6 +161,17 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("self.expand_btn.toggled.connect(self._set_input_expanded)", self.composer_source)
         self.assertIn('self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")', self.composer_source)
 
+    def test_chat_input_has_a_distinct_character_tinted_surface(self):
+        theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
+        start = theme_source.index("def character_style(")
+        style = theme_source[start:]
+        self.assertIn("QPlainTextEdit#chatInput {{", style)
+        self.assertIn("background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});", style)
+        self.assertIn("border: 1px solid rgba({mr},{mg},{mb},0.30);", style)
+        self.assertIn("QPlainTextEdit#chatInput:hover {{", style)
+        self.assertIn("QPlainTextEdit#chatInput:focus {{", style)
+        self.assertNotIn("QPlainTextEdit#chatInput {{\\n    background: transparent;", style)
+
     def test_chat_surfaces_share_the_avatar_background_without_frames(self):
         self.assertIn('page.setObjectName("chatPage")', self.builder)
         self.assertIn("body.setSpacing(0)", self.builder)
