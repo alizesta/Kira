@@ -83,6 +83,8 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn('record.get("character_id")', self.switch)
         self.assertIn('record.get("status")', self.switch)
         self.assertIn('not in ("active", "closed")', self.switch)
+        self.assertIn("service.message_count(session.cid, target_id)", self.switch)
+        self.assertIn("service.get_messages(", self.switch)
         self.assertIn("conversation_id=target_id", self.switch)
         self.assertIn("session.conversation_id = target_id", self.switch)
         self.assertIn("service.pending_count(session.session_id)", self.switch)
