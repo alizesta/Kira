@@ -19,7 +19,8 @@ CHARACTER_IDS = ("kira", "ren", "mika")
 
 CHARACTER_QUERIES = {
     "kira": (
-        ("gaming_industry", "video game industry game studios publishers releases PC and console games gaming hardware GPU CPU technology news last 7 days"),
+        ("gaming_industry", "video game industry studios publishers development PC console games releases launch dates game industry news last 7 days"),
+        ("gaming_hardware", "PC gaming hardware GPU CPU graphics cards gaming monitors consoles gaming peripherals technology news last 7 days"),
     ),
     "ren": (
         ("economy_markets", "economy macroeconomics central banks inflation interest rates stock markets forex exchange rates fundamental analysis market news last 7 days"),
@@ -334,8 +335,8 @@ class NewsFeedService:
 
     def _schedule_loop(self) -> None:
         self.refresh_due()
-        while not self._stop.wait(self._interval_seconds()):
-            self.refresh_all_async()
+        while not self._stop.wait(min(self._interval_seconds(), 1800)):
+            self.refresh_due()
 
     def refresh_due(self) -> None:
         now, interval = time.time(), self._interval_seconds()
