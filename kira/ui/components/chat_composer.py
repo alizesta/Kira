@@ -85,6 +85,7 @@ class ChatComposer(QFrame):
         super().__init__(parent)
         self.setObjectName("composer")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setMinimumWidth(0)
         self._owner = owner
 
         co = QVBoxLayout(self)
