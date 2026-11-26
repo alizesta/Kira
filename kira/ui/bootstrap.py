@@ -205,6 +205,8 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             transfer_file_port = LocalChatTransferFileAdapter()
 
         settings = load_settings()
+        from ..weekly_news_memory import WeeklyNewsMemoryService
+        weekly_news_memory_service = WeeklyNewsMemoryService(lambda: settings, DATA_DIR)
         mark_phase("settings_loaded")
         container = DependencyContainer()
         event_bus = EventBus()
@@ -301,6 +303,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             initiative_application_service_factory=container.resolve("initiative_application_service_factory"),
             brain_application_service=container.resolve("brain_application_service"),
             reflection_application_service=container.resolve("reflection_application_service"),
+            weekly_news_memory_service=weekly_news_memory_service,
             web_search_service=container.resolve("web_search_service"),
             shared_skills_application_service=container.resolve("shared_skills_application_service"),
             conversation_organization_application_service=container.resolve(
@@ -322,6 +325,8 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             console_log_capture=console_log_capture,
         )
         mark_phase("window_composed")
+        app.aboutToQuit.connect(weekly_news_memory_service.stop)
+        weekly_news_memory_service.start()
     except Exception:
         if "module_manager" in locals():
             module_manager.shutdown()

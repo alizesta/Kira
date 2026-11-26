@@ -293,11 +293,29 @@ class ChatController(WindowFeatureController):
             packed["display"] if packed else original_text,
             images=attachments if packed else None,
         )
-        self.context.session._tool_plan = (
+        weekly_news_service = getattr(self.context.services, "weekly_news_memory_service", None)
+        cached_news = False
+        if not (command_dispatch.handled and not command_dispatch.continue_chat) and weekly_news_service is not None:
+            try:
+                cached_news = weekly_news_service.covers_query(self.context.state.cur.cid, text)
+            except Exception:  # noqa: BLE001 - cache failures must fall back to the normal web policy
+                cached_news = False
+        tool_plan = (
             None
             if command_dispatch.handled and not command_dispatch.continue_chat
             else self.context.services.tool_agent.plan(text, session_id=self.context.state.cur.cid)
         )
+        if cached_news and tool_plan is not None:
+            # A matching fresh news snapshot makes the automatic web tool redundant.
+            tool_plan.categories = set(tool_plan.categories or ()) - {"web"}
+            if tool_plan.schema_categories is not None:
+                tool_plan.schema_categories = set(tool_plan.schema_categories) - {"web"}
+            if isinstance(tool_plan.fast_call, dict) and tool_plan.fast_call.get("category") == "web":
+                tool_plan.fast_call = None
+            tool_plan.web = False
+            if not tool_plan.categories and not tool_plan.fast_call:
+                tool_plan = None
+        self.context.session._tool_plan = tool_plan
         self.feature_controller("runtime").save_message("user", packed["stored"] if packed else original_text)
         if command_dispatch.handled and not command_dispatch.continue_chat:
             self.feature_controller("runtime").reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
@@ -319,7 +337,8 @@ class ChatController(WindowFeatureController):
             self.begin_image_search(text, packed, packed["images"])
             return
         query, forced = self.context.services.web_search_service.plan_request(
-            text, self.context.services.settings, self.context.session._tool_plan, force_web=force_web
+            text, self.context.services.settings, self.context.session._tool_plan,
+            force_web=force_web, cached_news=cached_news
         )
         if query:
             self.begin_web_search(query, packed if packed else text, packed["images"] if packed else [])
@@ -572,6 +591,20 @@ class ChatController(WindowFeatureController):
             self.context.session._brain = self.context.services.brain_application_service.default_decision()
 
         character_layer = self.context.services.character_service.prompt_for(self.context.services.settings)
+        try:
+            weekly_news_service = getattr(self.context.services, "weekly_news_memory_service", None)
+            news_block = (
+                weekly_news_service.prompt_block(
+                    self.context.state.cur.cid, latest_user_text(history)
+                )
+                if weekly_news_service is not None else ""
+            )
+        except Exception:  # noqa: BLE001 - optional news context must never block a chat reply
+            news_block = ""
+        if news_block:
+            character_layer = "\n\n".join(
+                part for part in (str(character_layer or "").strip(), news_block.strip()) if part
+            )
         body_context = ""
         if self.feature_controller("runtime").body_active():                                    # preserve existing 3D body instruction and completed-action note
             body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self.context.session._body_done)

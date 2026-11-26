@@ -101,6 +101,7 @@ class WebSearchApplicationService:
         tool_plan: Any | None = None,
         *,
         force_web: bool = False,
+        cached_news: bool = False,
     ) -> tuple[str | None, bool]:
         """Choose whether a Chat turn should use one-shot Web Search.
 
@@ -121,6 +122,11 @@ class WebSearchApplicationService:
             return user_text.strip()[:300], True
 
         query, forced = websearch.plan(user_text)
+
+        # A fresh character-scoped news snapshot already covers this question.
+        # Explicit /web and forced requests still take the live search path above.
+        if query and cached_news and not forced:
+            return None, False
 
         if query and not forced and tool_plan is not None:
             if getattr(tool_plan, "strong", False) or getattr(tool_plan, "web", False):

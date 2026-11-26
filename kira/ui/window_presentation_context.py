@@ -106,6 +106,7 @@ SERVICE_FIELDS = frozenset({
     "vision_router",
     "voice_application_service",
     "web_search_service",
+    "weekly_news_memory_service",
 })
 
 ADAPTER_FIELDS = frozenset({
@@ -370,7 +371,7 @@ CONTROLLER_ACCESS = {
  },
  "chat": {
   "state": frozenset({"_closing","_game_mode_enabled","_save_warned","_web_test_worker","cur","sessions","front"}),
-  "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service","vision_application_service"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service","weekly_news_memory_service","vision_application_service"}),
   "adapters": frozenset({"animator","director","bubble"}),
   "views": frozenset({"gen_stop_btn","img_search_btn","input","search_btn","screen_capture_btn","status","tavily_key","web_btn","web_depth","web_test_btn","code_chat","kode_activity"}),
   "peers": frozenset({"session","runtime","attachments_vision","chat"}),

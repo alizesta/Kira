@@ -36,6 +36,7 @@ def initialize_main_window(
     initiative_application_service_factory=None,
     brain_application_service=None,
     reflection_application_service=None,
+    weekly_news_memory_service=None,
     console_log_capture=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
@@ -127,6 +128,7 @@ def initialize_main_window(
     )
     self.services.brain_application_service = brain_application_service
     self.services.reflection_application_service = reflection_application_service
+    self.services.weekly_news_memory_service = weekly_news_memory_service
     self.services.web_search_service = web_search_service
     self.services.game_mode_application_service = game_mode_application_service
     self.services.settings = settings

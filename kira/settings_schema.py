@@ -20,6 +20,8 @@ DEFAULTS = {
     "persona": "",
     "temperature": 0.7,
     "web_search": True,                  # Kira may search the web when a message needs current information
+    "weekly_news_memory_enabled": True,  # background, character-scoped seven-day news memory for Mika and Ren
+    "weekly_news_refresh_hours": 6,      # background refresh interval (1-24 hours)
     "image_search": False,               # a picture sent to Kira is also searched on the web (Gemini sees it; Tavily / DuckDuckGo use a text query made from it)
     "web_fallback": True,                # Tavily fails -> Google (Gemini) -> DuckDuckGo
     "tavily_api_key": "",                # web search engine key (https://tavily.com, free plan)
