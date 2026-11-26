@@ -358,7 +358,7 @@ def fundamental_lens(category: str) -> str:
 
 
 _NEWS_INTENT = re.compile(
-    r"(خبر|اخبار|تازه.?ترین|آخرین|تحولات|چه خبر|چه خبره|وضعیت بازار|news|latest|breaking|headlines|updates)",
+    r"(خبر|اخبار|تازه.?ترین|آخرین|تحولات|چه خبر|چه خبره|وضعیت بازار|این هفته|هفته.? اخیر|امروز|news|latest|today|recent|breaking|headlines|updates)",
     re.I,
 )
 _LIVE_VALUE = re.compile(
@@ -388,7 +388,8 @@ def can_answer_from_feed(
     )
     # An unknown publication date is useful as a lead, but it cannot prove that
     # a stored story is recent enough to replace a fresh search.
-    if not any(item.get("published_ts") for item in items):
+    items = [item for item in items if item.get("published_ts")]
+    if not items:
         return False
     tokens = {
         token for token in re.findall(r"[\w\u0600-\u06ff]{3,}", str(query or "").lower())
@@ -416,8 +417,11 @@ def build_context(
     settings = settings or {}
     region = str(settings.get("health_news_region") or "").strip()
     items = get_items(
-        character_id, region=region, limit=MAX_CONTEXT_ITEMS, now=now, db_path=db_path
+        character_id, region=region, limit=MAX_ITEMS_PER_CHARACTER, now=now, db_path=db_path
     )
+    # Stories without publication dates stay visible in the feed but are not
+    # promoted into the assistant's recent factual context.
+    items = [item for item in items if item.get("published_ts")][:MAX_CONTEXT_ITEMS]
     if not items and not (character_id == "mika" and region):
         return ""
     name = CHARACTER_LABELS.get(character_id, character_id)
