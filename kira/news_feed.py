@@ -159,6 +159,12 @@ def _official_health_source(url: str) -> bool:
         ".who.int", ".ecdc.europa.eu", ".cdc.gov", ".rki.de", ".nhs.uk",
     )):
         return True
+    government_suffixes = (
+        ".gov", ".gov.ir", ".gov.uk", ".gov.au", ".gov.in",
+        ".gov.br", ".govt.nz", ".gouv.fr",
+    )
+    if not host.endswith(government_suffixes):
+        return False
     health_authority_markers = (
         "health", "behdasht", "gesundheit", "sante", "publichealth",
         "public-health", "ukha", "ukhsa", "cdc",
