@@ -668,7 +668,7 @@ def build_context(
                 float(state.get("analysis_at") or now or time.time()), tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M UTC")
             lines.append(
-                f"[تحلیل بنیادی با Route پیکربندی‌شدهٔ Kira؛ {analyzed_at} — برداشت تحلیلی، نه واقعیت خبر]"
+                f"[تحلیل بنیادی تولیدشده با Route پیکربندی‌شدهٔ Kira؛ {analyzed_at} — برداشت تحلیلی، نه واقعیت خبر]"
             )
             lines.append(str(state["analysis"])[:6000])
     for index, item in enumerate(items, 1):
