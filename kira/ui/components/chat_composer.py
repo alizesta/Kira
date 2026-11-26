@@ -278,6 +278,9 @@ class ChatComposer(QFrame):
         self.expand_btn.setIcon(
             self._collapse_icon if expanded else self._expand_icon
         )
+        self.expand_btn.setAccessibleName(
+            "Collapse message editor" if expanded else "Expand message editor"
+        )
         self.expand_btn.setToolTip(
             "جمع کردن کادر نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
         )
