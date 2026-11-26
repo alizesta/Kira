@@ -17,6 +17,7 @@ from uuid import uuid4
 # name -> default factory. Everything a single request / conversation needs lives here.
 SESSION_FIELDS = {
     "busy": lambda: False,
+    "_conversation_drafts": lambda: {},
     "worker": lambda: None,
     "_stream_text": lambda: "",
     "_stream_pos": lambda: None,
