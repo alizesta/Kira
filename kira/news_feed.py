@@ -5,12 +5,11 @@ independent feed; expired items are removed on read and after every refresh.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 import sqlite3
 import time
-from datetime import date, datetime, time as day_time, timezone
+from datetime import datetime, time as day_time, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -31,7 +30,7 @@ CHARACTER_LABELS = {
 }
 
 # Queries deliberately keep gaming separate from Ren's technology/economy feed.
-def _queries(character_id: str, region: str) -> tuple[tuple[str, str, str], ...]:
+def _queries(character_id: str, region: str) -> tuple[tuple[str, str, str, str], ...]:
     if character_id == "mika":
         local = (
             f'"{region}" public health disease outbreak epidemic alert health ministry latest news past 7 days'
@@ -148,21 +147,23 @@ def _published(value: str) -> tuple[str, float | None]:
 
 
 def _official_health_source(url: str) -> bool:
+    """Recognize health authorities, not every site that happens to use a government TLD."""
     host = _source_name(url)
     if not host:
         return False
-    exact = {
-        "who.int", "www.who.int", "ecdc.europa.eu", "www.ecdc.europa.eu",
-        "cdc.gov", "www.cdc.gov", "rki.de", "www.rki.de",
-        "health.gov", "www.health.gov", "health.gov.uk", "www.gov.uk",
+    trusted_domains = {
+        "who.int", "ecdc.europa.eu", "cdc.gov", "rki.de", "nhs.uk",
+        "health.gov", "health.gov.uk",
     }
-    if host in exact:
+    if host in trusted_domains or host.endswith((
+        ".who.int", ".ecdc.europa.eu", ".cdc.gov", ".rki.de", ".nhs.uk",
+    )):
         return True
-    return host.endswith((
-        ".gov", ".gov.uk", ".gov.de", ".gov.ir", ".gov.au", ".gov.in",
-        ".gov.br", ".govt.nz", ".gouv.fr", ".europa.eu", ".who.int",
-        ".cdc.gov", ".rki.de", ".nhs.uk", ".canada.ca",
-    ))
+    health_authority_markers = (
+        "health", "behdasht", "gesundheit", "sante", "publichealth",
+        "public-health", "ukha", "ukhsa", "cdc",
+    )
+    return any(marker in host for marker in health_authority_markers)
 
 
 def _gemini_credentials(settings: dict) -> tuple[str, str] | None:
