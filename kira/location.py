@@ -18,7 +18,7 @@ REVERSE_GEOCODE_URL = "https://nominatim.openstreetmap.org/reverse"
 _TIMEOUT = (2.5, 5.0)
 
 
-def request_windows_location_permission(on_result) -> bool:
+def request_windows_location_permission(on_result):
     """Start Windows' native permission prompt on the calling UI thread.
 
     The returned WinRT operation is retained by the caller. Completion is
@@ -46,8 +46,9 @@ def request_windows_location_permission(on_result) -> bool:
     try:
         operation.completed = completed
     except (AttributeError, TypeError, RuntimeError):
-        return False
-    return True
+        return None
+    # Retain the WinRT async operation until its completion callback fires.
+    return operation
 
 
 def detect_windows_region(*, reverse_requester=None) -> dict | None:
