@@ -316,6 +316,7 @@ def refresh_character(
     now: float | None = None,
     db_path: str | Path | None = None,
     search_fn=None,
+    enrich_fn=None,
 ) -> dict:
     """Fetch and persist one character's feed without touching any other character."""
     character_id = _safe_character_id(character_id)
@@ -324,6 +325,9 @@ def refresh_character(
         return {"character_id": character_id, "added": 0, "errors": ["شخصیت برای فید خبری تعریف نشده است."]}
     now = time.time() if now is None else float(now)
     search_fn = search_fn or (lambda query: _search(settings, query))
+    enrich_fn = enrich_fn or (
+        lambda item, category, cid: _enrich_result(item, settings, category, cid)
+    )
     initialize(db_path)
     added = 0
     errors = []
@@ -336,7 +340,7 @@ def refresh_character(
                 for item in results:
                     if not isinstance(item, dict):
                         continue
-                    enriched = _enrich_result(item, settings, category, character_id)
+                    enriched = enrich_fn(item, category, character_id)
                     added += int(_insert_result(
                         conn, character_id, category, label, item_region,
                         enriched, engine, now,
