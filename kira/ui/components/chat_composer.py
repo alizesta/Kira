@@ -101,8 +101,9 @@ class ChatComposer(QFrame):
         input_tools_row = QHBoxLayout()
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
-        input_tools_row.setDirection(QHBoxLayout.LeftToRight)
-        input_tools_row.addStretch(1)
+        # Keep the expand/collapse control pinned to the physical right edge,
+        # including when the application is using an RTL layout.
+        input_tools_row.setDirection(QHBoxLayout.RightToLeft)
         self.expand_btn = QToolButton(self)
         self.expand_btn.setObjectName("expandInputBtn")
         self.expand_btn.setProperty("kiraIconName", "expand")
@@ -119,6 +120,7 @@ class ChatComposer(QFrame):
         self.expand_btn.setToolTip("باز کردن فضای بزرگ‌تر برای نوشتن")
         self.expand_btn.toggled.connect(self._set_input_expanded)
         input_tools_row.addWidget(self.expand_btn)
+        input_tools_row.addStretch(1)
         co.addLayout(input_tools_row)
         co.addWidget(self.input)
 
