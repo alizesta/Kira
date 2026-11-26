@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBox
 
 
 class ChatInput(QPlainTextEdit):
-    """Compact multi-line message box: Enter sends, Shift+Enter inserts a new line, grows up to 5 lines.
+    """Compact message box: Enter sends, Shift+Enter adds lines, and EXPAND opens a larger draft area.
 
     Offers the small QLineEdit-style API the application already uses (text / setText / returnPressed).
     """
