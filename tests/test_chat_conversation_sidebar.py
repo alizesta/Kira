@@ -1,0 +1,107 @@
+"""Regression contracts for the durable conversation history sidebar.
+
+These checks are deliberately Qt-free: they protect the persistence and UI wiring
+without requiring a desktop display to be available in CI.
+"""
+import ast
+from pathlib import Path
+import unittest
+
+from kira.chat_sessions import ChatSession
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _method_source(path, class_name, method_name):
+    source = (ROOT / path).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    owner = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    method = next(
+        node for node in owner.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == method_name
+    )
+    return ast.get_source_segment(source, method)
+
+
+class ConversationSidebarTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.new_chat = _method_source(
+            "kira/ui/main_window_session.py", "SessionController", "new_chat"
+        )
+        cls.refresh = _method_source(
+            "kira/ui/main_window_session.py", "SessionController", "refresh_conversation_list"
+        )
+        cls.switch = _method_source(
+            "kira/ui/main_window_session.py", "SessionController", "switch_conversation"
+        )
+        cls.builder = _method_source(
+            "kira/ui/main_window_voice_settings.py",
+            "VoiceSettingsController",
+            "build_chat_tab",
+        )
+        cls.context = (
+            ROOT / "kira" / "ui" / "window_presentation_context.py"
+        ).read_text(encoding="utf-8")
+
+    def test_new_chat_creates_a_new_record_without_deleting_old_history(self):
+        self.assertIn("service.create_conversation(session.cid)", self.new_chat)
+        self.assertIn("session.conversation_id = str(conversation_id)", self.new_chat)
+        self.assertIn("self.refresh_conversation_list()", self.new_chat)
+        for destructive_operation in (
+            "delete_conversation(",
+            "permanently_delete_conversation(",
+            "clear_history(",
+            "clear_memory(",
+        ):
+            self.assertNotIn(destructive_operation, self.new_chat)
+
+    def test_sidebar_lists_durable_conversations_for_the_active_character(self):
+        self.assertIn("service.list_conversations(session.cid)", self.refresh)
+        self.assertIn("status", self.refresh)
+        self.assertIn("service.recent_messages(", self.refresh)
+        self.assertIn("conversation_id=conversation_id", self.refresh)
+        self.assertIn("item.setData(Qt.UserRole, conversation_id)", self.refresh)
+
+    def test_reopening_checks_ownership_and_reads_only_that_conversation(self):
+        self.assertIn("service.get_conversation(target_id)", self.switch)
+        self.assertIn('record.get("character_id")', self.switch)
+        self.assertIn('record.get("status")', self.switch)
+        self.assertIn("conversation_id=target_id", self.switch)
+        self.assertIn("session.conversation_id = target_id", self.switch)
+        self.assertIn("service.pending_count(session.session_id)", self.switch)
+        self.assertNotIn("delete_conversation(", self.switch)
+
+    def test_chat_page_contains_a_vertical_clickable_history_list(self):
+        self.assertIn("QVBoxLayout(conversation_sidebar)", self.builder)
+        self.assertIn("QListWidget(conversation_sidebar)", self.builder)
+        self.assertIn("conversation_list.itemClicked.connect", self.builder)
+        self.assertIn("switch_conversation(", self.builder)
+        self.assertIn("conversation_row.addWidget(conversation_sidebar", self.builder)
+        self.assertIn("conversation_row.addWidget(self.context.views.chat_stack", self.builder)
+
+    def test_sidebar_views_are_declared_and_granted_to_both_owners(self):
+        self.assertIn('"conversation_list"', self.context)
+        self.assertIn('"conversation_list_title"', self.context)
+        session_access = self.context.split('"session": {', 1)[1].split('"lifecycle": {', 1)[0]
+        voice_access = self.context.split('"voice_settings": {', 1)[1].split('\n }', 1)[0]
+        self.assertIn('"conversation_list"', session_access)
+        self.assertIn('"conversation_list_title"', session_access)
+        self.assertIn('"conversation_list"', voice_access)
+        self.assertIn('"conversation_list_title"', voice_access)
+
+    def test_conversation_drafts_are_isolated_per_character_session(self):
+        kira = ChatSession("kira")
+        ren = ChatSession("ren")
+        kira._conversation_drafts["conversation-a"] = "unsent draft"
+        self.assertEqual(kira._conversation_drafts["conversation-a"], "unsent draft")
+        self.assertEqual(ren._conversation_drafts, {})
+
+
+if __name__ == "__main__":
+    unittest.main()
