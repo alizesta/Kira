@@ -43,6 +43,9 @@ class ConversationSidebarTests(unittest.TestCase):
         cls.delete = _method_source(
             "kira/ui/main_window_session.py", "SessionController", "delete_conversation"
         )
+        cls.make_session_view = _method_source(
+            "kira/ui/main_window_session.py", "SessionController", "make_session_view"
+        )
         cls.builder = _method_source(
             "kira/ui/main_window_voice_settings.py",
             "VoiceSettingsController",
@@ -182,14 +185,33 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertNotIn("self.settings_btn", self.chat_header_source)
         self.assertNotIn("QPushButton", self.chat_header_source)
 
-    def test_expand_control_uses_two_diagonal_arrows_at_the_input_top_right(self):
-        icon = (ROOT / "assets" / "icons" / "expand.svg").read_text(encoding="utf-8")
-        self.assertIn('<path d="m15 3 6 0 0 6"/>', icon)
-        self.assertIn('<path d="m3 21 7-7"/>', icon)
-        self.assertEqual(icon.count("<path "), 4)
-        row = self.composer_source.split("input_tools_row = QHBoxLayout()", 1)[1].split("co.addWidget(self.input)", 1)[0]
-        self.assertIn("input_tools_row.setDirection(QHBoxLayout.RightToLeft)", row)
-        self.assertLess(row.index("input_tools_row.addWidget(self.expand_btn)"), row.index("input_tools_row.addStretch(1)"))
+    def test_expand_control_is_pinned_to_physical_right_in_rtl(self):
+        self.assertIn('input_tools_host.setLayoutDirection(Qt.LeftToRight)', self.composer_source)
+        row = self.composer_source.split("input_tools_row = QHBoxLayout(input_tools_host)", 1)[1].split("input_surface_layout.addWidget(input_tools_host)", 1)[0]
+        self.assertIn("input_tools_row.setDirection(QHBoxLayout.LeftToRight)", row)
+        self.assertLess(row.index("input_tools_row.addStretch(1)"), row.index("input_tools_row.addWidget(self.expand_btn"))
+        self.assertIn("Qt.AlignRight | Qt.AlignVCenter", row)
+
+    def test_collapse_icon_is_the_same_two_arrows_pointing_inward(self):
+        expand = (ROOT / "assets" / "icons" / "expand.svg").read_text(encoding="utf-8")
+        collapse = (ROOT / "assets" / "icons" / "collapse.svg").read_text(encoding="utf-8")
+        self.assertIn('<path d="M14 10 21 3"/>', expand)
+        self.assertIn('<path d="M10 14 3 21"/>', expand)
+        self.assertIn('<path d="M21 3 14 10"/>', collapse)
+        self.assertIn('<path d="M3 21 10 14"/>', collapse)
+        self.assertEqual(expand.count("<path "), 4)
+        self.assertEqual(collapse.count("<path "), 4)
+
+    def test_expanded_composer_reflows_history_instead_of_covering_it(self):
+        self.assertIn("parent.updateGeometry()", self.chat_input_source)
+        self.assertIn("layout.invalidate()", self.chat_input_source)
+        self.assertIn("layout.activate()", self.chat_input_source)
+        self.assertIn("self.context.views.chat_stack.setMinimumHeight(0)", self.builder)
+        self.assertIn("QSizePolicy.Expanding, QSizePolicy.Ignored", self.builder)
+        self.assertIn("cv.setStretch(1, 1)", self.builder)
+        self.assertIn("cv.setStretch(2, 0)", self.builder)
+        self.assertIn("view.setMinimumHeight(0)", self.make_session_view)
+        self.assertIn("QSizePolicy.Expanding, QSizePolicy.Ignored", self.make_session_view)
 
     def test_new_chat_button_is_above_the_history_list_and_uses_session_controller(self):
         button_add = self.builder.index("sidebar_layout.addWidget(self.context.views.new_chat_btn)")
