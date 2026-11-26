@@ -28,6 +28,7 @@ from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS, STA
 from .character.learning import detect_feedback
 from .character.traits import BASE_TRAITS
 from .character.text import normalize_detection_text
+from .character import repetition
 
 _log = logging.getLogger(__name__)
 
@@ -434,6 +435,10 @@ def on_reply(emotions, intensity=None, now=None, text=""):
         })
         _save(state)
     try:
+        repetition.record(_current_character_id(), text)
+    except Exception:  # noqa: BLE001 - a guard must never break replies
+        pass
+    try:
         _runtime_for().on_reply(emotions, intensity, now=now, text=text)
     except Exception:
         _log.warning("Unable to update reply mood", exc_info=True)
@@ -579,6 +584,14 @@ def avatar_hint(now=None):
 
 
 def build_block(mode_name="chat", now=None, query=None) -> str:
+    base = _build_block(mode_name, now, query)
+    if mode_name != "chat":
+        return base
+    extra = repetition.note(_current_character_id())
+    return f"{base}\n{extra}".strip() if extra else base
+
+
+def _build_block(mode_name="chat", now=None, query=None) -> str:
     _ensure_runtime_migration()
     """The structured runtime is authoritative; legacy rules add only situational guidance."""
     if mode_name == "strict":

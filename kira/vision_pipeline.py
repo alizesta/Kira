@@ -57,6 +57,8 @@ def refers_to_screen(question: str | None) -> bool:
     return any(hint in low for hint in SCREEN_HINTS)
 
 
+from .character.repetition import too_similar
+
 HIGHLIGHT_MARK = "[HIGHLIGHT]"
 
 
@@ -82,7 +84,7 @@ class HighlightGate:
         now = self._clock()
         self._sent = [t for t in self._sent if now - t < 3600]
         key = " ".join(str(comment or "").split()).casefold()
-        if not key or key in self._recent:
+        if not key or key in self._recent or any(too_similar(key, old) for old in self._recent):
             return False
         if self._sent and now - self._sent[-1] < self.min_interval:
             return False
