@@ -18,6 +18,7 @@ DEFAULTS = {
     "active_character_id": "kira",
     "health_news_region": "",             # user-confirmed city/region/country; never infer anew after confirmation
     "health_news_region_source": "",       # manual | ip_confirmed; the raw IP is never stored
+    "health_news_region_prompted": False,  # first-run prompt has been handled; user can edit region in Preferences
     "news_feed_enabled": True,
     "news_feed_interval_hours": 4,
     # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
