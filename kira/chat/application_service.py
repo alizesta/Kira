@@ -955,6 +955,9 @@ class ChatApplicationService:
     def get_conversation(self, conversation_id: str):
         return self._history.get_conversation(conversation_id)
 
+    def update_conversation(self, conversation_id: str, **changes):
+        return self._history.update_conversation(conversation_id, **changes)
+
     def create_conversation(
         self, character_id: str, title: str = "", metadata: Mapping[str, Any] | None = None
     ) -> dict[str, Any]:
