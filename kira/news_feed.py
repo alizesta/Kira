@@ -102,9 +102,22 @@ def initialize(db_path: str | Path | None = None) -> None:
                 character_id TEXT PRIMARY KEY,
                 refreshed_at REAL NOT NULL,
                 status TEXT NOT NULL DEFAULT '',
-                added INTEGER NOT NULL DEFAULT 0
+                added INTEGER NOT NULL DEFAULT 0,
+                analysis TEXT NOT NULL DEFAULT '',
+                analysis_at REAL,
+                analysis_expires_at REAL
             )
         """)
+        state_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(news_refresh_state)")
+        }
+        for column, definition in (
+            ("analysis", "TEXT NOT NULL DEFAULT ''"),
+            ("analysis_at", "REAL"),
+            ("analysis_expires_at", "REAL"),
+        ):
+            if column not in state_columns:
+                conn.execute(f"ALTER TABLE news_refresh_state ADD COLUMN {column} {definition}")
 
 
 def _safe_character_id(value: str) -> str:
@@ -323,6 +336,7 @@ def refresh_character(
     db_path: str | Path | None = None,
     search_fn=None,
     enrich_fn=None,
+    chat_client=None,
 ) -> dict:
     """Fetch and persist one character's feed without touching any other character."""
     character_id = _safe_character_id(character_id)
@@ -354,6 +368,26 @@ def refresh_character(
         except Exception as exc:  # one failed query must not discard other feed categories
             _LOG.warning("News refresh failed for %s/%s: %s", character_id, category, exc)
             errors.append(f"{label}: {str(exc)[:180]}")
+    analysis = ""
+    analysis_at = None
+    analysis_expires_at = None
+    if character_id == "ren" and chat_client is not None:
+        try:
+            candidates = [
+                item for item in get_items(
+                    "ren", limit=MAX_ITEMS_PER_CHARACTER, now=now, db_path=db_path
+                )
+                if item.get("published_ts")
+            ][:6]
+            if candidates:
+                analysis = _generate_ren_analysis(chat_client, candidates)
+                if analysis:
+                    analysis_at = now
+                    analysis_expires_at = min(float(item["expires_at"]) for item in candidates)
+        except Exception as exc:  # analysis is optional; sourced articles remain usable
+            _LOG.warning("Ren fundamental analysis failed: %s", type(exc).__name__)
+            errors.append("تحلیل بنیادی رن: " + str(exc)[:160])
+
     with _connect(db_path) as conn:
         conn.execute("DELETE FROM news_items WHERE expires_at <= ?", (now,))
         conn.execute("""
@@ -364,21 +398,56 @@ def refresh_character(
             )
         """, (character_id, character_id, MAX_ITEMS_PER_CHARACTER))
         conn.execute("""
-            INSERT INTO news_refresh_state(character_id, refreshed_at, status, added)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO news_refresh_state(
+                character_id, refreshed_at, status, added,
+                analysis, analysis_at, analysis_expires_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(character_id) DO UPDATE SET
                 refreshed_at=excluded.refreshed_at,
                 status=excluded.status,
-                added=excluded.added
-        """, (character_id, now, "partial" if errors else "ok", added))
+                added=excluded.added,
+                analysis=CASE
+                    WHEN excluded.analysis <> '' THEN excluded.analysis
+                    WHEN news_refresh_state.analysis_expires_at IS NOT NULL
+                         AND news_refresh_state.analysis_expires_at <= excluded.refreshed_at
+                    THEN ''
+                    ELSE news_refresh_state.analysis
+                END,
+                analysis_at=CASE
+                    WHEN excluded.analysis <> '' THEN excluded.analysis_at
+                    WHEN news_refresh_state.analysis_expires_at IS NOT NULL
+                         AND news_refresh_state.analysis_expires_at <= excluded.refreshed_at
+                    THEN NULL
+                    ELSE news_refresh_state.analysis_at
+                END,
+                analysis_expires_at=CASE
+                    WHEN excluded.analysis <> '' THEN excluded.analysis_expires_at
+                    WHEN news_refresh_state.analysis_expires_at IS NOT NULL
+                         AND news_refresh_state.analysis_expires_at <= excluded.refreshed_at
+                    THEN NULL
+                    ELSE news_refresh_state.analysis_expires_at
+                END
+        """, (
+            character_id, now, "partial" if errors else "ok", added,
+            analysis, analysis_at, analysis_expires_at,
+        ))
     return {"character_id": character_id, "added": added, "errors": errors}
 
 
-def refresh_all(settings: dict, *, now: float | None = None, db_path: str | Path | None = None) -> dict:
+def refresh_all(
+    settings: dict,
+    *,
+    now: float | None = None,
+    db_path: str | Path | None = None,
+    chat_client=None,
+) -> dict:
     """Refresh Mika, Ren, and Kira independently; never let one character's failure block another."""
     results = {}
     for character_id in ("mika", "ren", "kira"):
-        results[character_id] = refresh_character(character_id, settings, now=now, db_path=db_path)
+        results[character_id] = refresh_character(
+            character_id, settings, now=now, db_path=db_path, chat_client=chat_client
+        )
     return results
 
 
@@ -409,14 +478,54 @@ def get_items(
     return [dict(row) for row in rows]
 
 
-def get_refresh_state(character_id: str, *, db_path: str | Path | None = None) -> dict | None:
+def get_refresh_state(
+    character_id: str,
+    *,
+    db_path: str | Path | None = None,
+    now: float | None = None,
+) -> dict | None:
+    now = time.time() if now is None else float(now)
     initialize(db_path)
     with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE news_refresh_state SET analysis='', analysis_at=NULL, analysis_expires_at=NULL "
+            "WHERE analysis_expires_at IS NOT NULL AND analysis_expires_at <= ?",
+            (now,),
+        )
         row = conn.execute(
             "SELECT * FROM news_refresh_state WHERE character_id=?",
             (_safe_character_id(character_id),),
         ).fetchone()
     return dict(row) if row else None
+
+
+def _generate_ren_analysis(chat_client, items: list[dict]) -> str:
+    """Generate a source-bound, non-trading fundamental impact note using Kira's configured router."""
+    records = []
+    for index, item in enumerate(items, 1):
+        records.append(
+            f"{index}. {item.get('title')} | {item.get('published_at')} | "
+            f"{item.get('source')} | {item.get('url')}\n"
+            f"Source summary: {item.get('summary')}"
+        )
+    user_prompt = (
+        "بر پایهٔ خبرهای منبع‌دار زیر، یک یادداشت تحلیل بنیادی کوتاه و دقیق برای فید رن بنویس.\n"
+        "برای هر خبر، این موارد را از هم جدا کن: واقعیت گزارش‌شده، مسیر اثرگذاری اقتصادی/صنعتی، "
+        "بخش‌ها یا شرکت‌های بالقوه متأثر، شاخص‌ها و داده‌هایی که باید پیگیری شوند، افق کوتاه‌مدت و میان‌مدت، "
+        "و ریسک/سناریوی مخالف.\n"
+        "فقط از اطلاعات موجود در ورودی استفاده کن؛ قیمت لحظه‌ای، نرخ، ارزش‌گذاری عددی، هدف قیمتی، "
+        "بازده پیش‌بینی‌شده یا توصیهٔ خرید/فروش نساز. اگر داده برای نتیجهٔ بنیادی کافی نیست، صریحاً بگو "
+        "و فقط کانال اثرگذاری و دادهٔ لازم برای بررسی را توضیح بده.\n"
+        "تحلیل را از واقعیت خبر جدا و درجهٔ اطمینان را محافظه‌کارانه بیان کن. "
+        "در پایان URL منبع هر نکته را نگه دار. پاسخ فارسی، فشرده و بدون مقدمه‌چینی باشد.\n\n"
+        + "\n\n".join(records)
+    )
+    answer = chat_client.chat(
+        [{"role": "user", "content": user_prompt}],
+        "تو تحلیل‌گر بنیادی محتاط هستی. هرگز واقعیت، استنباط و عدم‌قطعیت را با هم مخلوط نکن.",
+        temperature=0.25,
+    )
+    return str(answer or "").strip()[:6000]
 
 
 def fundamental_lens(category: str) -> str:
@@ -552,6 +661,16 @@ def build_context(
         )
     elif character_id == "kira":
         lines.append("این فید فقط اخبار صنعت بازی و فناوری مرتبط با گیم است.")
+    elif character_id == "ren":
+        state = get_refresh_state("ren", db_path=db_path, now=now)
+        if state and state.get("analysis"):
+            analyzed_at = datetime.fromtimestamp(
+                float(state.get("analysis_at") or now or time.time()), tz=timezone.utc
+            ).strftime("%Y-%m-%d %H:%M UTC")
+            lines.append(
+                f"[تحلیل بنیادی با Route پیکربندی‌شدهٔ Kira؛ {analyzed_at} — برداشت تحلیلی، نه واقعیت خبر]"
+            )
+            lines.append(str(state["analysis"])[:6000])
     for index, item in enumerate(items, 1):
         published = item.get("published_at") or "تاریخ انتشار نامشخص"
         source_type = "دامنهٔ رسمی/دولتی؛ نوع نهاد را بررسی کن" if item.get("source_official") else str(item.get("source") or "منبع نامشخص")
