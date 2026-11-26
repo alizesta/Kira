@@ -11,11 +11,12 @@ class NewsFeedRuntime(QObject):
 
     _windows_permission_result = Signal(bool)
 
-    def __init__(self, parent, settings: dict, state):
+    def __init__(self, parent, settings: dict, state, chat_client=None):
         super().__init__(parent)
         self.window = parent
         self.settings = settings
         self.state = state
+        self.chat_client = chat_client
         self._worker = None
         self._location_operation = None
         self._busy = False
@@ -176,7 +177,11 @@ class NewsFeedRuntime(QObject):
                     and float(previous.get("refreshed_at") or 0) > cutoff
                 ):
                     continue
-                output[character_id] = news_feed.refresh_character(character_id, settings_snapshot)
+                output[character_id] = news_feed.refresh_character(
+                    character_id,
+                    settings_snapshot,
+                    chat_client=self.chat_client,
+                )
             return output
 
         self._busy = True
