@@ -274,6 +274,19 @@ def _migrate_v7_to_v8(data, warnings=None):
     return data
 
 
+def _migrate_v8_to_v9(data, warnings=None):
+    """Add persistent confirmed-location and news-feed refresh settings."""
+    location = data.get("user_location")
+    if not isinstance(location, dict):
+        data["user_location"] = deepcopy(DEFAULTS["user_location"])
+    else:
+        data["user_location"] = {
+            **deepcopy(DEFAULTS["user_location"]),
+            **{key: location.get(key) for key in DEFAULTS["user_location"] if key in location},
+        }
+    return data
+
+
 def _migrate_settings(saved, *, warnings=None):
     """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
@@ -299,6 +312,7 @@ def _migrate_settings(saved, *, warnings=None):
         5: lambda value: _migrate_v5_to_v6(value, warnings=warnings),
         6: lambda value: _migrate_v6_to_v7(value, warnings=warnings),
         7: lambda value: _migrate_v7_to_v8(value, warnings=warnings),
+        8: lambda value: _migrate_v8_to_v9(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
