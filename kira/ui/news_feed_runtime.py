@@ -130,9 +130,10 @@ class NewsFeedRuntime(QObject):
             self.settings["health_news_region_prompted"] = False
             return
         if confirmed:
-            self.refresh_due(force=True, characters=("mika",))
+            # First-run setup must prime every character, not only Mika.
+            self.refresh_due(force=True)
         else:
-            self.refresh_due()
+            self.refresh_due(force=True)
 
     def region_changed(self) -> None:
         """Force Mika's local alert search after the user edits the saved region."""
