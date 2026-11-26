@@ -56,6 +56,10 @@ class LifecycleController(WindowFeatureController):
                     )
                     return
         s = self.context.services.settings
+        new_health_region = self.context.views.preferences_page.health_news_region.text().strip()
+        previous_health_region = str(s.get("health_news_region") or "").strip()
+        if new_health_region != previous_health_region:
+            s["health_news_region_source"] = "manual" if new_health_region else ""
         s.update({
             "assistant_name": self.context.views.name.text().strip() or DEFAULTS["assistant_name"],
             "model": self.context.views.model.text().strip() or s.get("model") or DEFAULTS["model"],
@@ -78,6 +82,7 @@ class LifecycleController(WindowFeatureController):
             "auto_dance": self.context.views.character_page.dance_chk.isChecked(),
             "minimize_to_tray": self.context.views.character_page.tray_min_chk.isChecked(), "close_to_tray": self.context.views.character_page.tray_close_chk.isChecked(),
             "ui_lang": self.context.views.ui_lang.currentData(),
+            "health_news_region": new_health_region,
             "window_effect": self.context.views.appearance_page.window_effect.currentData(),
             "tavily_api_key": self.context.views.tavily_key.text().strip(),
             "web_depth": self.context.views.web_depth.currentData(),
