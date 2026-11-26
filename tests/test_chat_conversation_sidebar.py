@@ -123,6 +123,8 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("QListWidget#conversationList", theme)
         self.assertIn("QPushButton#conversationOpenButton", theme)
         self.assertIn('QWidget#conversationRow[active="true"]', theme)
+        self.assertIn("background: rgba(255,255,255,0.10)", theme)
+        self.assertIn("QWidget#conversationRow[active=\"true\"] QToolButton#conversationMenuButton", theme)
         self.assertIn("QToolButton#conversationMenuButton:hover", theme)
         self.assertIn("QToolButton#conversationPinIndicator", theme)
         self.assertIn("cv.addWidget(self.context.views.chat_stack, 1)", self.builder)
