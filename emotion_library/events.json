@@ -119,6 +119,78 @@
       "release_events": [
         "listening_started"
       ]
+    },
+    "game_player_died": {
+      "emotion": "sad",
+      "intensity": 38,
+      "duration": 4,
+      "pulse": "nod",
+      "runtime_emotions": {
+        "protective": 16,
+        "sad": 7,
+        "surprised": 6
+      },
+      "runtime_behaviors": {
+        "gentle": 10,
+        "teasing": -8
+      }
+    },
+    "game_victory": {
+      "emotion": "excited",
+      "intensity": 60,
+      "duration": 5,
+      "pulse": "perk",
+      "runtime_emotions": {
+        "excited": 22,
+        "proud": 16,
+        "happy": 12
+      },
+      "runtime_behaviors": {
+        "cheerful": 12,
+        "energetic": 10
+      }
+    },
+    "game_danger": {
+      "emotion": "surprised",
+      "intensity": 50,
+      "duration": 3,
+      "pulse": "perk",
+      "runtime_emotions": {
+        "fearful": 8,
+        "protective": 14,
+        "excited": 8
+      },
+      "runtime_behaviors": {
+        "focused": 14
+      }
+    },
+    "game_funny": {
+      "emotion": "laughing",
+      "intensity": 52,
+      "duration": 4,
+      "pulse": "perk",
+      "runtime_emotions": {
+        "laughing": 18,
+        "playful": 14
+      },
+      "runtime_behaviors": {
+        "playful": 14,
+        "teasing": 8
+      }
+    },
+    "game_rare_find": {
+      "emotion": "excited",
+      "intensity": 50,
+      "duration": 4,
+      "pulse": "perk",
+      "runtime_emotions": {
+        "excited": 16,
+        "curious": 10,
+        "happy": 8
+      },
+      "runtime_behaviors": {
+        "energetic": 8
+      }
     }
   }
 }

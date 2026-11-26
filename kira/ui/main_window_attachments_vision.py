@@ -10,7 +10,7 @@ from ..config import save_settings
 from ..game_mode import CAPTURE_JPEG_QUALITY
 from ..perception.events import PerceptionEvent
 from ..request_trace import vision_trace
-from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, HighlightGate, extract_highlight, wants_detail_capture
+from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, HighlightGate, extract_highlight_event, wants_detail_capture
 from .workers import VisionAnalysisWorker
 from .window_feature_controller import WindowFeatureController
 
@@ -808,14 +808,29 @@ class AttachmentsVisionController(WindowFeatureController):
                 f"تأخیر آخرین تحلیل: {int(latency_ms or 0)}ms"
             )
 
+    def _react_to_game_event(self, event):
+        """Let a remarkable game moment change Kira's own feeling and face (local; at most once per 20 s per event kind)."""
+        if not event:
+            return
+        stamps = self.__dict__.setdefault("_game_event_stamps", {})
+        now = time.monotonic()
+        if now - stamps.get(event, -1e9) < 20.0:
+            return
+        stamps[event] = now
+        self.context.adapters.director.event(event)
+        self.context.services.mood_service.on_event(event, "game", character_id=self.context.state.cur.cid)
+
     def _maybe_comment_on_highlight(self, outcome):
         """Speak up once when the vision model flagged a remarkable moment (no extra model request; rate-limited)."""
         if outcome.status != "ready" or not self.context.state._game_mode_enabled:
             return
         if not self.context.services.settings.get("game_commentary", True):
             return
-        comment = extract_highlight(outcome.message)
-        if not comment or self.context.session.busy or self.context.services.voice_application_service.is_speaking():
+        event, comment = extract_highlight_event(outcome.message)
+        if not comment:
+            return
+        self._react_to_game_event(event)
+        if self.context.session.busy or self.context.services.voice_application_service.is_speaking():
             return
         gate = getattr(self, "_highlight_gate", None)
         if gate is None:

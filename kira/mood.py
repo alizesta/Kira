@@ -120,7 +120,7 @@ REPLY_BEHAVIOR = {
 # user state -> (regex, guidance for the model, {emotion: impulse}, emotions that cool down)
 _RX = lambda *p: re.compile("|".join(p), re.I)                                                   # noqa: E731
 USER_STATES = {
-    "down": (_RX(r"خسته\s*(?:ام|م)(?:\s|$)", r"ناراحت\s*(?:ام|م)", r"دلم\s*گرفته", r"حالم\s*(?:بده|خوب\s*نیست|گرفته)", r"افسرده", r"تنها\s*(?:ام|م)(?:\s|$)",
+    "down": (_RX(r"خسته\s*(?:ام|م)(?!\w)", r"ناراحت\s*(?:ام|م)", r"دلم\s*گرفته", r"حالم\s*(?:بده|خوب\s*نیست|گرفته)", r"افسرده", r"تنها\s*(?:ام|م)(?!\w)",
                  r"گریه", r"دپرس", r"بی\s*حوصله\s*(?:ام|م)", r"\bi'?m\s+(?:so\s+|really\s+)?(?:tired|sad|lonely|depressed|exhausted)\b", r"\bfeel(?:ing)?\s+(?:down|bad|terrible|awful)\b", r"داغونم", r"دیگه\s+بریدم", r"طاقتم\s+تموم\s+شده", r"هیچ\s+امیدی\s+ندارم", r"نمی\s*تونم\s+ادامه\s+بدم", r"از\s+پسش\s+برنمیام", r"دلم\s+می\s*خواد\s+غیبم\s+بزنه"),
              "He sounds down, tired or lonely. Drop the roasting, sarcasm and swearing; be warm, steady and close. Acknowledge how he feels first, ask gently what happened, no jokes at his expense.",
              {"affectionate": 32, "protective": 24}, ("playful", "teasing", "arrogant", "smug", "laughing")),
@@ -351,11 +351,31 @@ def _ranked_scores(scores: dict, priority: tuple) -> list:
 
 
 # ---------------- reading the user ----------------
+# A keyword is ignored when the same clause negates it: "استرس ندارم", "بدون استرس", "نمی‌ترسم", "don't feel bad".
+_CLAUSE = re.compile(r"[.,!?؟،;:\n]|(?:^|\s)(?:ولی|اما|but)(?:\s|$)")
+_NEG_AFTER = re.compile(
+    r"^(?:اصلا|اصلاً|هیچ|دیگه|واقعا|واقعاً|چندان|اونقدر|آنقدر|خیلی)?\s*(?:نیست(?:م|ی|یم)?(?:\s|$)|ندارم|نداره|نداریم|نداشته\s*باش|نکن|نباش|"
+    r"نمی\s*شم|نمی\s*شه|نمیاد|نمی\s*آد|نمی\s*یاد|not\b|never\b|no longer|isn'?t|aren'?t|don'?t|doesn'?t)")
+_NEG_BEFORE = re.compile(r"(?:^|\s)(?:بدون|بی|نه|not|no|never|don'?t|dont|doesn'?t|isn'?t|aren'?t|without|no longer)\s*$")
+
+
+def _negated(t: str, m) -> bool:
+    start, end = m.span()
+    if t[start:start + 2] == "می" and (start == 1 or (start >= 2 and t[start - 2] == " ")) and t[start - 1] == "ن":
+        return True                                                       # "نمی‌ترسم" contains "می‌ترسم"
+    tail = _CLAUSE.split(t[end:end + 28], 1)[0].strip()
+    if _NEG_AFTER.match(tail):
+        return True
+    head = _CLAUSE.split(t[max(0, start - 18):start])[-1]
+    return bool(_NEG_BEFORE.search(head))
+
+
 def detect_user_states(text) -> list[str]:
     t = _norm(text)
     if not t.strip():
         return []
-    return [name for name, (rx, *_rest) in USER_STATES.items() if rx.search(t)]
+    return [name for name, (rx, *_rest) in USER_STATES.items()
+            if any(not _negated(t, m) for m in rx.finditer(t))]
 
 
 # ---------------- updates ----------------

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import re
 import time
 
 
@@ -62,14 +63,29 @@ from .character.repetition import too_similar
 HIGHLIGHT_MARK = "[HIGHLIGHT]"
 
 
+# kind written by the vision model -> emotion-library event (kira/emotion/runtime.py + emotion_library/events.json)
+HIGHLIGHT_EVENTS = {
+    "death": "game_player_died", "win": "game_victory", "danger": "game_danger",
+    "funny": "game_funny", "rare": "game_rare_find",
+}
+_HIGHLIGHT_LINE = re.compile(r"^\[HIGHLIGHT(?::\s*([A-Za-z_]+))?\]\s*[:\-—]?\s*(.*)$", re.I)
+
+
+def extract_highlight_event(text: str | None, max_chars: int = 220) -> tuple[str | None, str | None]:
+    """(emotion event, comment) from the last `[HIGHLIGHT:kind] sentence` line; the kind is optional and must be a known one."""
+    for line in reversed(str(text or "").splitlines()):
+        m = _HIGHLIGHT_LINE.match(line.strip())
+        if m:
+            comment = m.group(2).strip()
+            if not comment:
+                return None, None
+            return HIGHLIGHT_EVENTS.get(str(m.group(1) or "").casefold()), comment[:max_chars]
+    return None, None
+
+
 def extract_highlight(text: str | None, max_chars: int = 220) -> str | None:
     """The one-line comment the vision model appends after HIGHLIGHT_MARK, or None when nothing notable happened."""
-    for line in reversed(str(text or "").splitlines()):
-        line = line.strip()
-        if line.upper().startswith(HIGHLIGHT_MARK):
-            comment = line[len(HIGHLIGHT_MARK):].strip(" :-—")
-            return comment[:max_chars] if comment else None
-    return None
+    return extract_highlight_event(text, max_chars)[1]
 
 
 class HighlightGate:
