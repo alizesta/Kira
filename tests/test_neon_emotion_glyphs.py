@@ -23,6 +23,12 @@ class NeonEmotionGlyphTests(unittest.TestCase):
         self.assertTrue((ROOT / "assets" / "icons" / "emotion_happy.svg").is_file())
         self.assertTrue((ROOT / "assets" / "icons" / "emotion_neutral.svg").is_file())
 
+    def test_header_object_names_match_the_neon_stylesheet_selectors(self):
+        self.assertIn('setObjectName("moodEmotionIcon")', self.header)
+        self.assertIn('setObjectName("moodIndicator")', self.header)
+        self.assertIn('QLabel#moodEmotionIcon', self.session)
+        self.assertIn('QLabel#moodIndicator', self.session)
+
     def test_hidden_header_face_is_explicitly_shown_by_live_mood_update(self):
         self.assertIn("self.mood_emotion_icon.hide()", self.header)
         self.assertIn('f"emotion_{icon_name}"', self.update_method)
