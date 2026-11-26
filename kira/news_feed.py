@@ -200,6 +200,57 @@ def _search(settings: dict, query: str) -> dict:
     )
 
 
+FEED_ITEMS_PER_QUERY = 2
+
+
+def _enrich_result(result: dict, settings: dict, category: str, character_id: str) -> dict:
+    """Read a small number of result pages through the SSRF-safe extractor.
+
+    Search snippets remain as fallback, but extracted page text and publication
+    metadata are preferred. The extractor removes common prompt-injection text.
+    """
+    enriched = dict(result)
+    url = str(result.get("url") or "").strip()
+    if not url:
+        return enriched
+    try:
+        from .webintel import extract, netguard
+
+        safe = netguard.safe_url(url, settings)
+        fetched = netguard.fetch(
+            safe,
+            timeout=6,
+            max_bytes=850_000,
+            max_redirects=3,
+            total_timeout=8,
+        )
+        if fetched.status is not None and not 200 <= int(fetched.status) < 300:
+            return enriched
+        page = extract.extract(fetched, fetched.final_url or safe)
+        if page.get("error"):
+            return enriched
+        article_text = re.sub(r"\s+", " ", str(page.get("text") or "")).strip()
+        if len(article_text) < 100:
+            return enriched
+
+        publisher = str(page.get("publisher") or "").strip()
+        title = str(page.get("title") or "").strip()
+        enriched["title"] = title[:220] if len(title) >= 8 else str(result.get("title") or "")
+        enriched["date"] = page.get("date") or result.get("date") or ""
+        enriched["publisher"] = publisher[:120]
+        if character_id == "mika" and category == "epidemic" and _official_health_source(url):
+            recommendations = extract_source_recommendations(article_text, limit=2)
+            lead = " ".join(recommendations)
+            excerpt = (lead + " " + article_text) if lead else article_text
+        else:
+            excerpt = article_text
+        enriched["snippet"] = excerpt[:520]
+        return enriched
+    except Exception as exc:  # noqa: BLE001 - a failed page read must not drop the search result
+        _LOG.debug("Could not enrich news URL %s: %s", url, type(exc).__name__)
+        return enriched
+
+
 def _insert_result(
     conn: sqlite3.Connection,
     character_id: str,
@@ -217,12 +268,15 @@ def _insert_result(
     if not url_key or not title:
         return False
 
-    published_iso, published_ts = _published(result.get("date") or "")
+    published_input = result.get("date") or result.get("published_at") or ""
+    if not published_input:
+        published_input = f"{title} {summary} {url}"
+    published_iso, published_ts = _published(published_input)
     if published_ts is not None and now - published_ts > RETENTION_SECONDS:
         return False
     expiry_base = published_ts if published_ts is not None else now
     expires_at = min(now + RETENTION_SECONDS, expiry_base + RETENTION_SECONDS)
-    source = _source_name(url)
+    source = re.sub(r"\s+", " ", str(result.get("publisher") or _source_name(url))).strip()[:120]
     official = int(character_id == "mika" and _official_health_source(url))
     before = conn.total_changes
     conn.execute("""
@@ -275,14 +329,15 @@ def refresh_character(
         try:
             found = search_fn(query)
             engine = str(found.get("engine") or "")
-            results = list(found.get("results") or [])
+            results = list(found.get("results") or [])[:FEED_ITEMS_PER_QUERY]
             with _connect(db_path) as conn:
                 for item in results:
                     if not isinstance(item, dict):
                         continue
+                    enriched = _enrich_result(item, settings, category, character_id)
                     added += int(_insert_result(
                         conn, character_id, category, label, item_region,
-                        item, engine, now,
+                        enriched, engine, now,
                     ))
         except Exception as exc:  # one failed query must not discard other feed categories
             _LOG.warning("News refresh failed for %s/%s: %s", character_id, category, exc)
