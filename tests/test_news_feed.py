@@ -153,6 +153,34 @@ class NewsFeedTests(unittest.TestCase):
             "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now, db_path=self.db
         ))
 
+    def test_mika_only_surfaces_explicit_recommendations_from_health_authorities(self):
+        news_feed.initialize(self.db)
+        with news_feed._connect(self.db) as conn:
+            news_feed._insert_result(
+                conn,
+                "mika",
+                "epidemic",
+                "Regional outbreak alert",
+                "Test City, Testland",
+                self.result(
+                    "Official health notice",
+                    "https://www.who.int/news/item/test-notice",
+                    date.today().isoformat(),
+                    "Residents should avoid crowded indoor spaces and wash hands regularly.",
+                ),
+                "test",
+                self.now,
+            )
+        block = news_feed.build_context(
+            "mika",
+            "outbreak",
+            {"health_news_region": "Test City, Testland"},
+            now=self.now,
+            db_path=self.db,
+        )
+        self.assertIn("توصیه‌های صریح", block)
+        self.assertIn("avoid crowded indoor spaces", block)
+
     def test_context_contains_sources_and_does_not_mix_characters(self):
         def mika_search(query):
             return {
