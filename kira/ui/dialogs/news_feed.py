@@ -21,10 +21,11 @@ from ..workers import TaskWorker
 class NewsFeedDialog(QDialog):
     """Show only the active character's rolling seven-day feed."""
 
-    def __init__(self, character_id: str, settings: dict, parent=None):
+    def __init__(self, character_id: str, settings: dict, parent=None, chat_client=None):
         super().__init__(parent)
         self.character_id = str(character_id or "kira")
         self.settings = dict(settings or {})
+        self.chat_client = chat_client
         self._worker = None
         self.setWindowTitle("فید خبرها")
         self.resize(780, 650)
@@ -88,6 +89,22 @@ class NewsFeedDialog(QDialog):
                 + (html.escape(region) if region else "هنوز تأیید نشده")
                 + " · خبر رسانه‌ای با اطلاعیهٔ رسمی یکی نیست.</p>"
             )
+        if self.character_id == "ren" and state and state.get("analysis"):
+            try:
+                analyzed_at = datetime.fromtimestamp(
+                    float(state.get("analysis_at") or 0)
+                ).astimezone().strftime("%Y-%m-%d %H:%M")
+            except (TypeError, ValueError, OSError):
+                analyzed_at = "زمان نامشخص"
+            blocks.append(
+                "<section style='margin:12px 0;padding:14px;background:#13243a;"
+                "border:1px solid #41638e;border-radius:12px;'>"
+                "<h3 style='color:#9bc7ff;margin:0 0 8px'>تحلیل بنیادی رن</h3>"
+                f"<div style='color:#9bc7ff;font-size:12px'>تحلیل مدل · {html.escape(analyzed_at)} · "
+                "برداشت تحلیلی، نه واقعیت خبر</div>"
+                f"<p style='color:#e1eafa;line-height:1.65;white-space:pre-wrap'>{html.escape(str(state['analysis']))}</p>"
+                "</section>"
+            )
         if not items:
             blocks.append(
                 "<p style='color:#c5c2df'>هنوز خبری در حافظهٔ هفت‌روزه نیست. "
@@ -144,7 +161,11 @@ class NewsFeedDialog(QDialog):
         self.status_label.setText("در حال دریافت خبرها…")
         settings = dict(self.settings)
         self._worker = TaskWorker(
-            lambda: news_feed.refresh_character(self.character_id, settings)
+            lambda: news_feed.refresh_character(
+                self.character_id,
+                settings,
+                chat_client=self.chat_client,
+            )
         )
         self._worker.setParent(self.parent() or self)
         self._worker.done.connect(self._on_refresh_done)
