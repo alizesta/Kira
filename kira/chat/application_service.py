@@ -992,6 +992,14 @@ class ChatApplicationService:
     ):
         return self._history.recent_messages(limit, character_id, conversation_id)
 
+    def get_messages(
+        self, limit: int = 1000, character_id: str | None = None,
+        conversation_id: str | None = None, after_id: int = 0,
+    ):
+        return self._history.get_messages(
+            limit, character_id, conversation_id, after_id
+        )
+
     def recent_message_records(self, limit: int = 2000, character_id: str | None = None):
         return self._history.recent_message_records(limit, character_id)
 
