@@ -360,7 +360,7 @@ def extend_prompt(prompt, decision, settings=None, router=None, *, character_id:
         news_context = ""
         try:
             from .news_feed import build_prompt_context
-            news_context = build_prompt_context(character_id)
+            news_context = build_prompt_context(character_id, settings=settings)
         except Exception:  # noqa: BLE001 - news must never block an ordinary reply
             _log.exception("Could not load the character news feed")
         if decision.mode == "off":
