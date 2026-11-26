@@ -226,9 +226,11 @@ def _enrich_result(result: dict, settings: dict, category: str, character_id: st
         )
         if fetched.status is not None and not 200 <= int(fetched.status) < 300:
             return enriched
-        page = extract.extract(fetched, fetched.final_url or safe)
+        final_url = fetched.final_url or safe
+        page = extract.extract(fetched, final_url)
         if page.get("error"):
             return enriched
+        enriched["authority_url"] = final_url
         article_text = re.sub(r"\s+", " ", str(page.get("text") or "")).strip()
         if len(article_text) < 100:
             return enriched
@@ -238,7 +240,7 @@ def _enrich_result(result: dict, settings: dict, category: str, character_id: st
         enriched["title"] = title[:220] if len(title) >= 8 else str(result.get("title") or "")
         enriched["date"] = page.get("date") or result.get("date") or ""
         enriched["publisher"] = publisher[:120]
-        if character_id == "mika" and category == "epidemic" and _official_health_source(url):
+        if character_id == "mika" and category == "epidemic" and _official_health_source(final_url):
             recommendations = extract_source_recommendations(article_text, limit=2)
             lead = " ".join(recommendations)
             excerpt = (lead + " " + article_text) if lead else article_text
@@ -277,7 +279,7 @@ def _insert_result(
     expiry_base = published_ts if published_ts is not None else now
     expires_at = min(now + RETENTION_SECONDS, expiry_base + RETENTION_SECONDS)
     source = re.sub(r"\s+", " ", str(result.get("publisher") or _source_name(url))).strip()[:120]
-    official = int(character_id == "mika" and _official_health_source(url))
+    official = int(character_id == "mika" and _official_health_source(result.get("authority_url") or url))
     before = conn.total_changes
     conn.execute("""
         INSERT INTO news_items (
