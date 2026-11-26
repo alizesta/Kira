@@ -3,3 +3,5 @@ PySide6>=6.7,<7
 requests>=2.31,<3
 numpy>=1.26,<3
 google-genai>=2.3.0,<3
+# Native Windows geolocation is used only for the first-run health-region suggestion.
+winrt-Windows.Devices.Geolocation>=3.2.1; platform_system == "Windows"
