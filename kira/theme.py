@@ -591,20 +591,25 @@ QToolButton#conversationPinIndicator:hover {{
 }}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
-QPlainTextEdit#chatInput {{
+QFrame#chatInputSurface {{
     background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});
     border: 1px solid rgba({mr},{mg},{mb},0.30);
     border-radius: 10px;
-    padding: 8px 10px;
-    selection-background-color: rgba({mr},{mg},{mb},0.55);
 }}
-QPlainTextEdit#chatInput:hover {{
+QFrame#chatInputSurface:hover {{
     background: rgba({min(r + 20, 255)},{min(g + 20, 255)},{min(b + 24, 255)},{min(0.99, a_card + 0.13):.2f});
     border-color: rgba({mr},{mg},{mb},0.42);
 }}
-QPlainTextEdit#chatInput:focus {{
+QFrame#chatInputSurface:focus-within {{
     background: rgba({min(r + 18, 255)},{min(g + 18, 255)},{min(b + 22, 255)},{min(0.99, a_card + 0.12):.2f});
     border: 1px solid rgba({sr},{sg},{sb},0.52);
+}}
+QPlainTextEdit#chatInput {{
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 5px 4px;
+    selection-background-color: rgba({mr},{mg},{mb},0.55);
 }}
 QToolButton#expandInputBtn {{
     background: transparent; border: none; border-radius: 7px; padding: 2px;
