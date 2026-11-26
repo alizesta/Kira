@@ -54,10 +54,12 @@ class NewsFeedTests(unittest.TestCase):
             }
 
         news_feed.refresh_character(
-            "mika", settings, now=self.now, db_path=self.db, search_fn=mika_search
+            "mika", settings, now=self.now, db_path=self.db, search_fn=mika_search,
+            enrich_fn=lambda item, *_args: item,
         )
         news_feed.refresh_character(
-            "ren", settings, now=self.now, db_path=self.db, search_fn=ren_search
+            "ren", settings, now=self.now, db_path=self.db, search_fn=ren_search,
+            enrich_fn=lambda item, *_args: item,
         )
 
         mika_items = news_feed.get_items("mika", region=region, now=self.now, db_path=self.db)
@@ -88,6 +90,7 @@ class NewsFeedTests(unittest.TestCase):
             now=self.now,
             db_path=self.db,
             search_fn=search,
+            enrich_fn=lambda item, *_args: item,
         )
 
         day_seven = news_feed.get_items(
