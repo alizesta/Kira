@@ -132,6 +132,7 @@ jobs:
           tests.test_application_module_lifecycle
           tests.test_composition_root_contract
           tests.test_chat_conversation_lifecycle
+          tests.test_chat_conversation_sidebar
           tests.test_application_qt_independence
           tests.test_chat_coordinator
           tests.test_voice_application
