@@ -165,6 +165,33 @@ class GuiTests(unittest.TestCase):
         self.assertGreaterEqual(self.win.route_list.minimumHeight(), 176)
         self.assertEqual(self.win.route_list.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
 
+    def test_chat_composer_stays_inside_chat_card_when_window_is_not_maximized(self):
+        from PySide6.QtWidgets import QSizePolicy
+
+        window = self.win
+        composer = window.presentation_context.views.chat_composer
+        surface = composer.input_surface
+        host = composer.input_surface_host
+
+        self.assertEqual(surface.sizePolicy().horizontalPolicy(), QSizePolicy.Expanding)
+        self.assertEqual(surface.minimumWidth(), 0)
+        self.assertEqual(host.minimumWidth(), 0)
+
+        # Exercise both a typical restored window and a wider window. The
+        # composer must follow its real parent width, not retain a desktop-sized
+        # fixed width that gets clipped by the avatar/sidebar columns.
+        for width in (900, 1120):
+            window.resize(width, 720)
+            APP.processEvents()
+            composer.layout().activate()
+            host.layout().activate()
+            APP.processEvents()
+
+            self.assertGreater(composer.width(), 0)
+            self.assertEqual(surface.width(), host.width())
+            self.assertLessEqual(surface.geometry().right(), host.rect().right())
+            self.assertLessEqual(host.geometry().right(), composer.rect().right())
+
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
