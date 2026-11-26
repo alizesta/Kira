@@ -110,6 +110,9 @@ class WebSearchApplicationService:
         wins and preserves the user's literal query.
         """
         user_text = str(text or "")
+        # A direct opt-out is stronger than auto-search, /web metadata, and tool plans.
+        if websearch.explicit_no_web(user_text):
+            return None, False
         enabled = bool(
             settings.get("web_search", True)
             or user_text.lstrip().startswith("/")
