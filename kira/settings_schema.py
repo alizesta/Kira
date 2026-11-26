@@ -21,7 +21,7 @@ DEFAULTS = {
     "temperature": 0.7,
     "web_search": True,                  # Kira may search the web when a message needs current information
     "news_feed_enabled": True,             # independent rolling feeds for Kira, Ren and Mika
-    "news_feed_interval_hours": 6,         # background refresh while the app is running
+    "news_feed_interval_hours": 8,         # background refresh while the app is running
     "news_health_region": {"city": "", "country": "", "confirmed": False, "source": "", "confirmed_at": ""},
     "image_search": False,               # a picture sent to Kira is also searched on the web (Gemini sees it; Tavily / DuckDuckGo use a text query made from it)
     "web_fallback": True,                # Tavily fails -> Google (Gemini) -> DuckDuckGo
