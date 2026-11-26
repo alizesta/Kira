@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import tempfile
-import time
 import unittest
 from datetime import date, datetime, time as day_time, timedelta, timezone
 from pathlib import Path
@@ -147,7 +146,8 @@ class NewsFeedTests(unittest.TestCase):
             }
 
         news_feed.refresh_character(
-            "ren", {}, now=self.now, db_path=self.db, search_fn=search
+            "ren", {}, now=self.now, db_path=self.db, search_fn=search,
+            enrich_fn=lambda item, *_args: item,
         )
         self.assertTrue(news_feed.can_answer_from_feed(
             "ren", "latest Bitcoin news", {}, now=self.now, db_path=self.db
@@ -201,6 +201,7 @@ class NewsFeedTests(unittest.TestCase):
             now=self.now,
             db_path=self.db,
             search_fn=mika_search,
+            enrich_fn=lambda item, *_args: item,
         )
         block = news_feed.build_context(
             "mika", "medical research", {"health_news_region": "Test City, Testland"}, now=self.now, db_path=self.db
