@@ -321,6 +321,18 @@ class ChatController(WindowFeatureController):
         query, forced = self.context.services.web_search_service.plan_request(
             text, self.context.services.settings, self.context.session._tool_plan, force_web=force_web
         )
+        if query and not forced:
+            try:
+                from .. import news_feed
+                if news_feed.can_answer_from_feed(
+                    self.context.state.cur.cid,
+                    text,
+                    self.context.services.settings,
+                ):
+                    query = None
+            except Exception:
+                # A news cache failure must never block the existing web-search path.
+                pass
         if query:
             self.begin_web_search(query, packed if packed else text, packed["images"] if packed else [])
             return
@@ -526,6 +538,18 @@ class ChatController(WindowFeatureController):
                 query=evidence_memory.query_from_context(history),
                 budget=evidence_memory.budget_for(self.context.services.settings, self.context.session.client),
             )
+            try:
+                from .. import news_feed
+                recent_news = news_feed.build_context(
+                    character_id,
+                    latest_user_text(history),
+                    self.context.services.settings,
+                )
+                if recent_news:
+                    memory_block = (memory_block + "\n\n" + recent_news).strip()
+            except Exception:
+                # News memory is optional; chat and persona memory must continue normally.
+                pass
             total = self.context.services.chat_application_service.message_count(
                 character_id, conversation_id
             )
