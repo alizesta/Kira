@@ -38,7 +38,7 @@ class ChatInput(QPlainTextEdit):
         self.setObjectName("chatInput")
         self.setFrameShape(QFrame.NoFrame)
         self.setContentsMargins(0, 0, 0, 0)
-        self.setDocumentMargin(0)
+        self.document().setDocumentMargin(0)
         self.setTabChangesFocus(True)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
