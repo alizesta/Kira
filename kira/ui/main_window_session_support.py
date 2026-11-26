@@ -3,6 +3,7 @@
 import contextlib
 import base64
 import math
+import textwrap
 import time
 from PySide6.QtCore import Qt, QTimer, QUrl, QSize
 from PySide6.QtGui import QDesktopServices, QTextCursor, QColor, QImage, QTextDocument
