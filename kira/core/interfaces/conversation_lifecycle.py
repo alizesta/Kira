@@ -12,6 +12,8 @@ from ...domain.conversations import ConversationLifecycleResult, ConversationSta
 class ConversationLifecycleApplicationPort(Protocol):
     """Application use cases exposed to Chat orchestration without concrete coupling."""
 
+    def get_conversation(self, conversation_id: str) -> dict[str, Any] | None: ...
+
     def list_conversations(
         self,
         *,
