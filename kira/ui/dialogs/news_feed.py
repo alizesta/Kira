@@ -21,11 +21,12 @@ from ..workers import TaskWorker
 class NewsFeedDialog(QDialog):
     """Show only the active character's rolling seven-day feed."""
 
-    def __init__(self, character_id: str, settings: dict, parent=None, chat_client=None):
+    def __init__(self, character_id: str, settings: dict, parent=None, chat_client=None, state=None):
         super().__init__(parent)
         self.character_id = str(character_id or "kira")
         self.settings = dict(settings or {})
         self.chat_client = chat_client
+        self.state = state
         self._worker = None
         self.setWindowTitle("فید خبرها")
         self.resize(780, 650)
@@ -169,6 +170,18 @@ class NewsFeedDialog(QDialog):
             )
         )
         self._worker.setParent(self.parent() or self)
+        if self.state is not None:
+            registry = getattr(self.state, "_news_feed_workers", None)
+            if registry is None:
+                self.state._news_feed_workers = []
+                registry = self.state._news_feed_workers
+            registry.append(self._worker)
+            self._worker.finished.connect(
+                lambda current=self._worker, owner=self.state: (
+                    owner._news_feed_workers.remove(current)
+                    if current in owner._news_feed_workers else None
+                )
+            )
         self._worker.done.connect(self._on_refresh_done)
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.finished.connect(self._worker.deleteLater)
