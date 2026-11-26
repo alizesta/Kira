@@ -86,8 +86,21 @@ _LIVE_VALUE = re.compile(
 def _normalise(value: str) -> str:
     text = html.unescape(str(value or "")).lower()
     text = text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
-    return (text.replace("ي", "ی").replace("ك", "ک")
+    text = (text.replace("ي", "ی").replace("ك", "ک")
             .replace("\u200c", " ").replace("\u200f", " "))
+    for source, target in (
+        ("بیت کوین", "bitcoin"), ("بیتکوین", "bitcoin"), ("اتریوم", "ethereum"),
+        ("ارز دیجیتال", "cryptocurrency"), ("رمزارز", "cryptocurrency"),
+        ("سهام", "stock"), ("بورس", "stock market"), ("اقتصاد", "economy"),
+        ("تورم", "inflation"), ("نرخ بهره", "interest rate"),
+        ("فناوری", "technology"), ("تکنولوژی", "technology"), ("دیجیتال", "digital"),
+        ("هوش مصنوعی", "artificial intelligence"), ("پزشکی", "medical"),
+        ("سلامت", "health"), ("دارو", "drug"), ("درمان", "treatment"),
+        ("بیماری", "disease"), ("واکسن", "vaccine"), ("سرطان", "cancer"),
+        ("بالینی", "clinical"),
+    ):
+        text = text.replace(source, target)
+    return text
 
 
 def _tokens(value: str) -> set[str]:
@@ -96,7 +109,7 @@ def _tokens(value: str) -> set[str]:
         if len(token) > 1 and token not in {
             "the", "and", "for", "with", "from", "about", "this", "that",
             "چه", "چی", "چطور", "درباره", "برای", "از", "به", "در", "و", "را",
-            "آخرین", "جدیدترین", "خبر", "اخبار", "امروز",
+            "آخرین", "جدیدترین", "خبر", "خبرها", "خبرهای", "خبرای", "اخبار", "اخبارها", "اخبارهای", "امروز",
         }
     }
 
@@ -417,6 +430,30 @@ class WeeklyNewsMemoryService:
         other_character = "ren" if cid == "mika" else "mika"
         if self._matches_domain(other_character, user_text) and not domain_match:
             return []
+
+        # Broad field-level questions may use the complete weekly digest. Named
+        # companies, medicines, conditions, and other specific topics must match
+        # an actual cached headline/snippet (or its collection query).
+        generic_terms = _tokens(
+            "خبر اخبار آخرین جدیدترین تازه امروز news latest recent today update updates "
+            "پزشکی سلامت medical medicine health science research biomedical clinical "
+            "اقتصاد اقتصادی economy economic inflation تورم بانک مرکزی نرخ بهره interest rate "
+            "دیجیتال فناوری تکنولوژی digital technology tech artificial intelligence هوش مصنوعی "
+            "سهام بورس stock stocks shares equity بازار market markets finance financial "
+            "ارز ارز دیجیتال رمزارز cryptocurrency crypto forex currency exchange rate"
+        )
+        specific_tokens = query_tokens - generic_terms
+        if specific_tokens:
+            relevant = []
+            for item in items:
+                story_tokens = _tokens(
+                    str(item.get("title") or "") + " "
+                    + str(item.get("snippet") or "") + " "
+                    + str(item.get("topic") or "")
+                )
+                if specific_tokens & story_tokens:
+                    relevant.append(item)
+            return relevant
         if news_intent or domain_match:
             return items
         relevant = []

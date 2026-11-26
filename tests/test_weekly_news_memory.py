@@ -140,6 +140,8 @@ def test_news_domains_do_not_cross_between_mika_and_ren(tmp_path):
     assert service.covers_query("mika", "آخرین اخبار پزشکی", now=now)
     assert not service.covers_query("mika", "latest cryptocurrency news", now=now)
     assert service.covers_query("ren", "latest cryptocurrency news", now=now)
+    assert service.covers_query("ren", "latest Bitcoin news", now=now)
+    assert not service.covers_query("ren", "latest Nvidia stock news", now=now)
     assert not service.covers_query("ren", "آخرین اخبار پزشکی", now=now)
     assert not service.covers_query("ren", "قیمت بیت کوین چنده؟", now=now)
     assert not service.covers_query("ren", "نرخ دلار چنده؟", now=now)
