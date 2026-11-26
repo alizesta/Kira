@@ -1,7 +1,10 @@
 """Chat message composer and its toolbar controls."""
 
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QSize, QByteArray, QRectF
+from PySide6.QtGui import QAction, QIcon, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -14,6 +17,24 @@ from PySide6.QtWidgets import (
 )
 
 from .kode_activity import KodeActivityPanel
+
+
+def _plain_reference_icon(name):
+    """Render the reference expand/minimize SVG without Kira's neon bloom."""
+    path = Path(__file__).resolve().parents[3] / "assets" / "icons" / f"{name}.svg"
+    source = path.read_text(encoding="utf-8")
+    source = source.replace('stroke="currentColor"', 'stroke="#D4D4D4"')
+    source = source.replace('fill="currentColor"', 'fill="#D4D4D4"')
+    renderer = QSvgRenderer(QByteArray(source.encode("utf-8")))
+    if not renderer.isValid():
+        return QIcon()
+    pixmap = QPixmap(96, 96)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    renderer.render(painter, QRectF(0, 0, 96, 96))
+    painter.end()
+    return QIcon(pixmap)
 
 
 class ChatComposer(QFrame):
@@ -122,10 +143,20 @@ class ChatComposer(QFrame):
         self.expand_btn = QToolButton(input_tools_host)
         self.expand_btn.setObjectName("expandInputBtn")
         self.expand_btn.setProperty("kiraIconName", "expand")
-        self._expand_icon = make_icon("expand")
-        self._collapse_icon = make_icon("collapse")
+        self._expand_icon = _plain_reference_icon("expand")
+        self._collapse_icon = _plain_reference_icon("collapse")
+        if self._expand_icon.isNull():
+            self._expand_icon = make_icon(
+                "expand", normal="#D4D4D4", hover="#FFFFFF",
+                checked="#FFFFFF", disabled="#888888",
+            )
+        if self._collapse_icon.isNull():
+            self._collapse_icon = make_icon(
+                "collapse", normal="#D4D4D4", hover="#FFFFFF",
+                checked="#FFFFFF", disabled="#888888",
+            )
         self.expand_btn.setIcon(self._expand_icon)
-        self.expand_btn.setIconSize(QSize(16, 16))
+        self.expand_btn.setIconSize(QSize(20, 20))
         self.expand_btn.setFixedSize(28, 26)
         self.expand_btn.setCheckable(True)
         self.expand_btn.setAutoRaise(True)
@@ -282,7 +313,21 @@ class ChatComposer(QFrame):
         bar.addWidget(self.gen_stop_btn)
         bar.addWidget(self.send_btn)
         input_surface_layout.addLayout(bar)
-        co.addWidget(self.input_surface)
+
+        # Keep the composer narrower than the chat viewport and centered.
+        self.input_surface.setMinimumWidth(0)
+        self.input_surface.setMaximumWidth(560)
+        self.input_surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_surface_host = QWidget(self)
+        self.input_surface_host.setObjectName("chatInputSurfaceHost")
+        self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        surface_host_layout = QHBoxLayout(self.input_surface_host)
+        surface_host_layout.setContentsMargins(0, 0, 0, 0)
+        surface_host_layout.setSpacing(0)
+        surface_host_layout.addStretch(1)
+        surface_host_layout.addWidget(self.input_surface, 0, Qt.AlignHCenter)
+        surface_host_layout.addStretch(1)
+        co.addWidget(self.input_surface_host)
 
         for name in self._OWNER_ALIASES:
             setattr(owner, name, getattr(self, name))
