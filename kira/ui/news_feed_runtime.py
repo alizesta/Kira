@@ -144,15 +144,15 @@ class NewsFeedRuntime(QObject):
         self._worker = worker
         self.state._news_feed_worker = worker
         worker.done.connect(callback)
-        worker.finished.connect(self._on_worker_finished)
+        worker.finished.connect(lambda current=worker: self._on_worker_finished(current))
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
-    @Slot()
-    def _on_worker_finished(self) -> None:
-        self._worker = None
-        self.state._news_feed_worker = None
-        self._location_operation = None
+    def _on_worker_finished(self, worker) -> None:
+        if self._worker is worker:
+            self._worker = None
+        if getattr(self.state, "_news_feed_worker", None) is worker:
+            self.state._news_feed_worker = None
 
     def refresh_due(self, *, force: bool = False, characters=None) -> None:
         if not self.settings.get("news_feed_enabled", True) or self._busy:
