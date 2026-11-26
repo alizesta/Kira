@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFrame, QFileDialog, QSizePolicy, QInputDialog, QStackedWidget, QButtonGroup, QGraphicsDropShadowEffect, QListWidget
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFrame, QFileDialog, QSizePolicy, QInputDialog, QStackedWidget, QButtonGroup, QGraphicsDropShadowEffect, QListWidget, QPushButton
 from ..config import DATA_DIR
 from ..ollama_client import clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
 from ..face import AvatarView  # Temporary fallback: keep Kira on the original 2D animated portrait.
