@@ -36,8 +36,8 @@ def initialize_main_window(
     initiative_application_service_factory=None,
     brain_application_service=None,
     reflection_application_service=None,
-    weekly_news_memory_service=None,
     console_log_capture=None,
+    weekly_news_memory_service=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
     from PySide6.QtWidgets import QApplication

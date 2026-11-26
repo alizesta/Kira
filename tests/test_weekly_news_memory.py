@@ -78,6 +78,21 @@ def test_prompt_and_cache_are_character_scoped_and_respect_live_lookup_requests(
     assert not service.covers_query("mika", "latest cryptocurrency news", now=now)
 
 
+
+def test_disabled_feature_does_not_inject_existing_memory(tmp_path):
+    settings = {"weekly_news_memory_enabled": True}
+    service = WeeklyNewsMemoryService(
+        lambda: settings, tmp_path,
+        search_fn=lambda *_: {"results": [_story(title="Medical science update")]},
+    )
+    now = datetime.now(timezone.utc).timestamp()
+    assert service.refresh_character("mika", force=True, now=now)
+    assert service.prompt_block("mika", "آخرین اخبار پزشکی", now=now)
+    settings["weekly_news_memory_enabled"] = False
+    assert not service.covers_query("mika", "آخرین اخبار پزشکی", now=now)
+    assert service.prompt_block("mika", "آخرین اخبار پزشکی", now=now) == ""
+
+
 def test_failed_refresh_preserves_still_valid_memory(tmp_path):
     working = {"fail": False}
 

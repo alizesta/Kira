@@ -421,6 +421,12 @@ class WeeklyNewsMemoryService:
         cid = str(character_id or "").strip().lower()
         if cid not in _SEARCH_QUERIES or self._should_not_use_cache(user_text):
             return []
+        try:
+            current_settings = self._settings_fn()
+            if isinstance(current_settings, dict) and current_settings.get("weekly_news_memory_enabled", True) is False:
+                return []
+        except Exception:  # noqa: BLE001 - an unavailable setting snapshot should not break chat
+            pass
         items = self.active_items(cid, now=now)
         if not items:
             return []
