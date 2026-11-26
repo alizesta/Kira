@@ -25,6 +25,7 @@ from .main_window_voice_settings_support import (
     QHBoxLayout,
     QInputDialog,
     QListWidget,
+    QPushButton,
     QLabel,
     QMessageBox,
     QSizePolicy,
@@ -121,7 +122,20 @@ class VoiceSettingsController(WindowFeatureController):
         conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout.setSpacing(2)
+        sidebar_layout.setSpacing(3)
+        self.context.views.new_chat_btn = QPushButton(
+            "＋ چت جدید" if lang == "fa" else "＋ New chat",
+            conversation_sidebar,
+        )
+        self.context.views.new_chat_btn.setObjectName("newChatButton")
+        self.context.views.new_chat_btn.setFlat(True)
+        self.context.views.new_chat_btn.setMinimumHeight(34)
+        self.context.views.new_chat_btn.setCursor(Qt.PointingHandCursor)
+        self.context.views.new_chat_btn.setFocusPolicy(Qt.NoFocus)
+        self.context.views.new_chat_btn.clicked.connect(
+            lambda checked=False: self.feature_controller("session").new_chat()
+        )
+        sidebar_layout.addWidget(self.context.views.new_chat_btn)
         self.context.views.conversation_list_title = QLabel(
             "مکالمه‌ها" if lang == "fa" else "Conversations",
             conversation_sidebar,
