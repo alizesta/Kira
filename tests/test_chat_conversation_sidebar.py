@@ -164,9 +164,10 @@ class ConversationSidebarTests(unittest.TestCase):
     def test_chat_surfaces_share_the_avatar_background_without_frames(self):
         self.assertIn('page.setObjectName("chatPage")', self.builder)
         self.assertIn("body.setSpacing(0)", self.builder)
-        self.assertIn("QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,", self.theme if hasattr(self, "theme") else (ROOT / "kira" / "theme.py").read_text(encoding="utf-8"))
         theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
+        self.assertIn("QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,", theme_source)
         self.assertIn("QFrame#conversationSidebar, QFrame#composer {{", theme_source)
+        self.assertIn("background: rgba({r},{g},{b},{a_card});", theme_source)
         self.assertIn("border: none;", theme_source)
         self.assertIn("border-radius: 0px;", theme_source)
         self.assertIn("self.context.views.glow_effects = []", self.builder)
