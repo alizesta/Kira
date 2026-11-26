@@ -20,9 +20,10 @@ class NewsFeedRuntime(QObject):
         self._worker = None
         self._location_operation = None
         self._busy = False
+        self._pending_refresh = None
         self._windows_permission_result.connect(self._on_windows_permission_result)
         self.timer = QTimer(self)
-        interval_hours = max(2, min(24, int(settings.get("news_feed_interval_hours", 4) or 4)))
+        interval_hours = max(2, min(24, int(settings.get("news_feed_interval_hours", 6) or 6)))
         self.timer.setInterval(interval_hours * 60 * 60 * 1000)
         self.timer.timeout.connect(self.refresh_due)
 
@@ -156,14 +157,18 @@ class NewsFeedRuntime(QObject):
             self.state._news_feed_worker = None
 
     def refresh_due(self, *, force: bool = False, characters=None) -> None:
-        if not self.settings.get("news_feed_enabled", True) or self._busy:
+        if not self.settings.get("news_feed_enabled", True):
+            return
+        if self._busy:
+            if force:
+                self._pending_refresh = (True, tuple(characters) if characters else None)
             return
         from .. import news_feed
         from .workers import TaskWorker
 
         selected = tuple(characters or ("mika", "ren", "kira"))
         settings_snapshot = dict(self.settings)
-        interval = max(2, min(24, int(settings_snapshot.get("news_feed_interval_hours", 4) or 4)))
+        interval = max(2, min(24, int(settings_snapshot.get("news_feed_interval_hours", 6) or 6)))
         cutoff = time.time() - interval * 3600
 
         def refresh():
@@ -177,10 +182,11 @@ class NewsFeedRuntime(QObject):
                     and float(previous.get("refreshed_at") or 0) > cutoff
                 ):
                     continue
+                chat_client = self.chat_client() if callable(self.chat_client) else self.chat_client
                 output[character_id] = news_feed.refresh_character(
                     character_id,
                     settings_snapshot,
-                    chat_client=self.chat_client,
+                    chat_client=chat_client,
                 )
             return output
 
@@ -190,3 +196,11 @@ class NewsFeedRuntime(QObject):
 
     def _on_refresh_complete(self, _outcome) -> None:
         self._busy = False
+        pending = self._pending_refresh
+        self._pending_refresh = None
+        if pending is not None:
+            force, characters = pending
+            QTimer.singleShot(
+                0,
+                lambda f=force, c=characters: self.refresh_due(force=f, characters=c),
+            )
