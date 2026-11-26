@@ -22,7 +22,8 @@ CHARACTER_QUERIES = {
         ("gaming_industry", "video game industry game studios publishers releases PC and console games gaming hardware GPU CPU technology news last 7 days"),
     ),
     "ren": (
-        ("economy_markets", "economy macroeconomics central banks inflation interest rates stock markets forex exchange rates Bitcoin Ethereum cryptocurrency fundamental analysis market news last 7 days"),
+        ("economy_markets", "economy macroeconomics central banks inflation interest rates stock markets forex exchange rates fundamental analysis market news last 7 days"),
+        ("crypto", "cryptocurrency Bitcoin Ethereum blockchain digital assets regulation crypto market fundamentals analysis news last 7 days"),
         ("digital_technology", "digital technology AI semiconductors cybersecurity telecom fintech business technology industry news last 7 days -gaming -video games -esports"),
     ),
     "mika": (
