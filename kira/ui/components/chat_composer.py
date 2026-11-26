@@ -8,6 +8,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLayout,
     QLabel,
     QMenu,
     QSizePolicy,
@@ -84,11 +85,12 @@ class ChatComposer(QFrame):
     ):
         super().__init__(parent)
         self.setObjectName("composer")
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.setMinimumWidth(0)
         self._owner = owner
 
         co = QVBoxLayout(self)
+        co.setSizeConstraint(QLayout.SetMinimumSize)
         co.setContentsMargins(10, 4, 8, 4)
         co.setSpacing(1)
 
@@ -129,6 +131,7 @@ class ChatComposer(QFrame):
         self.input_surface = QFrame(self)
         self.input_surface.setObjectName("chatInputSurface")
         input_surface_layout = QVBoxLayout(self.input_surface)
+        input_surface_layout.setSizeConstraint(QLayout.SetMinimumSize)
         # Compact vertical rhythm: prompt, expand control and action row all
         # remain inside this single surface without wasting the draft area.
         input_surface_layout.setContentsMargins(8, 2, 8, 2)
@@ -139,8 +142,7 @@ class ChatComposer(QFrame):
         # This small toolbar is deliberately LTR even inside the Persian RTL UI.
         # Stretch first, then the button: the icon is always the physical rightmost item.
         input_tools_host.setLayoutDirection(Qt.LeftToRight)
-        input_tools_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        input_tools_host.setFixedHeight(18)
+        input_tools_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         input_tools_row = QHBoxLayout(input_tools_host)
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
@@ -163,7 +165,7 @@ class ChatComposer(QFrame):
             )
         self.expand_btn.setIcon(self._expand_icon)
         self.expand_btn.setIconSize(QSize(20, 20))
-        self.expand_btn.setFixedSize(24, 22)
+        self.expand_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.expand_btn.setCheckable(True)
         self.expand_btn.setAutoRaise(True)
         self.expand_btn.setCursor(Qt.PointingHandCursor)
@@ -176,11 +178,12 @@ class ChatComposer(QFrame):
         input_surface_layout.addWidget(self.input, 1)
 
         bar = QHBoxLayout()
+        bar.setSizeConstraint(QLayout.SetMinimumSize)
         bar.setSpacing(1)
 
         self.route_badge = route_chip_factory()
         self.route_badge.setObjectName("routeChip")
-        self.route_badge.setFixedHeight(30)
+        self.route_badge.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.route_badge.setText("● Ready")
         self.route_badge.setProperty("kiraIconName", "chevron_up")
         self.route_badge.setIcon(make_icon("chevron_up", normal="#4FD8FF", hover="#FFFFFF"))
@@ -199,7 +202,7 @@ class ChatComposer(QFrame):
         self.attach_btn.setProperty("kiraIconName", "attachment")
         self.attach_btn.setIcon(make_icon("attachment"))
         self.attach_btn.setIconSize(QSize(18, 18))
-        self.attach_btn.setFixedSize(30, 30)
+        self.attach_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.attach_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.attach_btn.setToolTip("پیوست عکس یا فایل (می‌توانی فایل را روی پنجره بکشی یا عکس را Ctrl+V کنی)")
         self.attach_btn.setCursor(Qt.PointingHandCursor)
@@ -211,7 +214,7 @@ class ChatComposer(QFrame):
         self.search_btn.setProperty("kiraIconName", "search")
         self.search_btn.setIcon(make_icon("search"))
         self.search_btn.setIconSize(QSize(18, 18))
-        self.search_btn.setFixedSize(30, 30)
+        self.search_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.search_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.search_btn.setCursor(Qt.PointingHandCursor)
         self.search_btn.setFocusPolicy(Qt.NoFocus)
@@ -244,7 +247,7 @@ class ChatComposer(QFrame):
         # Keep the microphone as a single-action button: no split-button arrow.
         self.mic_btn.setMenu(None)
         self.mic_btn.setPopupMode(QToolButton.DelayedPopup)
-        self.mic_btn.setFixedSize(30, 30)
+        self.mic_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.mic_btn.setToolTip("روشن/خاموش کردن میکروفون")
         self.wake_btn = QAction("حالت بیدارباش", self.mic_btn)
         self.wake_btn.setCheckable(True)
@@ -252,7 +255,7 @@ class ChatComposer(QFrame):
         self.wake_btn.triggered.connect(owner.toggle_wake)
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
-        self.voice_btn.setFixedSize(30, 30)
+        self.voice_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.voice_btn.setProperty("voiceOnIcon", make_icon("speaker"))
         self.voice_btn.setProperty("voiceOffIcon", make_icon("speaker_muted"))
         self.voice_btn.setIcon(
@@ -269,7 +272,7 @@ class ChatComposer(QFrame):
         self.game_mode_btn.setProperty("kiraIconName", "eye")
         self.game_mode_btn.setIcon(make_icon("eye"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
-        self.game_mode_btn.setFixedSize(30, 30)
+        self.game_mode_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.game_mode_btn.setCheckable(True)
         self.game_mode_btn.setChecked(False)
@@ -302,7 +305,7 @@ class ChatComposer(QFrame):
             make_icon("stop", normal="#ffffff", hover="#ffffff", disabled="#e0aab3")
         )
         self.gen_stop_btn.setIconSize(QSize(16, 16))
-        self.gen_stop_btn.setFixedSize(30, 30)
+        self.gen_stop_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.gen_stop_btn.setCursor(Qt.PointingHandCursor)
         self.gen_stop_btn.setFocusPolicy(Qt.NoFocus)
         self.gen_stop_btn.setToolTip("توقف تولید پاسخ (متن دریافت‌شده تا اینجا حفظ می‌شود)")
@@ -316,7 +319,7 @@ class ChatComposer(QFrame):
             make_icon("send", normal="#ffffff", hover="#ffffff", disabled="#7d8095")
         )
         self.send_btn.setIconSize(QSize(18, 18))
-        self.send_btn.setFixedSize(30, 30)
+        self.send_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.send_btn.setCursor(Qt.PointingHandCursor)
         self.send_btn.setFocusPolicy(Qt.NoFocus)
         owner.reg(self.send_btn.setToolTip, "send")
@@ -329,13 +332,14 @@ class ChatComposer(QFrame):
         # The composer must fit the actual chat card at every window size.
         # A fixed 560 px editor overflows the chat card when the avatar and
         # conversation sidebar consume part of a non-maximized window.
-        self.input_surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.input_surface.setMinimumWidth(0)
         self.input_surface_host = QWidget(self)
         self.input_surface_host.setObjectName("chatInputSurfaceHost")
-        self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.input_surface_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.input_surface_host.setMinimumWidth(0)
         surface_host_layout = QHBoxLayout(self.input_surface_host)
+        surface_host_layout.setSizeConstraint(QLayout.SetMinimumSize)
         surface_host_layout.setContentsMargins(0, 0, 0, 0)
         surface_host_layout.setSpacing(0)
         surface_host_layout.addWidget(self.input_surface, 1)

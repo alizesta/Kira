@@ -12,7 +12,7 @@ from tests import helpers
 from tests.helpers import Resp, ok_openai, ok_cloudflare, CANARY, StreamResp, sse
 
 try:
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QLayout, QSizePolicy
     from PySide6.QtCore import QCoreApplication
     HAVE_QT = True
 except Exception:                                    # pragma: no cover
@@ -195,8 +195,10 @@ class GuiTests(unittest.TestCase):
         # Collapsed composer is a compact single surface. The input can grow
         # to three lines, while every action/model control stays inside it.
         APP.processEvents()
-        self.assertLessEqual(surface.height(), 108)
-        self.assertGreaterEqual(surface.height(), 80)
+        self.assertGreaterEqual(surface.height(), surface.minimumSizeHint().height())
+        self.assertEqual(surface.layout().sizeConstraint(), QLayout.SetMinimumSize)
+        self.assertEqual(composer.expand_btn.sizePolicy().horizontalPolicy(), QSizePolicy.Fixed)
+        self.assertEqual(composer.route_badge.sizePolicy().verticalPolicy(), QSizePolicy.Fixed)
         for widget in (
             composer.input,
             composer.expand_btn,
@@ -218,10 +220,13 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(composer.input.MAX_LINES, 3)
         composer.input.set_expanded(True)
         APP.processEvents()
+        self.assertGreater(composer.input.maximumHeight(), composer.input.minimumHeight())
+        self.assertEqual(composer.input.sizePolicy().verticalPolicy(), QSizePolicy.Expanding)
         self.assertGreater(composer.input.height(), 120)
         composer.input.set_expanded(False)
         APP.processEvents()
-        self.assertLessEqual(surface.height(), 108)
+        self.assertGreaterEqual(surface.height(), surface.minimumSizeHint().height())
+        self.assertEqual(composer.input.sizePolicy().verticalPolicy(), QSizePolicy.Fixed)
 
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
