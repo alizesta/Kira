@@ -32,6 +32,9 @@ class ChatHistoryFacade:
             raise ValueError("character_id must not be empty")
         return self._persistence.get_or_create_conversation(owner)
 
+    def get_conversation(self, conversation_id: str):
+        return self._require_conversation_lifecycle().get_conversation(conversation_id)
+
     def create_conversation(
         self, character_id: str, title: str = "", metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
