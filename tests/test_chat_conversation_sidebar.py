@@ -87,6 +87,25 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("conversation_row.addWidget(conversation_sidebar", self.builder)
         self.assertIn("conversation_row.addWidget(self.context.views.chat_stack", self.builder)
 
+    def test_qt_sidebar_widgets_are_reexported_into_their_feature_controllers(self):
+        voice_controller = (
+            ROOT / "kira" / "ui" / "main_window_voice_settings.py"
+        ).read_text(encoding="utf-8")
+        voice_support = (
+            ROOT / "kira" / "ui" / "main_window_voice_settings_support.py"
+        ).read_text(encoding="utf-8")
+        session_controller = (
+            ROOT / "kira" / "ui" / "main_window_session.py"
+        ).read_text(encoding="utf-8")
+        session_support = (
+            ROOT / "kira" / "ui" / "main_window_session_support.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("    QListWidget,", voice_controller)
+        self.assertIn("QGraphicsDropShadowEffect, QListWidget", voice_support)
+        self.assertIn("    QListWidgetItem,", session_controller)
+        self.assertIn("QSizePolicy, QListWidgetItem", session_support)
+
     def test_sidebar_views_are_declared_and_granted_to_both_owners(self):
         self.assertIn('"conversation_list"', self.context)
         self.assertIn('"conversation_list_title"', self.context)
