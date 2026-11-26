@@ -58,6 +58,26 @@ class ChatHistoryFacadeTests(unittest.TestCase):
         self.lifecycle = _Lifecycle()
         self.facade = ChatHistoryFacade(self.persistence, self.lifecycle)
 
+    def test_update_conversation_delegates_persistent_title_and_metadata(self):
+        self.persistence.updated = None
+
+        def update_conversation(conversation_id, **changes):
+            self.persistence.updated = (conversation_id, changes)
+            return True
+
+        self.persistence.update_conversation = update_conversation
+        self.assertTrue(
+            self.facade.update_conversation(
+                "conversation-2",
+                title="Renamed",
+                metadata={"_ui_pinned": True},
+            )
+        )
+        self.assertEqual(
+            self.persistence.updated,
+            ("conversation-2", {"title": "Renamed", "metadata": {"_ui_pinned": True}}),
+        )
+
     def test_history_operations_keep_character_scope_and_delegate(self):
         self.assertEqual(self.facade.init_history(), ["note"])
         self.assertEqual(self.facade.get_or_create_conversation("mika"), {"id": "mika-conversation"})
