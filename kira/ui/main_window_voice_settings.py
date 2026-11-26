@@ -54,6 +54,7 @@ from .window_feature_controller import WindowFeatureController
 class VoiceSettingsController(WindowFeatureController):
     def build_chat_tab(self):
         page = QWidget()
+        page.setObjectName("chatPage")
         self.context.views.chat_page = page
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -69,7 +70,8 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.char_tab_buttons = {}
         outer.addWidget(self.char_tabs)
         body = QHBoxLayout()
-        body.setSpacing(10)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
         outer.addLayout(body, 1)
         root = body
         # --- dedicated avatar area (same PNG and loader; the view keeps the image's aspect ratio)
@@ -171,14 +173,8 @@ class VoiceSettingsController(WindowFeatureController):
         chat_area.addWidget(conversation_sidebar, 0)
         chat_area.addWidget(chat_card, 1)
         root.addWidget(chat_area_widget, 1)
-        self.context.views.glow_effects = []                             # neon glow around the composer (colour follows the character); not on the animated avatar: an effect would re-render it every frame
-        for widget in (composer,):
-            glow = QGraphicsDropShadowEffect(widget)
-            glow.setBlurRadius(30)
-            glow.setOffset(0, 0)
-            glow.setColor(QColor(143, 107, 255, 150))
-            widget.setGraphicsEffect(glow)
-            self.context.views.glow_effects.append(glow)
+        # Chat surfaces share the avatar canvas; don't wrap the composer in a glow/card effect.
+        self.context.views.glow_effects = []
         self.context.views.tabs.addTab(page, "")
 
     def build_assistant_section(self):
