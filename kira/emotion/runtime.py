@@ -503,6 +503,31 @@ class EmotionalRuntime:
             self._save()
         return self.snapshot(now)
 
+    def on_model_signals(self, signals, now=None, weight=0.6):
+        """User signals read by the model (not by keyword rules): same effects as on_user_message at reduced strength, no
+        energy cost, no memory (there is no verbatim text). Signals already seen for the last user message are skipped."""
+        now = self.clock() if now is None else float(now)
+        with self._lock:
+            self._advance(now)
+            seen = set(self._state.get("last_user_signals") or [])
+            new = [s for s in dict.fromkeys(str(x) for x in signals) if s in USER_EFFECTS and s not in seen]
+            if not new:
+                return self.snapshot(now)
+            for signal in new:
+                emotions, behaviors, cool = USER_EFFECTS[signal]
+                for key, value in emotions.items(): self._bump("emotions", key, value * weight)
+                for key, value in behaviors.items(): self._bump("behaviors", key, value * weight)
+                for key, value in cool.items():
+                    bucket = self._state["behaviors"]
+                    bucket[key] = _clamp(bucket.get(key, 0) + value * weight)
+            self._state["last_user_signals"] = list(seen | set(new))
+            self._event("model_user_signal", now, ",".join(new))
+            self.relationship_engine.on_user_signals(
+                self._state["relationship"], new, self.config.get("relationship_deltas", {})
+            )
+            self._save()
+        return self.snapshot(now)
+
     def on_reply(self, emotions=(), intensity=None, now=None, text=""):
         now = self.clock() if now is None else float(now)
         valid = [str(e) for e in (emotions or []) if str(e) in EMOTIONS and str(e) != "neutral"][:2]

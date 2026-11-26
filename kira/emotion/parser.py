@@ -8,6 +8,28 @@ import re
 
 from .. import body as _body
 
+# [user:down] - the model's reading of the USER's state (optional second line); removed from the visible text everywhere.
+USER_STATE_TAGS = ("down", "stressed", "hostile", "frustrated", "praise", "flirt", "thanks", "excited", "joke", "apology",
+                   "goodbye", "jealous")
+_USER_TAG = re.compile(r"\[\s*user\s*[:=]\s*([A-Za-z_+&/, ]{1,60}?)\s*\]", re.I)
+_USER_OPEN = re.compile(r"\[\s*u(?:s(?:e(?:r)?)?)?\s*(?:[:=][^\[\]\n]{0,60})?$", re.I)        # "[us" / "[user:do" still being typed
+
+
+def extract_user_states(raw):
+    """(text without user tags, [valid states in order, no repeats]). Pure: safe on every streamed chunk."""
+    text = str(raw or "")
+    states = []
+    for m in _USER_TAG.finditer(text):
+        for part in re.split(r"\s*[+&/,]\s*", m.group(1).strip().lower()):
+            if part in USER_STATE_TAGS and part not in states:
+                states.append(part)
+    text = _USER_TAG.sub("", text)
+    tail = _USER_OPEN.search(text)
+    if tail:
+        text = text[:tail.start()]
+    return text, states[:2]
+
+
 _TOKEN = re.compile(r"\[([^\[\]\n]{1,60})\]")
 _SPLIT = re.compile(r"\s*[+&/,]\s*|\s+and\s+", re.I)
 _JUNK_FIRST_LINE = re.compile(r"^\s*\[[A-Za-z_+&/:|=, 0-9%.-]{1,50}\]\s*$")
@@ -18,10 +40,11 @@ _MOOD_LINE = re.compile(r"(?im)^\s*(?:mood|emotion|\u60c5\u7eea|حالت)\s*[:\u
 
 class ReplyMeta:
     """Visible text plus the emotion metadata detected for it."""
-    __slots__ = ("text", "emotions", "intensity", "source", "body")
+    __slots__ = ("text", "emotions", "intensity", "source", "body", "user_states")
 
-    def __init__(self, text, emotions=(), intensity=None, source="none", body=()):
+    def __init__(self, text, emotions=(), intensity=None, source="none", body=(), user_states=()):
         self.text, self.emotions, self.intensity, self.source = text, list(emotions), intensity, source
+        self.user_states = list(user_states)                    # states the model read from the user's message ([user:...] tag)
         self.body = list(body)                                 # body commands the model wrote as [body:...] tags (kira/body.py)
 
     def __repr__(self):
@@ -52,6 +75,7 @@ def parse_token(content, library):
 
 def parse_reply(reply, library, rules=None):
     raw = re.sub(r"<think>.*?(</think>|$)", "", str(reply or ""), flags=re.S)
+    raw, user_states = extract_user_states(raw)
     raw, body_cmds = _body.extract(raw)                      # [body:raise_right_hand] tags: removed from the text, returned separately
     found, strip_spans = None, []
     for m in _TOKEN.finditer(raw):
@@ -75,11 +99,11 @@ def parse_reply(reply, library, rules=None):
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip(" \t\r\n-:")
     if found:
-        return ReplyMeta(text, found[0], found[1], "tag", body_cmds)
+        return ReplyMeta(text, found[0], found[1], "tag", body_cmds, user_states)
     guess = detect_from_text(text, library, rules)
     if guess:
-        return ReplyMeta(text, [guess[0]], guess[1], "keywords", body_cmds)
-    return ReplyMeta(text, [], None, "none", body_cmds)
+        return ReplyMeta(text, [guess[0]], guess[1], "keywords", body_cmds, user_states)
+    return ReplyMeta(text, [], None, "none", body_cmds, user_states)
 
 
 def detect_from_text(text, library, rules=None):

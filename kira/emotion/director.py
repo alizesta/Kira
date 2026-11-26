@@ -46,7 +46,10 @@ class EmotionDirector:
                 "Pick what Kira actually feels in this reply, not just the topic. "
                 "Write the real reply on the following line; the tag alone is not a reply. "
                 "Usually 2 to 5 sentences unless the user asks for short or long. "
-                "No emoji or markdown in replies that will be spoken.")
+                "No emoji or markdown in replies that will be spoken. "
+                "OPTIONAL, only when the user's last message clearly shows one of these states, even through slang, sarcasm or indirect "
+                "wording - down, stressed, hostile, frustrated, praise, flirt, thanks, excited, joke, apology, goodbye, jealous - add "
+                "ONE extra line right after the emotion tag, written [user:state]. Omit it when unsure; never mention it.")
 
     # ---------- replies ----------
     def parse_reply(self, raw):

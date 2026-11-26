@@ -31,6 +31,11 @@ class MoodService(Protocol):
         character_id: str | None = None, traits: dict[str, Any] | None = None,
     ) -> None: ...
 
+    def on_model_user_states(
+        self, states: Sequence[str] | None, now: float | None = None, *,
+        character_id: str | None = None, traits: dict[str, Any] | None = None,
+    ) -> list[str]: ...
+
     def on_event(
         self, name: str, detail: Any = None, *,
         character_id: str | None = None, traits: dict[str, Any] | None = None,

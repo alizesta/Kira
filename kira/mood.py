@@ -432,6 +432,50 @@ def on_user_message(text, now=None) -> list[str]:
     return found
 
 
+MODEL_STATE_WEIGHT = 0.6        # a state inferred by the model is less certain than a local keyword match
+
+
+def on_model_user_states(states, now=None) -> list[str]:
+    """States the MODEL read from the user's last message (the [user:state] reply tag). Only states the local keyword
+    detector did not already find for that message are applied, at reduced strength, without an energy cost."""
+    _ensure_runtime_migration()
+    now = time.time() if now is None else now
+    wanted = [s for s in dict.fromkeys(states or ()) if s in USER_STATES]
+    if not wanted:
+        return []
+    with _lock:
+        state = _load()
+        new = [s for s in wanted if s not in state["user_states"]]
+        if not new:
+            return []
+        elapsed = now - state["updated"] if state["updated"] else 0
+        scores = _faded(state["scores"], elapsed)
+        behavior_scores = _faded_behaviors(state["behavior_scores"], elapsed)
+        for name in new:
+            _rx, _guide, impulses, cool = USER_STATES[name]
+            for emo in cool:
+                if emo in scores:
+                    scores[emo] *= 0.5
+            for emo, amount in impulses.items():
+                _bump(scores, emo, amount * MODEL_STATE_WEIGHT)
+            for behavior in USER_BEHAVIOR_COOL.get(name, ()):
+                if behavior in behavior_scores:
+                    behavior_scores[behavior] *= 0.5
+            for behavior, amount in USER_BEHAVIOR_IMPULSES.get(name, {}).items():
+                _bump(behavior_scores, behavior, amount * MODEL_STATE_WEIGHT)
+        state.update({
+            "scores": {k: round(v, 2) for k, v in scores.items()},
+            "behavior_scores": {k: round(v, 2) for k, v in behavior_scores.items()},
+            "updated": now, "user_states": list(dict.fromkeys(list(state["user_states"]) + new)),
+        })
+        _save(state)
+    try:
+        _runtime_for().on_model_signals(new, now=now)
+    except Exception:
+        _log.warning("Unable to apply model-read user state", exc_info=True)
+    return new
+
+
 def on_reply(emotions, intensity=None, now=None, text=""):
     _ensure_runtime_migration()
     """Carry the active character's reply emotions forward and update their behavioral disposition."""

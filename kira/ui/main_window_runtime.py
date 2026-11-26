@@ -454,6 +454,10 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                             meta.emotions, meta.intensity, text=meta.text,
                             character_id=self.context.state.cur.cid,
                         )
+                        if meta.user_states:                          # the model read the user's state (the [user:...] tag)
+                            self.context.services.mood_service.on_model_user_states(
+                                meta.user_states, character_id=self.context.state.cur.cid
+                            )
             except Exception:                                     # noqa: BLE001 - mood is a bonus, never block the chat
                 _log.warning("Unable to update conversation memory/emotion state", exc_info=True)
         if persist and ok:

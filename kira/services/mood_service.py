@@ -75,6 +75,14 @@ class MoodStateService:
             lambda: mood.on_reply(emotions, intensity=intensity, now=now, text=text),
         )
 
+    def on_model_user_states(
+        self, states: Sequence[str] | None, now: float | None = None, *,
+        character_id: str | None = None, traits: dict[str, Any] | None = None,
+    ) -> list[str]:
+        return self._for_character(
+            character_id, traits, lambda: mood.on_model_user_states(states, now=now)
+        )
+
     def on_event(
         self, name: str, detail: Any = None, *,
         character_id: str | None = None, traits: dict[str, Any] | None = None,
