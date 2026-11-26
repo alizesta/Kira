@@ -70,8 +70,29 @@ QFrame#avatarCard {
     background: rgba(140,99,255,0.07);
     border: 1px solid rgba(140,99,255,0.60); border-radius: 19px;
 }
-QFrame#chatCard {
+QFrame#chatCard, QFrame#conversationSidebar {
     background: rgba(53,217,242,0.05); border: 1px solid rgba(53,217,242,0.42); border-radius: 19px;
+}
+QListWidget#conversationList {
+    background: transparent; alternate-background-color: transparent; color: #EAF2FF;
+    border: none; outline: none; padding: 2px;
+}
+QListWidget#conversationList::item { background: transparent; border: none; padding: 0px; }
+QListWidget#conversationList::item:selected { background: rgba(140,99,255,0.18); border-radius: 8px; }
+QLabel#conversationListTitle { color: #EAF2FF; font-weight: 700; padding: 3px 5px; }
+QPushButton#conversationOpenButton {
+    background: rgba(140,99,255,0.14); border: 1px solid rgba(140,99,255,0.34);
+    border-radius: 7px; padding: 2px 5px; color: #FFFFFF; text-align: right; font-size: 9pt;
+}
+QPushButton#conversationOpenButton:hover {
+    background: rgba(140,99,255,0.28); border: 1px solid rgba(53,217,242,0.65);
+}
+QPushButton#conversationDeleteButton {
+    background: rgba(255,105,155,0.12); border: 1px solid rgba(255,145,185,0.52);
+    border-radius: 6px; padding: 0px; color: #FFE5EF;
+}
+QPushButton#conversationDeleteButton:hover {
+    background: rgba(255,105,155,0.28); border: 1px solid #FFB5CF;
 }
 QFrame#composer {
     background: rgba(140,99,255,0.08); border: 1px solid rgba(140,99,255,0.72); border-radius: 16px;
@@ -504,10 +525,16 @@ QFrame#avatarCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}), stop:1 rgba({r},{g},{b},{a_card}));
     border: 1px solid rgba({mr},{mg},{mb},{border_alpha:.2f}); border-radius: 19px;
 }}
-QFrame#chatCard {{
+QFrame#chatCard, QFrame#conversationSidebar {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 10},{g + 10},{b + 20},{a_card}), stop:1 rgba({max(r - 6, 0)},{max(g - 6, 0)},{max(b - 4, 0)},{a_card}));
     border: 1px solid rgba({mr},{mg},{mb},{max(0.20, border_alpha - 0.05):.2f}); border-radius: 19px;
 }}
+QListWidget#conversationList {{
+    background: transparent; alternate-background-color: transparent; color: #EAF2FF;
+    border: none; outline: none; padding: 2px;
+}}
+QListWidget#conversationList::item {{ background: transparent; border: none; padding: 0px; }}
+QListWidget#conversationList::item:selected {{ background: rgba({mr},{mg},{mb},0.22); border-radius: 8px; }}
 QFrame#composer {{
     background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
     border: 1px solid rgba({sr},{sg},{sb},{max(0.18, border_alpha - 0.02):.2f}); border-radius: 16px;
