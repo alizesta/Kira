@@ -81,6 +81,9 @@ class CharacterSettingsController(WindowFeatureController):
         news_page.location_detection_requested.connect(self.detect_news_region)
         self.context.views.tabs.addTab(news_page, "اخبار")
         self._news_feed_service.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._news_feed_service.stop)
         region = self.context.services.settings.get("news_health_region") or {}
         if not (isinstance(region, dict) and region.get("confirmed") is True):
             self.detect_news_region()
@@ -109,7 +112,7 @@ class CharacterSettingsController(WindowFeatureController):
             return
         page.detect_button.setEnabled(False)
         service.detect_region_async(
-            lambda city, country, error: page.location_suggestion_ready.emit(city, country, error)
+            lambda city, country, source, error: page.location_suggestion_ready.emit(city, country, source, error)
         )
 
     def confirm_news_region(self, value):
