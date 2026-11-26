@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
     QWidget,
 )
@@ -56,14 +55,3 @@ class ChatHeader(QFrame):
             self.companion_btn.setParent(self)
             layout.addWidget(self.companion_btn, 0)
 
-        self.new_chat_btn = QPushButton("New", self)
-        self.new_chat_btn.setObjectName("newChatButton")
-        self.new_chat_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
-        self.new_chat_btn.setMinimumSize(36, 28)
-        layout.addWidget(self.new_chat_btn, 0)
-
-        self.settings_btn = QPushButton("Settings", self)
-        self.settings_btn.setObjectName("settingsButton")
-        self.settings_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
-        self.settings_btn.setMinimumSize(44, 28)
-        layout.addWidget(self.settings_btn, 0)
