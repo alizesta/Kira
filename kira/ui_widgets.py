@@ -57,8 +57,20 @@ class ChatInput(QPlainTextEdit):
             return
         self._expanded = expanded
         self._fit()
+        self._refresh_parent_layouts()
         self.ensureCursorVisible()
         self.setFocus()
+
+    def _refresh_parent_layouts(self):
+        """Reflow the composer and chat viewport after the editor changes height."""
+        parent = self.parentWidget()
+        while parent is not None:
+            parent.updateGeometry()
+            layout = parent.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+            parent = parent.parentWidget()
 
     def is_expanded(self):
         return self._expanded
