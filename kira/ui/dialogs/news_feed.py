@@ -102,6 +102,24 @@ class NewsFeedDialog(QDialog):
             url = html.escape(str(item.get("url") or ""), quote=True)
             if self.character_id == "mika" and item.get("source_official"):
                 source = "دامنهٔ رسمی/دولتی · نوع نهاد بررسی شود · " + source
+            extra = ""
+            if self.character_id == "mika" and item.get("category") == "epidemic":
+                if item.get("source_official"):
+                    recommendations = news_feed.extract_source_recommendations(summary)
+                    if recommendations:
+                        extra = (
+                            "<p style='color:#a8e3bd'><b>توصیهٔ صریحِ متن منبع:</b> "
+                            + html.escape(" ؛ ".join(recommendations))
+                            + "</p>"
+                        )
+                    else:
+                        extra = "<p style='color:#d9c69e'>در خلاصهٔ منبع توصیهٔ مشخصی نیامده؛ از روی تیتر توصیهٔ پزشکی نمی‌سازیم.</p>"
+                else:
+                    extra = "<p style='color:#d9c69e'>این خبر منبع رسمی سلامت نیست؛ برای توصیهٔ منطقه‌ای باید اطلاعیهٔ مرجع سلامت بررسی شود.</p>"
+            elif self.character_id == "ren":
+                lens = news_feed.fundamental_lens(item.get("category"))
+                if lens:
+                    extra = "<p style='color:#a8d5ff'><b>زاویهٔ تحلیل بنیادی:</b> " + html.escape(lens) + "</p>"
             if not url.startswith(("https://", "http://")):
                 link = ""
             else:
@@ -112,6 +130,7 @@ class NewsFeedDialog(QDialog):
                 f"<div style='color:#b7a5ff;font-size:12px'>{category} · {published}</div>"
                 f"<h3 style='color:#f4f0ff;margin:7px 0'>{title}</h3>"
                 f"<p style='color:#d5d1ec;line-height:1.55'>{summary}</p>"
+                f"{extra}"
                 f"<div style='color:#a9a5c7;font-size:12px'>{source}　{link}</div>"
                 "</section>"
             )
