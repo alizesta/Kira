@@ -161,6 +161,8 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("math.ceil(required_height / line_spacing)", self.chat_input_source)
         self.assertIn("self.setFixedHeight(lines * line_spacing + 28)", self.chat_input_source)
         self.assertIn("QPalette.PlaceholderText", self.chat_input_source)
+        self.assertIn("self.document().setDocumentMargin(0)", self.chat_input_source)
+        self.assertNotIn("self.setDocumentMargin(0)", self.chat_input_source)
         self.assertIn('self.expand_btn.setObjectName("expandInputBtn")', self.composer_source)
         self.assertIn('self.expand_btn.setProperty("kiraIconName", "expand")', self.composer_source)
         self.assertIn('self.expand_btn.setAccessibleName("Expand message editor")', self.composer_source)
