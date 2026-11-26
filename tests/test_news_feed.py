@@ -156,6 +156,52 @@ class NewsFeedTests(unittest.TestCase):
             "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now, db_path=self.db
         ))
 
+    def test_ren_generates_source_bound_fundamental_analysis_and_expires_it(self):
+        class FakeRouter:
+            def __init__(self):
+                self.messages = []
+
+            def chat(self, messages, system_prompt, temperature=0.7):
+                self.messages.append((messages, system_prompt, temperature))
+                return "تحلیل: اثر احتمالی بر حاشیه سود؛ ریسک سیاست پولی؛ داده‌های لازم برای بررسی."
+
+        router = FakeRouter()
+
+        def search(query):
+            return {
+                "engine": "test",
+                "results": [self.result(
+                    "Central bank policy update",
+                    "https://markets.example.com/" + str(abs(hash(query))),
+                    date.today().isoformat(),
+                    "Central bank signals a change in the interest rate outlook.",
+                )],
+            }
+
+        news_feed.refresh_character(
+            "ren",
+            {},
+            now=self.now,
+            db_path=self.db,
+            search_fn=search,
+            enrich_fn=lambda item, *_args: item,
+            chat_client=router,
+        )
+        state = news_feed.get_refresh_state("ren", db_path=self.db, now=self.now)
+        self.assertTrue(state["analysis"])
+        self.assertEqual(len(router.messages), 1)
+        self.assertIn("Central bank policy update", router.messages[0][0][0]["content"])
+        context = news_feed.build_context("ren", "news", {}, now=self.now, db_path=self.db)
+        self.assertIn("تحلیل بنیادی تولیدشده", context)
+        self.assertIn("اثر احتمالی بر حاشیه سود", context)
+
+        expired = news_feed.get_refresh_state(
+            "ren",
+            db_path=self.db,
+            now=float(state["analysis_expires_at"]) + 1,
+        )
+        self.assertEqual(expired["analysis"], "")
+
     def test_mika_only_surfaces_explicit_recommendations_from_health_authorities(self):
         news_feed.initialize(self.db)
         with news_feed._connect(self.db) as conn:
