@@ -53,6 +53,7 @@ class ConversationSidebarTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         cls.chat_input_source = (ROOT / "kira" / "ui_widgets.py").read_text(encoding="utf-8")
         cls.composer_source = (ROOT / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
+        cls.chat_header_source = (ROOT / "kira" / "ui" / "components" / "chat_header.py").read_text(encoding="utf-8")
         cls.context_source = (ROOT / "kira" / "ui" / "window_presentation_context.py").read_text(encoding="utf-8")
 
     def test_new_chat_creates_a_new_record_without_deleting_old_history(self):
@@ -175,6 +176,21 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("input_tools_row.addWidget(self.expand_btn)", self.composer_source)
         self.assertNotIn('self.expand_btn.setText("EXPAND")', self.composer_source)
         self.assertIn('icon_name = "collapse" if expanded else "expand"', self.composer_source)
+
+    def test_chat_header_does_not_show_unwired_new_or_settings_buttons(self):
+        self.assertNotIn("self.new_chat_btn", self.chat_header_source)
+        self.assertNotIn("self.settings_btn", self.chat_header_source)
+        self.assertNotIn("QPushButton", self.chat_header_source)
+
+    def test_expand_control_uses_two_diagonal_arrows_at_the_input_top_right(self):
+        icon = (ROOT / "assets" / "icons" / "expand.svg").read_text(encoding="utf-8")
+        self.assertIn('<path d="m15 3 6 0 0 6"/>', icon)
+        self.assertIn('<path d="m3 21 7-7"/>', icon)
+        self.assertEqual(icon.count("<path "), 4)
+        row = self.composer_source.split("input_tools_row = QHBoxLayout()", 1)[1].split("co.addWidget(self.input)", 1)[0]
+        self.assertIn("input_tools_row.setDirection(QHBoxLayout.LeftToRight)", row)
+        self.assertIn("input_tools_row.addStretch(1)", row)
+        self.assertIn("input_tools_row.addWidget(self.expand_btn)", row)
 
     def test_new_chat_button_is_above_the_history_list_and_uses_session_controller(self):
         button_add = self.builder.index("sidebar_layout.addWidget(self.context.views.new_chat_btn)")
