@@ -374,6 +374,7 @@ class SessionController(WindowFeatureController):
             previous_id = str(session.conversation_id or "")
             previous_draft = self.context.views.input.text()
             previous_html = session.view.toHtml()
+            previous_loaded = session.loaded
             drafts = session._conversation_drafts
             if previous_id:
                 drafts[previous_id] = previous_draft
@@ -383,6 +384,7 @@ class SessionController(WindowFeatureController):
                 session.view.clear()
                 session.conversation_id = target_id
                 session.draft = next_draft
+                session.loaded = True
                 self.context.views.input.setText(next_draft)
                 was_suppressed = getattr(self, "_suppress_conversation_refresh", False)
                 self._suppress_conversation_refresh = True
@@ -394,6 +396,7 @@ class SessionController(WindowFeatureController):
             except Exception:
                 session.conversation_id = previous_id or None
                 session.draft = previous_draft
+                session.loaded = previous_loaded
                 drafts[target_id] = next_draft
                 self.context.views.input.setText(previous_draft)
                 session.view.setHtml(previous_html)
@@ -401,8 +404,11 @@ class SessionController(WindowFeatureController):
 
             bubble = getattr(self.context.adapters, "bubble", None)
             if bubble is not None:
-                with self._as(session):
-                    self.sync_bubble_history(bubble)
+                try:
+                    with self._as(session):
+                        self.sync_bubble_history(bubble)
+                except Exception:
+                    _log.debug("Could not refresh companion bubble for reopened conversation", exc_info=True)
             self.refresh_conversation_list()
             self.context.views.status.setText(
                 "گفتگوی قبلی باز شد؛ تاریخچهٔ آن حفظ شده است."
