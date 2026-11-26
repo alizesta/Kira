@@ -572,8 +572,8 @@ _NEWS_INTENT = re.compile(
     re.I,
 )
 _LIVE_VALUE = re.compile(
-    r"(قیمت|price|نرخ لحظه|الان چند|همین الان|قیمت فعلی|قیمت روز|نرخ امروز|نرخ ارز|قیمت دلار|قیمت طلا|"
-    r"قیمت بیت.?کوین|قیمت سهام|شاخص الان|live price|current price|exchange rate|quote|right now)",
+    r"(قیمت|price|نرخ|الان چند|همین الان|چند شده|چنده|چقدر|قیمت فعلی|قیمت روز|نرخ امروز|نرخ ارز|قیمت دلار|قیمت طلا|"
+    r"قیمت بیت.?کوین|قیمت سهام|شاخص الان|how much|live price|current price|exchange rate|quote|right now)",
     re.I,
 )
 
