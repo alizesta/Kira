@@ -155,10 +155,13 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout.addWidget(self.context.views.conversation_list, 1)
 
         self.context.views.chat_stack = QStackedWidget()  # one live view per character
+        # The history viewport must yield height to the composer when EXPAND is active.
+        self.context.views.chat_stack.setMinimumHeight(0)
         self.context.views.chat_stack.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Ignored
         )
         cv.addWidget(self.context.views.chat_stack, 1)
+        cv.setStretch(1, 1)
         chat_card.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
 
         self.context.views.chat_composer = ChatComposer(
@@ -177,6 +180,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         composer = self.context.views.chat_composer
         cv.addWidget(self.context.views.chat_composer)
+        cv.setStretch(2, 0)
 
         # This host must stay LTR even when QApplication is in Persian RTL mode.
         # The sidebar is inserted first, so it is physically to the left of the chat card.
