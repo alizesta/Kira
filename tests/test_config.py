@@ -136,20 +136,26 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(from_v2["routes"][0]["enabled"])
 
     def test_v8_migration_adds_news_settings_without_overwriting_confirmed_region(self):
-        migrated = config._migrate_settings({
+        source = {
             "settings_version": 8,
             "health_news_region": "Abadan, Khuzestan, Iran",
             "health_news_region_source": "manual",
             "health_news_region_prompted": True,
             "user_extension": {"preserve": True},
-        })
+        }
+        migrated = config._migrate_settings(source)
         self.assertEqual(migrated["settings_version"], 9)
         self.assertEqual(migrated["health_news_region"], "Abadan, Khuzestan, Iran")
         self.assertEqual(migrated["health_news_region_source"], "manual")
         self.assertTrue(migrated["health_news_region_prompted"])
-        self.assertEqual(migrated["news_feed_enabled"], True)
-        self.assertEqual(migrated["news_feed_interval_hours"], 4)
         self.assertEqual(migrated["user_extension"], {"preserve": True})
+
+        self.path.write_text(json.dumps(source), encoding="utf-8")
+        loaded = config.load_settings()
+        self.assertEqual(loaded["health_news_region"], "Abadan, Khuzestan, Iran")
+        self.assertEqual(loaded["news_feed_enabled"], True)
+        self.assertEqual(loaded["news_feed_interval_hours"], 4)
+        self.assertEqual(loaded["settings_version"], 9)
 
     def test_current_version_route_repair_is_persisted(self):
         self.path.write_text(
