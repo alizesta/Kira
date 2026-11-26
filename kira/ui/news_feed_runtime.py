@@ -21,14 +21,22 @@ class NewsFeedRuntime(QObject):
         self._location_operation = None
         self._busy = False
         self._pending_refresh = None
+        self._shutting_down = False
+        if not hasattr(self.state, "_news_feed_workers"):
+            self.state._news_feed_workers = []
         self._windows_permission_result.connect(self._on_windows_permission_result)
         self.timer = QTimer(self)
         interval_hours = max(2, min(24, int(settings.get("news_feed_interval_hours", 6) or 6)))
         self.timer.setInterval(interval_hours * 60 * 60 * 1000)
         self.timer.timeout.connect(self.refresh_due)
 
+    def shutdown(self) -> None:
+        """Stop scheduling work; the app close protocol waits for any active worker."""
+        self._shutting_down = True
+        self.timer.stop()
+
     def start(self) -> None:
-        if not self.settings.get("news_feed_enabled", True):
+        if self._shutting_down or not self.settings.get("news_feed_enabled", True):
             return
         self.timer.start()
         if not self.settings.get("health_news_region_prompted", False):
@@ -145,6 +153,9 @@ class NewsFeedRuntime(QObject):
         worker.setParent(self.window)
         self._worker = worker
         self.state._news_feed_worker = worker
+        registry = self.state._news_feed_workers
+        if worker not in registry:
+            registry.append(worker)
         worker.done.connect(callback)
         worker.finished.connect(lambda current=worker: self._on_worker_finished(current))
         worker.finished.connect(worker.deleteLater)
@@ -155,9 +166,12 @@ class NewsFeedRuntime(QObject):
             self._worker = None
         if getattr(self.state, "_news_feed_worker", None) is worker:
             self.state._news_feed_worker = None
+        registry = getattr(self.state, "_news_feed_workers", [])
+        if worker in registry:
+            registry.remove(worker)
 
     def refresh_due(self, *, force: bool = False, characters=None) -> None:
-        if not self.settings.get("news_feed_enabled", True):
+        if self._shutting_down or not self.settings.get("news_feed_enabled", True):
             return
         if self._busy:
             if force:
