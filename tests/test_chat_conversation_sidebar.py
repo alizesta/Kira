@@ -165,12 +165,14 @@ class ConversationSidebarTests(unittest.TestCase):
         theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
         start = theme_source.index("def character_style(")
         style = theme_source[start:]
-        self.assertIn("QPlainTextEdit#chatInput {{", style)
-        self.assertIn("background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});", style)
-        self.assertIn("border: 1px solid rgba({mr},{mg},{mb},0.30);", style)
-        self.assertIn("QPlainTextEdit#chatInput:hover {{", style)
-        self.assertIn("QPlainTextEdit#chatInput:focus {{", style)
-        self.assertNotIn("QPlainTextEdit#chatInput {{\\n    background: transparent;", style)
+        input_start = style.index("QPlainTextEdit#chatInput {{")
+        input_end = style.index("QToolButton#expandInputBtn {{", input_start)
+        input_style = style[input_start:input_end]
+        self.assertIn("background: rgba({min(r + 16, 255)},{min(g + 16, 255)},{min(b + 20, 255)},{min(0.98, a_card + 0.10):.2f});", input_style)
+        self.assertIn("border: 1px solid rgba({mr},{mg},{mb},0.30);", input_style)
+        self.assertIn("QPlainTextEdit#chatInput:hover {{", input_style)
+        self.assertIn("QPlainTextEdit#chatInput:focus {{", input_style)
+        self.assertNotIn("background: transparent;", input_style)
 
     def test_chat_surfaces_share_the_avatar_background_without_frames(self):
         self.assertIn('page.setObjectName("chatPage")', self.builder)
