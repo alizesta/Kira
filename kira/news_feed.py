@@ -158,7 +158,11 @@ def _official_health_source(url: str) -> bool:
     }
     if host in exact:
         return True
-    return host.endswith((".gov", ".gov.uk", ".gov.de", ".gouv.fr", ".europa.eu", ".who.int", ".cdc.gov", ".rki.de"))
+    return host.endswith((
+        ".gov", ".gov.uk", ".gov.de", ".gov.ir", ".gov.au", ".gov.in",
+        ".gov.br", ".govt.nz", ".gouv.fr", ".europa.eu", ".who.int",
+        ".cdc.gov", ".rki.de", ".nhs.uk", ".canada.ca",
+    ))
 
 
 def _gemini_credentials(settings: dict) -> tuple[str, str] | None:
