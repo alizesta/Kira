@@ -20,7 +20,7 @@ DEFAULTS = {
     "health_news_region_source": "",       # manual | windows_location | ip_estimate; the raw IP is never stored
     "health_news_region_prompted": False,  # first-run prompt has been handled; user can edit region in Preferences
     "news_feed_enabled": True,
-    "news_feed_interval_hours": 4,
+    "news_feed_interval_hours": 6,
     # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
     "persona": "",
     "temperature": 0.7,
