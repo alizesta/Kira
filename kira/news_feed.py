@@ -402,9 +402,9 @@ class NewsFeedService:
                         if category == "local_outbreak" and not is_official_health_source(result.get("url")):
                             continue
                         entry = dict(result)
-                            entry["category"] = category
-                            entry["summary"] = result.get("snippet") or result.get("text") or ""
-                            collected.append(entry)
+                        entry["category"] = category
+                        entry["summary"] = result.get("snippet") or result.get("text") or ""
+                        collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
             count = self.store.upsert_items(character_id, collected, region=region)
