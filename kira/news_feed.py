@@ -486,6 +486,23 @@ def build_context(
             f"خلاصهٔ منبع: {item.get('summary') or 'خلاصه‌ای در نتیجهٔ جست‌وجو نبود.'}\n"
             f"لینک: {item.get('url')}"
         )
+        if character_id == "mika" and item.get("category") == "epidemic":
+            if item.get("source_official"):
+                recommendations = extract_source_recommendations(item.get("summary") or "")
+                if recommendations:
+                    lines.append(
+                        "توصیه‌های صریحِ استخراج‌شده از متن منبع: "
+                        + " ؛ ".join(recommendations)
+                    )
+                else:
+                    lines.append(
+                        "در خلاصهٔ منبع توصیهٔ عملیِ صریحی دیده نشد؛ از تیتر، توصیهٔ پزشکی نساز."
+                    )
+            else:
+                lines.append(
+                    "این منبع به‌تنهایی مبنای توصیهٔ محلی نیست؛ برای هشدار و توصیهٔ رسمی، "
+                    "مرجع سلامت منطقه را بررسی کن."
+                )
         if character_id == "ren":
             lens = fundamental_lens(item.get("category"))
             if lens:
