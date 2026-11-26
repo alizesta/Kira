@@ -532,18 +532,14 @@ def character_style(theme, effect="off", appearance=None):
     transparency = max(0, min(100, int(appearance.get("transparency", 28))))
     glow = max(0, min(100, int(appearance.get("glow", 58))))
     a_card = max(0.34, min(0.94, 0.86 - transparency * 0.0038))
-    a_comp = max(0.38, min(0.98, 0.91 - transparency * 0.0028))
     if effect in ("mica", "acrylic"):
         a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
-        a_comp = min(a_comp, 0.70 if effect == "mica" else 0.56)
-    # Keep the character-tinted glass, but make the edge a quiet separator rather than a neon outline.
+    # The avatar, history, chat and composer use one flat character-coloured surface.
     border_alpha = min(0.34, 0.16 + glow * 0.0018)
     return f"""
 QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
 QFrame#conversationSidebar, QFrame#composer {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}),
-        stop:1 rgba({r},{g},{b},{a_card}));
+    background: rgba({r},{g},{b},{a_card});
     border: none;
     border-radius: 0px;
 }}
