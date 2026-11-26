@@ -53,6 +53,7 @@ class ConversationSidebarTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         cls.chat_input_source = (ROOT / "kira" / "ui_widgets.py").read_text(encoding="utf-8")
         cls.composer_source = (ROOT / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
+        cls.context_source = (ROOT / "kira" / "ui" / "window_presentation_context.py").read_text(encoding="utf-8")
 
     def test_new_chat_creates_a_new_record_without_deleting_old_history(self):
         self.assertIn("service.create_conversation(session.cid)", self.new_chat)
@@ -155,11 +156,29 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)", self.chat_input_source)
         self.assertIn("def set_expanded(self, expanded):", self.chat_input_source)
         self.assertIn("self._expanded = bool(expanded)", self.chat_input_source)
-        self.assertIn("max_lines = self.EXPANDED_MAX_LINES if self._expanded else self.MAX_LINES", self.chat_input_source)
+        self.assertIn("if self._expanded:", self.chat_input_source)
+        self.assertIn("lines = self.EXPANDED_MAX_LINES", self.chat_input_source)
+        self.assertIn("math.ceil(required_height / line_spacing)", self.chat_input_source)
+        self.assertIn("self.setFixedHeight(lines * line_spacing + 28)", self.chat_input_source)
+        self.assertIn("QPalette.PlaceholderText", self.chat_input_source)
         self.assertIn('self.expand_btn.setObjectName("expandInputBtn")', self.composer_source)
-        self.assertIn('self.expand_btn.setText("EXPAND")', self.composer_source)
+        self.assertIn('self.expand_btn.setProperty("kiraIconName", "expand")', self.composer_source)
+        self.assertIn('make_icon("expand")', self.composer_source)
+        self.assertIn('make_icon("collapse")', self.composer_source)
         self.assertIn("self.expand_btn.toggled.connect(self._set_input_expanded)", self.composer_source)
-        self.assertIn('self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")', self.composer_source)
+        self.assertIn("input_tools_row.addWidget(self.expand_btn)", self.composer_source)
+        self.assertNotIn('self.expand_btn.setText("EXPAND")', self.composer_source)
+        self.assertIn('icon_name = "collapse" if expanded else "expand"', self.composer_source)
+
+    def test_new_chat_button_is_above_the_history_list_and_uses_session_controller(self):
+        button_add = self.builder.index("sidebar_layout.addWidget(self.context.views.new_chat_btn)")
+        list_add = self.builder.index("sidebar_layout.addWidget(self.context.views.conversation_list, 1)")
+        self.assertLess(button_add, list_add)
+        self.assertIn('self.context.views.new_chat_btn.setObjectName("newChatButton")', self.builder)
+        self.assertIn('self.context.views.new_chat_btn.clicked.connect(', self.builder)
+        self.assertIn('self.feature_controller("session").new_chat()', self.builder)
+        self.assertIn('"new_chat_btn"', self.context_source.split('"voice_settings": {', 1)[1].split('"peers":', 1)[0])
+        self.assertIn("QPushButton#newChatButton", (ROOT / "kira" / "theme.py").read_text(encoding="utf-8"))
 
     def test_chat_input_has_a_distinct_character_tinted_surface(self):
         theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
