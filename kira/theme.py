@@ -534,7 +534,22 @@ QListWidget#conversationList {{
     border: none; outline: none; padding: 2px;
 }}
 QListWidget#conversationList::item {{ background: transparent; border: none; padding: 0px; }}
-QListWidget#conversationList::item:selected {{ background: rgba({mr},{mg},{mb},0.22); border-radius: 8px; }}
+QListWidget#conversationList::item:selected {{ background: transparent; color: #FFFFFF; }}
+QWidget#conversationRow {{ background: transparent; border: none; }}
+QPushButton#conversationOpenButton {{
+    background: transparent; border: none; border-radius: 0px;
+    padding: 2px 4px; color: #EAF2FF; text-align: right; font-size: 9pt;
+}}
+QPushButton#conversationOpenButton:hover {{
+    background: rgba({mr},{mg},{mb},0.12); border: none; color: #FFFFFF;
+}}
+QToolButton#conversationMenuButton {{
+    background: transparent; border: none; border-radius: 5px;
+    padding: 0px; color: #C8D4F0; font-size: 15pt;
+}}
+QToolButton#conversationMenuButton:hover {{
+    background: rgba({sr},{sg},{sb},0.14); border: none; color: #FFFFFF;
+}}
 QFrame#composer {{
     background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
     border: 1px solid rgba({sr},{sg},{sb},{max(0.18, border_alpha - 0.02):.2f}); border-radius: 16px;
