@@ -52,6 +52,30 @@ class RuntimeStateTests(unittest.TestCase):
         self.assertTrue(context.state._closing)
         self.assertTrue(context.runtime_state.get("_closing"))
 
+    def test_news_feed_state_and_view_are_registered_with_relevant_capabilities(self):
+        context = WindowPresentationContext(object(), _ControllerRegistry())
+        runtime_context = context.for_controller(object())
+        lifecycle_context = context.for_controller(type(
+            "LifecycleRegistry",
+            (),
+            {"name_for": lambda self, _controller: "lifecycle"},
+        )())
+
+        runtime = object()
+        worker = object()
+        workers = [worker]
+        button = object()
+        context.state._news_feed_runtime = runtime
+        context.state._news_feed_worker = worker
+        context.state._news_feed_workers = workers
+        context.views.news_feed_btn = button
+
+        self.assertIs(runtime_context.state._news_feed_runtime, runtime)
+        self.assertIs(runtime_context.state._news_feed_worker, worker)
+        self.assertIs(runtime_context.state._news_feed_workers, workers)
+        self.assertIs(lifecycle_context.state._news_feed_runtime, runtime)
+        self.assertIs(context.views.news_feed_btn, button)
+
     def test_detected_capabilities_are_separate_and_snapshot_is_detached(self):
         first, second = DetectedCapabilities(), DetectedCapabilities()
         first.set("api_registry", {"groq": {"status": "valid"}})
