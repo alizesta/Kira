@@ -71,7 +71,8 @@ class NewsFeedDialog(QDialog):
         if state:
             try:
                 stamp = datetime.fromtimestamp(float(state["refreshed_at"])).astimezone()
-                self.status_label.setText("آخرین به‌روزرسانی: " + stamp.strftime("%Y-%m-%d %H:%M"))
+                status_prefix = "به‌روزرسانی ناقص" if state.get("status") == "partial" else "آخرین به‌روزرسانی"
+                self.status_label.setText(status_prefix + ": " + stamp.strftime("%Y-%m-%d %H:%M"))
             except (TypeError, ValueError, OSError):
                 self.status_label.setText("")
         else:
@@ -118,7 +119,7 @@ class NewsFeedDialog(QDialog):
             published = html.escape(str(item.get("published_at") or "تاریخ انتشار نامشخص"))
             url = html.escape(str(item.get("url") or ""), quote=True)
             if self.character_id == "mika" and item.get("source_official"):
-                source = "دامنهٔ رسمی/دولتی · نوع نهاد بررسی شود · " + source
+                source = "مرجع سلامت/دامنهٔ دولتی · نوع نهاد بررسی شود · " + source
             extra = ""
             if self.character_id == "mika" and item.get("category") == "epidemic":
                 if item.get("source_official"):
