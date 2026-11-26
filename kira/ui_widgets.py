@@ -1,10 +1,11 @@
 """Small reusable widgets for the compact companion UI."""
 import base64
+import math
 import os
 import random
 
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QFontMetrics, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout
 
 
@@ -16,6 +17,7 @@ class ChatInput(QPlainTextEdit):
     returnPressed = Signal()
     filesDropped = Signal(list)          # local file paths dropped or pasted as files
     imagePasted = Signal(object)         # QImage pasted from the clipboard
+    MIN_LINES = 2
     MAX_LINES = 5
     EXPANDED_MAX_LINES = 16
     CHARACTER_PROMPTS = {
@@ -28,24 +30,34 @@ class ChatInput(QPlainTextEdit):
         """Choose a fresh, character-appropriate prompt for the visible chat."""
         profile = self.CHARACTER_PROMPTS.get(str(character_id or "kira").lower(), self.CHARACTER_PROMPTS["kira"])
         lang = "en" if str(language or "fa").lower().startswith("en") else "fa"
+        self.setLayoutDirection(Qt.LeftToRight if lang == "en" else Qt.RightToLeft)
         self.setPlaceholderText(random.choice(profile.get(lang) or profile["fa"]))
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("chatInput")
         self.setFrameShape(QFrame.NoFrame)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setDocumentMargin(0)
         self.setTabChangesFocus(True)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._expanded = False
         self._last_width = -1
+        placeholder_palette = self.palette()
+        placeholder_palette.setColor(QPalette.PlaceholderText, QColor("#E2EAF8"))
+        self.setPalette(placeholder_palette)
         self.textChanged.connect(self._fit)
         self._fit()
 
     def set_expanded(self, expanded):
-        """Expand the writing area without exposing either scroll bar."""
-        self._expanded = bool(expanded)
+        """Expand to a visibly larger fixed writing area, or return to content height."""
+        expanded = bool(expanded)
+        if self._expanded == expanded:
+            return
+        self._expanded = expanded
         self._fit()
+        self.ensureCursorVisible()
         self.setFocus()
 
     def is_expanded(self):
@@ -82,9 +94,22 @@ class ChatInput(QPlainTextEdit):
             self._fit()
 
     def _fit(self):
-        max_lines = self.EXPANDED_MAX_LINES if self._expanded else self.MAX_LINES
-        lines = max(1, min(max_lines, int(self.document().size().height())))
-        self.setFixedHeight(lines * self.fontMetrics().lineSpacing() + 16)
+        line_spacing = max(1, self.fontMetrics().lineSpacing())
+        if self._expanded:
+            # Expanded mode must grow even when the draft is empty or only one line.
+            lines = self.EXPANDED_MAX_LINES
+        else:
+            document_height = float(
+                self.document().documentLayout().documentSize().height()
+            )
+            required_height = max(
+                float(line_spacing),
+                document_height - (2.0 * self.document().documentMargin()),
+            )
+            required_lines = max(1, math.ceil(required_height / line_spacing))
+            lines = min(self.MAX_LINES, max(self.MIN_LINES, required_lines))
+        # Include the input's inner padding and border so the placeholder is not clipped.
+        self.setFixedHeight(lines * line_spacing + 28)
 
 
 class RouteChip(QToolButton):
