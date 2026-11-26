@@ -470,8 +470,14 @@ class SessionController(WindowFeatureController):
                 or str(record.get("status") or "active") not in ("active", "closed")
             ):
                 raise ValueError("این گفتگو برای شخصیت فعال در دسترس نیست.")
-            history = service.recent_messages(
-                40, character_id=session.cid, conversation_id=target_id
+            message_count = service.message_count(session.cid, target_id)
+            history = (
+                service.get_messages(
+                    max(1, int(message_count)),
+                    character_id=session.cid,
+                    conversation_id=target_id,
+                )
+                if message_count else []
             )
             if session.view is None:
                 raise RuntimeError("نمای گفتگوی فعال آماده نیست.")
