@@ -41,6 +41,20 @@ _TRIGGERS = re.compile(
 
 _FOLLOWUP = re.compile(r"(این|اون|آن|همین|همون|قبلی|بالا|بهتر|دوباره|باز\s?هم|نه\s+بابا|نه\b|غلطه|اشتباه)", re.I)
 
+# Explicit user opt-out must override both keyword-based auto-search and tool calls.
+# Normalize first so Persian/Arabic letter variants and ZWNJ do not bypass it.
+_NO_WEB = re.compile(
+    r"(?:\b(?:سرچ|جستجو|جست\s+و\s+جو|گوگل|وب|اینترنت|نت)\b.{0,24}\b(?:نکن|نکنید|نرو|نرید|نزن|نزنید|انجام\s+نده|انجام\s+ندید)\b|"
+    r"\b(?:نکن|نکنید|نرو|نرید|نزن|نزنید)\b.{0,24}\b(?:سرچ|جستجو|جست\s+و\s+جو|گوگل|وب|اینترنت|نت)\b|"
+    r"\b(?:نمی\s*خوام|نمی\s*خواهم|نمی\s*خواهیم)\b.{0,32}\b(?:سرچ|جستجو|وب|اینترنت|نت)\b)",
+    re.I,
+)
+
+
+def explicit_no_web(text: str) -> bool:
+    """True when the current user message explicitly forbids web/internet lookup."""
+    return bool(_NO_WEB.search(_norm(text)))
+
 
 def is_followup(text: str) -> bool:
     """Short or pointing-back messages ('نه بابا بهتر سرچ کن') only make sense with the conversation; full phrases do not."""
@@ -88,6 +102,8 @@ def plan(text: str):
     """-> (query, forced). query is None when this message does not need the web."""
     text = (text or "").strip()
     if not text:
+        return None, False
+    if explicit_no_web(text):
         return None, False
     m = _FORCE.match(text)
     if m:
