@@ -188,9 +188,8 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn('<path d="m3 21 7-7"/>', icon)
         self.assertEqual(icon.count("<path "), 4)
         row = self.composer_source.split("input_tools_row = QHBoxLayout()", 1)[1].split("co.addWidget(self.input)", 1)[0]
-        self.assertIn("input_tools_row.setDirection(QHBoxLayout.LeftToRight)", row)
-        self.assertIn("input_tools_row.addStretch(1)", row)
-        self.assertIn("input_tools_row.addWidget(self.expand_btn)", row)
+        self.assertIn("input_tools_row.setDirection(QHBoxLayout.RightToLeft)", row)
+        self.assertLess(row.index("input_tools_row.addWidget(self.expand_btn)"), row.index("input_tools_row.addStretch(1)"))
 
     def test_new_chat_button_is_above_the_history_list_and_uses_session_controller(self):
         button_add = self.builder.index("sidebar_layout.addWidget(self.context.views.new_chat_btn)")
