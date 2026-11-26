@@ -122,7 +122,8 @@ class ChatInput(QPlainTextEdit):
             lines = min(self.MAX_LINES, max(self.MIN_LINES, required_lines))
         # Derive the editor's constraints from the active font metrics rather than
         # a fixed widget height. Expanded mode can consume the available layout space.
-        target_height = lines * line_spacing + self.contentsMargins().top() + self.contentsMargins().bottom()
+        content_padding = round(self.fontMetrics().height() * 0.7)
+        target_height = lines * line_spacing + content_padding + self.contentsMargins().top() + self.contentsMargins().bottom()
         self.setMinimumHeight(target_height)
         if self._expanded:
             self.setMaximumHeight(QWIDGETSIZE_MAX)
