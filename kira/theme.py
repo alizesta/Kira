@@ -607,11 +607,19 @@ QPlainTextEdit#chatInput:focus {{
     border: 1px solid rgba({sr},{sg},{sb},0.52);
 }}
 QToolButton#expandInputBtn {{
-    background: transparent; border: none; border-radius: 7px;
-    padding: 4px 9px; color: #D3D9E8; font-size: 8pt; font-weight: 700;
+    background: transparent; border: none; border-radius: 7px; padding: 2px;
 }}
 QToolButton#expandInputBtn:hover, QToolButton#expandInputBtn:checked {{
-    background: rgba({sr},{sg},{sb},0.14); border: none; color: #FFFFFF;
+    background: rgba({sr},{sg},{sb},0.18); border: none;
+}}
+QPushButton#newChatButton {{
+    background: rgba({mr},{mg},{mb},0.16); border: 1px solid rgba({mr},{mg},{mb},0.20);
+    border-radius: 8px; padding: 6px 8px; color: #EEF3FC;
+    font-size: 9pt; font-weight: 650; text-align: center;
+}}
+QPushButton#newChatButton:hover {{
+    background: rgba({sr},{sg},{sb},0.20); border-color: rgba({sr},{sg},{sb},0.30);
+    color: #FFFFFF;
 }}
 QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(225,239,255,0.28); }}
 QToolButton#sendBtn:hover {{ border: 1px solid rgba(235,247,255,0.42); }}
