@@ -62,8 +62,9 @@ class ConversationSidebarTests(unittest.TestCase):
             self.assertNotIn(destructive_operation, self.new_chat)
 
     def test_sidebar_lists_durable_conversations_for_the_active_character(self):
-        self.assertIn("service.list_conversations(session.cid)", self.refresh)
-        self.assertIn("status", self.refresh)
+        self.assertIn('service.list_conversations(', self.refresh)
+        self.assertIn('statuses=("active", "closed")', self.refresh)
+        self.assertIn('status not in ("active", "closed")', self.refresh)
         self.assertIn("service.recent_messages(", self.refresh)
         self.assertIn("conversation_id=conversation_id", self.refresh)
         self.assertIn("item.setData(Qt.UserRole, conversation_id)", self.refresh)
@@ -72,6 +73,7 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("service.get_conversation(target_id)", self.switch)
         self.assertIn('record.get("character_id")', self.switch)
         self.assertIn('record.get("status")', self.switch)
+        self.assertIn('not in ("active", "closed")', self.switch)
         self.assertIn("conversation_id=target_id", self.switch)
         self.assertIn("session.conversation_id = target_id", self.switch)
         self.assertIn("service.pending_count(session.session_id)", self.switch)
