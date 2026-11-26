@@ -779,6 +779,9 @@ class SessionController(WindowFeatureController):
             # Mood is polled periodically, but unchanged state should not rebuild
             # SVG icons, QPixmaps, stylesheets or tooltips every time.
             if signature == getattr(self, "_mood_indicator_signature", None):
+                # The header constructs this label hidden; keep the actual emotion face visible
+                # even when the persisted mood has not changed since the previous UI poll.
+                face_label.setVisible(True)
                 return
             icon_name = face_map.get(emotion, "neutral")
             neon = emotion_colors.get(emotion, "#69E5FF")
@@ -787,6 +790,8 @@ class SessionController(WindowFeatureController):
                 checked=neon, disabled="#52617B",
             )
             face_label.setPixmap(face_icon.pixmap(QSize(30, 30)))
+            # ChatHeader initially hides both mood labels; the face must be explicitly shown.
+            face_label.setVisible(True)
             face_label.setStyleSheet(
                 "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
                 f"border: 1px solid {neon}; border-radius: 11px; padding: 2px; }}"
@@ -830,7 +835,9 @@ class SessionController(WindowFeatureController):
             fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",
                                  checked="#B9D4F5", disabled="#52617B")
             face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
-            label.setText("")
+            face_label.setVisible(True)
+            label.clear()
+            label.setVisible(False)
             face_label.setToolTip("حال‌وهوای شخصیت فعال")
 
     def _chat_action_icon_url(self, view, action, icon_name, colour):
