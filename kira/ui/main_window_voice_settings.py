@@ -111,7 +111,7 @@ class VoiceSettingsController(WindowFeatureController):
 
         # A per-character conversation history column. The character tabs above remain
         # independent; this list switches durable conversations within the selected character.
-        conversation_sidebar = QFrame(chat_card)
+        conversation_sidebar = QFrame(page)
         conversation_sidebar.setObjectName("conversationSidebar")
         conversation_sidebar.setFixedWidth(154)
         conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
@@ -133,17 +133,11 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.conversation_list.setWordWrap(False)
         sidebar_layout.addWidget(self.context.views.conversation_list, 1)
 
-        conversation_row = QHBoxLayout()
-        conversation_row.setDirection(QHBoxLayout.LeftToRight)
-        conversation_row.setContentsMargins(0, 0, 0, 0)
-        conversation_row.setSpacing(8)
         self.context.views.chat_stack = QStackedWidget()  # one live view per character
         self.context.views.chat_stack.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        conversation_row.addWidget(conversation_sidebar, 0)
-        conversation_row.addWidget(self.context.views.chat_stack, 1)
-        cv.addLayout(conversation_row, 1)
+        cv.addWidget(self.context.views.chat_stack, 1)
 
         self.context.views.chat_composer = ChatComposer(
             ComposerOwner(
@@ -161,7 +155,16 @@ class VoiceSettingsController(WindowFeatureController):
         )
         composer = self.context.views.chat_composer
         cv.addWidget(self.context.views.chat_composer)
-        root.addWidget(chat_card, 1)
+
+        # Keep the history rail beside the complete chat card so both share its full height.
+        chat_area = QHBoxLayout()
+        chat_area.setDirection(QHBoxLayout.LeftToRight)
+        chat_area.setContentsMargins(0, 0, 0, 0)
+        chat_area.setSpacing(8)
+        chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        chat_area.addWidget(conversation_sidebar, 0)
+        chat_area.addWidget(chat_card, 1)
+        root.addLayout(chat_area, 1)
         self.context.views.glow_effects = []                             # neon glow around the composer (colour follows the character); not on the animated avatar: an effect would re-render it every frame
         for widget in (composer,):
             glow = QGraphicsDropShadowEffect(widget)
