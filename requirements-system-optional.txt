@@ -2,3 +2,4 @@
 psutil>=5.9,<8
 dxcam[winrt]>=0.3.0,<1; platform_system == "Windows"
 pypdf>=5,<7
+winrt-Windows.Devices.Geolocation>=3.2.1; platform_system == "Windows"
