@@ -35,6 +35,12 @@ class ChatHistoryFacade:
     def get_conversation(self, conversation_id: str):
         return self._require_conversation_lifecycle().get_conversation(conversation_id)
 
+    def update_conversation(self, conversation_id: str, **changes):
+        updater = getattr(self._persistence, "update_conversation", None)
+        if not callable(updater):
+            raise RuntimeError("Chat persistence does not support conversation updates")
+        return updater(conversation_id, **changes)
+
     def create_conversation(
         self, character_id: str, title: str = "", metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
