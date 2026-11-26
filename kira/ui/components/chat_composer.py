@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -59,6 +60,7 @@ class ChatComposer(QFrame):
     ):
         super().__init__(parent)
         self.setObjectName("composer")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._owner = owner
 
         co = QVBoxLayout(self)
@@ -105,13 +107,17 @@ class ChatComposer(QFrame):
         input_surface_layout.setContentsMargins(8, 6, 8, 6)
         input_surface_layout.setSpacing(2)
 
-        input_tools_row = QHBoxLayout()
+        input_tools_host = QWidget(self.input_surface)
+        input_tools_host.setObjectName("expandInputToolbar")
+        # This small toolbar is deliberately LTR even inside the Persian RTL UI.
+        # Stretch first, then the button: the icon is always the physical rightmost item.
+        input_tools_host.setLayoutDirection(Qt.LeftToRight)
+        input_tools_row = QHBoxLayout(input_tools_host)
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
-        # Keep the expand/collapse control pinned to the physical right edge,
-        # including when the application is using an RTL layout.
-        input_tools_row.setDirection(QHBoxLayout.RightToLeft)
-        self.expand_btn = QToolButton(self)
+        input_tools_row.setDirection(QHBoxLayout.LeftToRight)
+        input_tools_row.addStretch(1)
+        self.expand_btn = QToolButton(input_tools_host)
         self.expand_btn.setObjectName("expandInputBtn")
         self.expand_btn.setProperty("kiraIconName", "expand")
         self._expand_icon = make_icon("expand")
@@ -126,9 +132,8 @@ class ChatComposer(QFrame):
         self.expand_btn.setAccessibleName("Expand message editor")
         self.expand_btn.setToolTip("باز کردن فضای بزرگ‌تر برای نوشتن")
         self.expand_btn.toggled.connect(self._set_input_expanded)
-        input_tools_row.addWidget(self.expand_btn)
-        input_tools_row.addStretch(1)
-        input_surface_layout.addLayout(input_tools_row)
+        input_tools_row.addWidget(self.expand_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        input_surface_layout.addWidget(input_tools_host)
         input_surface_layout.addWidget(self.input, 1)
 
         bar = QHBoxLayout()
