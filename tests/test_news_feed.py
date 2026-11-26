@@ -212,6 +212,57 @@ class NewsFeedTests(unittest.TestCase):
         )
         self.assertEqual(expired["analysis"], "")
 
+    def test_relevant_older_article_is_injected_when_cache_suppresses_search(self):
+        latest = date.today().isoformat()
+        older = (date.today() - timedelta(days=5)).isoformat()
+
+        def search(query):
+            if "-gaming" in query:
+                results = [
+                    self.result(
+                        "Semiconductor export restrictions reshape chip supply",
+                        "https://technology.example.com/semiconductor-restrictions",
+                        older,
+                        "Export restrictions affect semiconductor supply chains and technology firms.",
+                    ),
+                    self.result(
+                        "AI infrastructure investment update",
+                        "https://technology.example.com/ai-investment",
+                        older,
+                    ),
+                ]
+            else:
+                results = [
+                    self.result(
+                        "Latest inflation outlook",
+                        "https://economy.example.com/inflation",
+                        latest,
+                    ),
+                    self.result(
+                        "Central bank policy update",
+                        "https://economy.example.com/policy",
+                        latest,
+                    ),
+                ]
+            return {"engine": "test", "results": results}
+
+        news_feed.refresh_character(
+            "ren",
+            {},
+            now=self.now,
+            db_path=self.db,
+            search_fn=search,
+            enrich_fn=lambda item, *_args: item,
+        )
+        query = "latest news about semiconductor export restrictions"
+        self.assertTrue(news_feed.can_answer_from_feed(
+            "ren", query, {}, now=self.now, db_path=self.db
+        ))
+        context = news_feed.build_context(
+            "ren", query, {}, now=self.now, db_path=self.db
+        )
+        self.assertIn("Semiconductor export restrictions reshape chip supply", context)
+
     def test_mika_only_surfaces_explicit_recommendations_from_health_authorities(self):
         news_feed.initialize(self.db)
         with news_feed._connect(self.db) as conn:
