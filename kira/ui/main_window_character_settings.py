@@ -69,6 +69,21 @@ class CharacterSettingsController(WindowFeatureController):
         page.open_sounds_requested.connect(self.feature_controller("lifecycle").open_sounds)
         page.save_requested.connect(lambda: self.save_character_settings(silent=True))
         page.save_personality_requested.connect(self.save_personality_profile)
+        from .pages.news_feed_page import NewsFeedPage
+        from ..news_feed import NewsFeedService
+        self._news_feed_service = NewsFeedService(lambda: self.context.services.settings, DATA_DIR)
+        self.context.views.news_page = NewsFeedPage(
+            self._news_feed_service, self.context.services.settings, parent=self.window
+        )
+        news_page = self.context.views.news_page
+        news_page.refresh_requested.connect(self.refresh_news_character)
+        news_page.region_confirm_requested.connect(self.confirm_news_region)
+        news_page.location_detection_requested.connect(self.detect_news_region)
+        self.context.views.tabs.addTab(news_page, "اخبار")
+        self._news_feed_service.start()
+        region = self.context.services.settings.get("news_health_region") or {}
+        if not (isinstance(region, dict) and region.get("confirmed") is True):
+            self.detect_news_region()
         assistant_page = getattr(self.context.views, "assistant_page", None)
         if assistant_page is not None:
             page.attach_identity_box(assistant_page.identity_box)      # name / persona / modes / temperature sit under the character card
@@ -76,6 +91,50 @@ class CharacterSettingsController(WindowFeatureController):
         self.refresh_character_choices()
         self.refresh_character_card()
         self.refresh_personality_controls()
+
+    def refresh_news_character(self, character_id):
+        service = getattr(self, "_news_feed_service", None)
+        if service is None:
+            return
+        cid = str(character_id or "kira")
+        service.refresh_character_async(cid)
+        page = getattr(self.context.views, "news_page", None)
+        if page is not None:
+            page.show_refreshing(cid)
+
+    def detect_news_region(self):
+        service = getattr(self, "_news_feed_service", None)
+        page = getattr(self.context.views, "news_page", None)
+        if service is None or page is None:
+            return
+        page.detect_button.setEnabled(False)
+        service.detect_region_async(
+            lambda city, country, error: page.location_suggestion_ready.emit(city, country, error)
+        )
+
+    def confirm_news_region(self, value):
+        parts = [part.strip() for part in str(value or "").split(",", 1)]
+        if len(parts) != 2 or not all(parts):
+            QMessageBox.information(
+                self.window, "موقعیت میکا",
+                "شهر و کشور را با این قالب وارد کن: Frankfurt am Main, Germany",
+            )
+            return
+        from datetime import datetime, timezone
+        city, country = parts
+        self.context.services.settings["news_health_region"] = {
+            "city": city[:100], "country": country[:100], "confirmed": True,
+            "source": "user_confirmed",
+            "confirmed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        save_settings(self.context.services.settings)
+        service = getattr(self, "_news_feed_service", None)
+        if service is not None:
+            service.clear_local_alerts()
+        page = getattr(self.context.views, "news_page", None)
+        if page is not None:
+            page.set_region_confirmed(city, country)
+        self.refresh_news_character("mika")
 
     def build_personality_tab(self):
         """Compatibility entry point; personality controls are owned by CharactersPage."""
