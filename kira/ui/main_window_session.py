@@ -271,7 +271,9 @@ class SessionController(WindowFeatureController):
         service = self.context.services.chat_application_service
         lang = self.context.services.settings.get("ui_lang", "en")
         try:
-            records = service.list_conversations(session.cid)
+            records = service.list_conversations(
+                session.cid, statuses=("active", "closed")
+            )
         except Exception:
             _log.exception("Could not load the durable conversation sidebar")
             return False
@@ -282,7 +284,8 @@ class SessionController(WindowFeatureController):
             if not isinstance(record, dict):
                 continue
             conversation_id = str(record.get("id") or record.get("conversation_id") or "")
-            if not conversation_id or str(record.get("status") or "active") != "active":
+            status = str(record.get("status") or "active")
+            if not conversation_id or status not in ("active", "closed"):
                 continue
 
             title = " ".join(str(record.get("title") or "").split())
@@ -362,7 +365,7 @@ class SessionController(WindowFeatureController):
                 not isinstance(record, dict)
                 or str(record.get("id") or "") != target_id
                 or str(record.get("character_id") or "") != str(session.cid)
-                or str(record.get("status") or "active") != "active"
+                or str(record.get("status") or "active") not in ("active", "closed")
             ):
                 raise ValueError("این گفتگو برای شخصیت فعال در دسترس نیست.")
             history = service.recent_messages(
