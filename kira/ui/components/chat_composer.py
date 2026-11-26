@@ -112,6 +112,8 @@ class ChatComposer(QFrame):
         # This small toolbar is deliberately LTR even inside the Persian RTL UI.
         # Stretch first, then the button: the icon is always the physical rightmost item.
         input_tools_host.setLayoutDirection(Qt.LeftToRight)
+        input_tools_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        input_tools_host.setFixedHeight(26)
         input_tools_row = QHBoxLayout(input_tools_host)
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
