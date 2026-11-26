@@ -39,6 +39,9 @@ class _Persistence:
 
 
 class _Lifecycle:
+    def get_conversation(self, conversation_id):
+        return {"id": conversation_id, "character_id": "ren"}
+
     def archive(self, conversation_id):
         return ("archived", conversation_id)
 
@@ -55,6 +58,10 @@ class ChatHistoryFacadeTests(unittest.TestCase):
     def test_history_operations_keep_character_scope_and_delegate(self):
         self.assertEqual(self.facade.init_history(), ["note"])
         self.assertEqual(self.facade.get_or_create_conversation("mika"), {"id": "mika-conversation"})
+        self.assertEqual(
+            self.facade.get_conversation("conversation-1"),
+            {"id": "conversation-1", "character_id": "ren"},
+        )
         self.assertEqual(self.facade.recent_messages(8, "ren", "conversation-1"), ["message"])
         self.assertEqual(self.facade.message_count("ren", "conversation-1"), 3)
         self.assertEqual(self.facade.last_persistence_error, "disk warning")
