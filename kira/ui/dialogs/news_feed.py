@@ -101,7 +101,7 @@ class NewsFeedDialog(QDialog):
             published = html.escape(str(item.get("published_at") or "تاریخ انتشار نامشخص"))
             url = html.escape(str(item.get("url") or ""), quote=True)
             if self.character_id == "mika" and item.get("source_official"):
-                source = "منبع رسمی سلامت · " + source
+                source = "دامنهٔ رسمی/دولتی · نوع نهاد بررسی شود · " + source
             if not url.startswith(("https://", "http://")):
                 link = ""
             else:
@@ -127,11 +127,17 @@ class NewsFeedDialog(QDialog):
         self._worker = TaskWorker(
             lambda: news_feed.refresh_character(self.character_id, settings)
         )
+        self._worker.setParent(self.parent() or self)
         self._worker.done.connect(self._on_refresh_done)
+        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
 
-    def _on_refresh_done(self, outcome) -> None:
+    def _on_worker_finished(self) -> None:
+        self._worker = None
         self.refresh_button.setEnabled(True)
+
+    def _on_refresh_done(self, outcome) -> None:
         if isinstance(outcome, tuple) and outcome and outcome[0] is True:
             result = outcome[1] if len(outcome) > 1 and isinstance(outcome[1], dict) else {}
             errors = result.get("errors") or []
