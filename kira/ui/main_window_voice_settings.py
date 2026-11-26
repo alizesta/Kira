@@ -9,6 +9,7 @@ from .main_window_voice_settings_support import (
     ChatInput,
     Kode,
     DATA_DIR,
+    save_settings,
     DEFAULT_KEEP_ALIVE,
     DEFAULT_NUM_CTX,
     DEFAULT_NUM_PREDICT,
