@@ -197,12 +197,14 @@ class ConversationSidebarTests(unittest.TestCase):
     def test_collapse_icon_is_the_same_two_arrows_pointing_inward(self):
         expand = (ROOT / "assets" / "icons" / "expand.svg").read_text(encoding="utf-8")
         collapse = (ROOT / "assets" / "icons" / "collapse.svg").read_text(encoding="utf-8")
-        self.assertIn('<path d="M14 10 21 3"/>', expand)
-        self.assertIn('<path d="M10 14 3 21"/>', expand)
-        self.assertIn('<path d="M21 3 14 10"/>', collapse)
-        self.assertIn('<path d="M3 21 10 14"/>', collapse)
-        self.assertEqual(expand.count("<path "), 4)
-        self.assertEqual(collapse.count("<path "), 4)
+        self.assertIn('<line x1="21" y1="3" x2="14" y2="10"/>', expand)
+        self.assertIn('<line x1="3" y1="21" x2="10" y2="14"/>', expand)
+        self.assertIn('<line x1="14" y1="10" x2="21" y2="3"/>', collapse)
+        self.assertIn('<line x1="3" y1="21" x2="10" y2="14"/>', collapse)
+        self.assertEqual(expand.count("<polyline "), 2)
+        self.assertEqual(collapse.count("<polyline "), 2)
+        self.assertEqual(expand.count("<line "), 2)
+        self.assertEqual(collapse.count("<line "), 2)
 
     def test_expanded_composer_reflows_history_instead_of_covering_it(self):
         self.assertIn("parent.updateGeometry()", self.chat_input_source)
