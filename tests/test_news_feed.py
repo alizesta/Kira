@@ -128,7 +128,7 @@ class NewsFeedTests(unittest.TestCase):
             "ren", {}, now=self.now, db_path=self.db, search_fn=search
         )
         self.assertTrue(news_feed.can_answer_from_feed(
-            "ren", "آخرین اخبار بیت کوین", {}, now=self.now, db_path=self.db
+            "ren", "latest Bitcoin news", {}, now=self.now, db_path=self.db
         ))
         self.assertFalse(news_feed.can_answer_from_feed(
             "ren", "قیمت فعلی بیت کوین چقدر است؟", {}, now=self.now, db_path=self.db
