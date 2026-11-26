@@ -462,7 +462,7 @@ _NEWS_INTENT = re.compile(
     re.I,
 )
 _LIVE_VALUE = re.compile(
-    r"(قیمت|نرخ لحظه|الان چند|همین الان|قیمت فعلی|قیمت روز|نرخ امروز|نرخ ارز|قیمت دلار|قیمت طلا|"
+    r"(قیمت|price|نرخ لحظه|الان چند|همین الان|قیمت فعلی|قیمت روز|نرخ امروز|نرخ ارز|قیمت دلار|قیمت طلا|"
     r"قیمت بیت.?کوین|قیمت سهام|شاخص الان|live price|current price|exchange rate|quote|right now)",
     re.I,
 )
@@ -491,9 +491,16 @@ def can_answer_from_feed(
     items = [item for item in items if item.get("published_ts")]
     if not items:
         return False
+    stopwords = {
+        "خبر", "اخبار", "latest", "news", "today", "recent", "breaking",
+        "headline", "headlines", "updates", "about", "what", "whats",
+        "the", "and", "for", "with", "from", "this", "that", "are",
+        "درباره", "چیست", "چیه", "چه", "خبرها", "آخرین", "جدیدترین",
+        "امروز", "هفته", "اخیر", "این", "مربوط", "وضعیت", "بازار",
+    }
     tokens = {
         token for token in re.findall(r"[\w\u0600-\u06ff]{3,}", str(query or "").lower())
-        if token not in {"خبر", "اخبار", "latest", "news", "today", "درباره", "چیست", "چیه"}
+        if token not in stopwords
     }
     if not tokens:
         return True
@@ -501,7 +508,8 @@ def can_answer_from_feed(
         f"{item.get('title', '')} {item.get('summary', '')} {item.get('category_label', '')}"
         for item in items
     ).lower()
-    return any(token in haystack for token in tokens)
+    matched_tokens = sum(token in haystack for token in tokens)
+    return matched_tokens >= max(1, (len(tokens) + 1) // 2)
 
 
 def build_context(
