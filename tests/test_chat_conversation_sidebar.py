@@ -94,6 +94,10 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("QVBoxLayout(conversation_sidebar)", self.builder)
         self.assertIn("QListWidget(conversation_sidebar)", self.builder)
         self.assertIn("chat_area_widget.setLayoutDirection(Qt.LeftToRight)", self.builder)
+        self.assertLess(
+            self.builder.index('lang = self.context.services.settings.get("ui_lang", "en")'),
+            self.builder.index("conversation_sidebar.setLayoutDirection("),
+        )
         self.assertIn("chat_area.setDirection(QHBoxLayout.LeftToRight)", self.builder)
         self.assertIn("conversation_sidebar.setFixedWidth(154)", self.builder)
         self.assertIn("chat_area.addWidget(conversation_sidebar", self.builder)
