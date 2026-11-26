@@ -20,6 +20,8 @@ from .main_window_session_support import (
     QListWidgetItem,
     QLineEdit,
     QMessageBox,
+    QInputDialog,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSize,
@@ -266,7 +268,7 @@ class SessionController(WindowFeatureController):
             return False
 
     def refresh_conversation_list(self):
-        """Render active durable conversations for the character currently in front."""
+        """Render title-only, unboxed conversation rows with hover timestamps and action menus."""
         widget = getattr(self.context.views, "conversation_list", None)
         session = getattr(self.context.state, "front", None) or getattr(self.context.state, "cur", None)
         if widget is None or session is None:
@@ -310,40 +312,48 @@ class SessionController(WindowFeatureController):
                     )
                 except Exception:
                     _log.debug("Could not load conversation preview %s", conversation_id, exc_info=True)
-            label = title or preview
-            if not label:
-                created = str(record.get("created_at") or "").replace("T", " ")
-                stamp = created[:16].strip()
-                label = (
-                    f"گفتگوی جدید · {stamp}" if lang == "fa" and stamp
-                    else f"New chat · {stamp}" if stamp
-                    else "گفتگوی جدید" if lang == "fa" else "New chat"
-                )
+
+            label = title or preview or ("گفتگوی جدید" if lang == "fa" else "New chat")
             if len(label) > 48:
                 label = label[:47].rstrip() + "…"
-            items.append((conversation_id, label, preview or title or label))
+
+            metadata = record.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            pinned = bool(metadata.get("_ui_pinned"))
+
+            activity = str(record.get("updated_at") or record.get("created_at") or "")
+            activity = activity.replace("T", " ").replace("Z", "").strip()[:19]
+            date_tooltip = (
+                f"آخرین فعالیت: {activity}" if lang == "fa" and activity
+                else f"Last activity: {activity}" if activity
+                else ("تاریخ در دسترس نیست" if lang == "fa" else "Date unavailable")
+            )
+            items.append((pinned, conversation_id, label, date_tooltip))
+
+        # Keep the repository's recent-first order within pinned and unpinned groups.
+        items.sort(key=lambda item: item[0], reverse=True)
 
         was_blocked = widget.blockSignals(True)
         try:
             widget.clear()
             selected = None
-            for conversation_id, label, tooltip in items:
+            for pinned, conversation_id, label, date_tooltip in items:
                 item = QListWidgetItem()
                 item.setData(Qt.UserRole, conversation_id)
-                item.setToolTip(tooltip)
+                item.setToolTip(date_tooltip)
                 widget.addItem(item)
 
                 row_widget = QWidget(widget)
-                row_layout = QHBoxLayout(row_widget)
-                row_layout.setContentsMargins(2, 2, 2, 2)
-                row_layout.setSpacing(3)
-
                 row_widget.setObjectName("conversationRow")
                 row_widget.setLayoutDirection(Qt.LeftToRight)
-                row_widget.setMinimumHeight(60)
+                row_widget.setToolTip(date_tooltip)
+                row_layout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(1)
+
                 open_button = QPushButton(
                     "\n".join(textwrap.wrap(
-                        label, width=16, max_lines=3, placeholder="…",
+                        label, width=19, max_lines=2, placeholder="…",
                         break_long_words=True, break_on_hyphens=True,
                     )),
                     row_widget,
@@ -351,41 +361,195 @@ class SessionController(WindowFeatureController):
                 open_button.setObjectName("conversationOpenButton")
                 open_button.setFlat(True)
                 open_button.setMinimumWidth(0)
-                open_button.setMinimumHeight(56)
+                open_button.setMinimumHeight(42)
                 open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 open_button.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
                 open_button.setCursor(Qt.PointingHandCursor)
-                open_button.setToolTip(tooltip)
+                open_button.setToolTip(date_tooltip)
                 open_button.clicked.connect(
                     lambda checked=False, cid=conversation_id: self.switch_conversation(cid)
                 )
 
-                delete_button = QPushButton("×", row_widget)
-                delete_button.setObjectName("conversationDeleteButton")
-                delete_button.setFixedSize(22, 22)
-                delete_button.setFocusPolicy(Qt.NoFocus)
-                delete_button.setToolTip(
-                    "حذف گفتگو" if lang == "fa" else "Delete conversation"
-                )
-                delete_button.clicked.connect(
-                    lambda checked=False, cid=conversation_id: self.delete_conversation(cid)
+                more_button = QToolButton(row_widget)
+                more_button.setObjectName("conversationMenuButton")
+                more_button.setText("⋯")
+                more_button.setFixedSize(25, 30)
+                more_button.setAutoRaise(True)
+                more_button.setFocusPolicy(Qt.NoFocus)
+                more_button.setCursor(Qt.PointingHandCursor)
+                more_button.setToolTip(
+                    "گزینه‌های گفتگو" if lang == "fa" else "Conversation options"
                 )
 
+                menu = QMenu(more_button)
+                menu.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+                rename_action = menu.addAction("تغییر نام" if lang == "fa" else "Rename")
+                share_action = menu.addAction(
+                    "اشتراک‌گذاری (کپی متن)" if lang == "fa" else "Share (copy text)"
+                )
+                pin_action = menu.addAction(
+                    "برداشتن سنجاق" if lang == "fa" and pinned
+                    else "سنجاق کردن" if lang == "fa"
+                    else "Unpin" if pinned else "Pin"
+                )
+                menu.addSeparator()
+                delete_action = menu.addAction("حذف گفتگو" if lang == "fa" else "Delete conversation")
+                rename_action.triggered.connect(
+                    lambda checked=False, cid=conversation_id: self.rename_conversation(cid)
+                )
+                share_action.triggered.connect(
+                    lambda checked=False, cid=conversation_id: self.share_conversation(cid)
+                )
+                pin_action.triggered.connect(
+                    lambda checked=False, cid=conversation_id: self.pin_conversation(cid)
+                )
+                delete_action.triggered.connect(
+                    lambda checked=False, cid=conversation_id: self.delete_conversation(cid)
+                )
+                more_button.setMenu(menu)
+                more_button.setPopupMode(QToolButton.InstantPopup)
+
                 row_layout.addWidget(open_button, 1)
-                row_layout.addWidget(delete_button, 0)
-                item.setSizeHint(QSize(0, 60))
+                row_layout.addWidget(more_button, 0)
+                item.setSizeHint(QSize(0, 46))
                 widget.setItemWidget(item, row_widget)
                 if conversation_id == current_id:
                     selected = item
+
             if selected is not None:
                 widget.setCurrentItem(selected)
             widget.setToolTip(
-                "برای باز کردن یک گفتگوی قبلی، آن را انتخاب کن."
-                if lang == "fa" else "Select a conversation to reopen it."
+                "برای باز کردن گفتگو انتخابش کن؛ تاریخ با نگه‌داشتن موس نمایش داده می‌شود."
+                if lang == "fa"
+                else "Select a conversation to reopen it. Hover to see its date."
             )
         finally:
             widget.blockSignals(was_blocked)
         return True
+
+    def _owned_conversation_record(self, conversation_id, session=None):
+        session = session or self.context.state.cur
+        target_id = str(conversation_id or "").strip()
+        if not target_id:
+            raise ValueError("conversation_id is required")
+        record = self.context.services.chat_application_service.get_conversation(target_id)
+        if (
+            not isinstance(record, dict)
+            or str(record.get("id") or "") != target_id
+            or str(record.get("character_id") or "") != str(session.cid)
+            or str(record.get("status") or "active") not in ("active", "closed")
+        ):
+            raise ValueError("این گفتگو برای شخصیت فعال در دسترس نیست.")
+        return record
+
+    def rename_conversation(self, conversation_id):
+        """Persist a user-defined title for one owned conversation."""
+        session = self.context.state.cur
+        service = self.context.services.chat_application_service
+        lang = self.context.services.settings.get("ui_lang", "en")
+        try:
+            record = self._owned_conversation_record(conversation_id, session)
+            current_title = str(record.get("title") or "")
+            title, accepted = QInputDialog.getText(
+                self.window,
+                "تغییر نام گفتگو" if lang == "fa" else "Rename conversation",
+                "نام جدید:" if lang == "fa" else "New title:",
+                QLineEdit.Normal,
+                current_title,
+            )
+            if not accepted:
+                return False
+            title = " ".join(str(title or "").split())
+            if not service.update_conversation(str(conversation_id), title=title):
+                raise RuntimeError("ذخیره نام جدید انجام نشد.")
+            self.refresh_conversation_list()
+            self.context.views.status.setText(
+                "نام گفتگو ذخیره شد." if lang == "fa" else "Conversation renamed."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not rename conversation %s", conversation_id)
+            self.context.views.status.setText(
+                "تغییر نام ناموفق بود: " + str(exc)[:140]
+                if lang == "fa" else "Rename failed: " + str(exc)[:140]
+            )
+            return False
+
+    def share_conversation(self, conversation_id):
+        """Copy a complete plain-text transcript so it can be shared in any app."""
+        session = self.context.state.cur
+        service = self.context.services.chat_application_service
+        lang = self.context.services.settings.get("ui_lang", "en")
+        try:
+            record = self._owned_conversation_record(conversation_id, session)
+            count = service.message_count(session.cid, str(conversation_id))
+            messages = (
+                service.get_messages(
+                    max(1, int(count)),
+                    character_id=session.cid,
+                    conversation_id=str(conversation_id),
+                )
+                if count else []
+            )
+            title = str(record.get("title") or "").strip()
+            lines = [f"# {title}" if title else ("گفتگو" if lang == "fa" else "Conversation")]
+            for message in messages:
+                role = str(message.get("role") or "")
+                if role not in ("user", "assistant"):
+                    continue
+                body = str(message.get("content") or "").strip()
+                if not body:
+                    continue
+                speaker = (
+                    "شما" if lang == "fa" and role == "user"
+                    else "دستیار" if lang == "fa"
+                    else "You" if role == "user"
+                    else "Assistant"
+                )
+                lines.append(f"{speaker}:\n{body}")
+            transcript = "\n\n".join(lines)
+            QApplication.clipboard().setText(transcript)
+            self.context.views.status.setText(
+                "متن گفتگو برای اشتراک‌گذاری کپی شد."
+                if lang == "fa" else "Conversation transcript copied for sharing."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not share conversation %s", conversation_id)
+            self.context.views.status.setText(
+                "اشتراک‌گذاری ناموفق بود: " + str(exc)[:140]
+                if lang == "fa" else "Sharing failed: " + str(exc)[:140]
+            )
+            return False
+
+    def pin_conversation(self, conversation_id):
+        """Persist a pin flag in conversation metadata and move pinned rows to the top."""
+        service = self.context.services.chat_application_service
+        session = self.context.state.cur
+        lang = self.context.services.settings.get("ui_lang", "en")
+        try:
+            record = self._owned_conversation_record(conversation_id, session)
+            metadata = record.get("metadata")
+            metadata = dict(metadata) if isinstance(metadata, dict) else {}
+            pinned = not bool(metadata.get("_ui_pinned"))
+            metadata["_ui_pinned"] = pinned
+            if not service.update_conversation(str(conversation_id), metadata=metadata):
+                raise RuntimeError("ذخیره وضعیت سنجاق انجام نشد.")
+            self.refresh_conversation_list()
+            self.context.views.status.setText(
+                "گفتگو سنجاق شد." if lang == "fa" and pinned
+                else "سنجاق گفتگو برداشته شد." if lang == "fa"
+                else "Conversation pinned." if pinned
+                else "Conversation unpinned."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not pin conversation %s", conversation_id)
+            self.context.views.status.setText(
+                "تغییر وضعیت سنجاق ناموفق بود: " + str(exc)[:140]
+                if lang == "fa" else "Pin update failed: " + str(exc)[:140]
+            )
+            return False
 
     def delete_conversation(self, conversation_id):
         """Move one owned conversation to trash after explicit user confirmation."""
