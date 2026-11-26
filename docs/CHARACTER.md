@@ -54,5 +54,6 @@ Before sending Persian text, Kira should review it: correct spelling and missing
 - Each character has two images: `image` (the portrait in the Characters tab) and `avatar` (the full-body image for the main chat and floating companion).
 - Switching the active character changes the main-page character and floating window. Kira retains her animated PNG; Ren and Mika use the same body physics with lower intensity.
 - A character without a full-body image (for example, a custom character) displays Kira's animated avatar.
-- Files: `assets/characters/ren_portrait.jpg`, `ren_full.jpg`, `mika_portrait.jpg`, and `mika_full.jpg`.
+- Files: `assets/characters/ren_portrait.jpg`, `ren_full.png`, `mika_portrait.jpg`, `mika_full.png`, and `mika_chat_background.jpg`.
+- Mika uses `mika_chat_background.jpg` only on her chat page; the transparent `mika_full.png` remains her standalone full-body avatar. Kira and Ren keep their existing chat surfaces.
 - Limitation: blinking and mouth movement (lip sync) work only for Kira because those measurements were calibrated for her face.
