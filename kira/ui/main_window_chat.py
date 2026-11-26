@@ -273,7 +273,8 @@ class ChatController(WindowFeatureController):
             )
         if packed is not None:
             img_search = bool(packed.get("images")) and (
-                force_img or self.context.services.settings.get("image_search", False)
+                not self.context.services.web_search_service.explicit_no_web(text)
+                and (force_img or self.context.services.settings.get("image_search", False))
             )
         if packed and packed.get("errors"):
             self.attachment_controller.show_error(packed["errors"])
