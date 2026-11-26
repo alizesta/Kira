@@ -17,6 +17,7 @@ class ChatInput(QPlainTextEdit):
     filesDropped = Signal(list)          # local file paths dropped or pasted as files
     imagePasted = Signal(object)         # QImage pasted from the clipboard
     MAX_LINES = 5
+    EXPANDED_MAX_LINES = 16
     CHARACTER_PROMPTS = {
         "kira": {"fa": ("خب، امروز قراره چی بسازیم؟", "یه باگ سمج داری که با هم نابودش کنیم؟", "ایده‌تو بگو؛ من آماده‌ام دست‌به‌کد بشیم.", "کجای پروژه گیر کردی؟ بذار بررسیش کنیم.", "یه چیزی بگو که کنجکاوم کنه!"), "en": ("What are we building today?", "Got a stubborn bug to defeat?", "Tell me your idea — let's code.")},
         "mika": {"fa": ("خب خب، امروز چه چیزی رو با هم کشف کنیم؟", "حالت چطوره؟ چیزی هست که بخوای بررسی کنیم؟", "هر سؤالی داری بپرس؛ با حوصله بازش می‌کنیم.", "امروز چه خبر؟ از کجا شروع کنیم؟"), "en": ("What shall we explore today?", "How are you feeling? Anything to look into?", "Ask me anything — we'll unpack it together.")},
@@ -34,9 +35,21 @@ class ChatInput(QPlainTextEdit):
         self.setObjectName("chatInput")
         self.setFrameShape(QFrame.NoFrame)
         self.setTabChangesFocus(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._expanded = False
         self._last_width = -1
         self.textChanged.connect(self._fit)
         self._fit()
+
+    def set_expanded(self, expanded):
+        """Expand the writing area without exposing either scroll bar."""
+        self._expanded = bool(expanded)
+        self._fit()
+        self.setFocus()
+
+    def is_expanded(self):
+        return self._expanded
 
     def text(self):
         return self.toPlainText()
@@ -69,7 +82,8 @@ class ChatInput(QPlainTextEdit):
             self._fit()
 
     def _fit(self):
-        lines = max(1, min(self.MAX_LINES, int(self.document().size().height())))
+        max_lines = self.EXPANDED_MAX_LINES if self._expanded else self.MAX_LINES
+        lines = max(1, min(max_lines, int(self.document().size().height())))
         self.setFixedHeight(lines * self.fontMetrics().lineSpacing() + 16)
 
 
