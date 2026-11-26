@@ -51,6 +51,8 @@ class ConversationSidebarTests(unittest.TestCase):
         cls.context = (
             ROOT / "kira" / "ui" / "window_presentation_context.py"
         ).read_text(encoding="utf-8")
+        cls.chat_input_source = (ROOT / "kira" / "ui_widgets.py").read_text(encoding="utf-8")
+        cls.composer_source = (ROOT / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
 
     def test_new_chat_creates_a_new_record_without_deleting_old_history(self):
         self.assertIn("service.create_conversation(session.cid)", self.new_chat)
@@ -146,6 +148,28 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn('cellspacing="4" cellpadding="0"', self.chat_actions)
         self.assertNotIn("&nbsp;", self.chat_actions)
         self.assertIn('kira-action://{action}/{key}', self.chat_actions)
+
+    def test_chat_input_has_hidden_scrollbars_and_an_expand_control(self):
+        self.assertIn("EXPANDED_MAX_LINES = 16", self.chat_input_source)
+        self.assertIn("setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)", self.chat_input_source)
+        self.assertIn("setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)", self.chat_input_source)
+        self.assertIn("def set_expanded(self, expanded):", self.chat_input_source)
+        self.assertIn("self._expanded = bool(expanded)", self.chat_input_source)
+        self.assertIn("max_lines = self.EXPANDED_MAX_LINES if self._expanded else self.MAX_LINES", self.chat_input_source)
+        self.assertIn('self.expand_btn.setObjectName("expandInputBtn")', self.composer_source)
+        self.assertIn('self.expand_btn.setText("EXPAND")', self.composer_source)
+        self.assertIn("self.expand_btn.toggled.connect(self._set_input_expanded)", self.composer_source)
+        self.assertIn('self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")', self.composer_source)
+
+    def test_chat_surfaces_share_the_avatar_background_without_frames(self):
+        self.assertIn('page.setObjectName("chatPage")', self.builder)
+        self.assertIn("body.setSpacing(0)", self.builder)
+        self.assertIn("QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,", self.theme if hasattr(self, "theme") else (ROOT / "kira" / "theme.py").read_text(encoding="utf-8"))
+        theme_source = (ROOT / "kira" / "theme.py").read_text(encoding="utf-8")
+        self.assertIn("QFrame#conversationSidebar, QFrame#composer {{", theme_source)
+        self.assertIn("border: none;", theme_source)
+        self.assertIn("border-radius: 0px;", theme_source)
+        self.assertIn("self.context.views.glow_effects = []", self.builder)
 
     def test_rename_share_and_pin_actions_have_real_handlers(self):
         rename = _method_source("kira/ui/main_window_session.py", "SessionController", "rename_conversation")
