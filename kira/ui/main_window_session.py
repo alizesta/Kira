@@ -1037,7 +1037,7 @@ class SessionController(WindowFeatureController):
                 _log.exception("Could not persist active character selection")
 
     def apply_chat_theme(self):
-        """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
+        """Apply the active character's flat avatar-coloured chat surface and accent colours."""
         theme = self.context.state.front.theme or self.theme_for_character(self.context.state.front.cid)
         self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self.context.state, "_effect", "off"), self.context.services.settings.get("appearance", {})))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
