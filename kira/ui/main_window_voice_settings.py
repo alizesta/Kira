@@ -24,6 +24,7 @@ from .main_window_voice_settings_support import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QInputDialog,
+        QListWidget,
     QLabel,
     QMessageBox,
     QSizePolicy,
