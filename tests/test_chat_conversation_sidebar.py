@@ -169,6 +169,9 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("QGraphicsDropShadowEffect, QListWidget", voice_support)
         self.assertIn("    QListWidgetItem,", session_controller)
         self.assertIn("QSizePolicy, QListWidgetItem", session_support)
+        self.assertIn("    QInputDialog,", session_controller)
+        self.assertIn("    QMenu,", session_controller)
+        self.assertIn("QMessageBox, QInputDialog, QMenu", session_support)
 
     def test_sidebar_views_are_declared_and_granted_to_both_owners(self):
         self.assertIn('"conversation_list"', self.context)
