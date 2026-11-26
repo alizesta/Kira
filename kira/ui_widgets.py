@@ -121,7 +121,7 @@ class ChatInput(QPlainTextEdit):
             required_lines = max(1, math.ceil(required_height / line_spacing))
             lines = min(self.MAX_LINES, max(self.MIN_LINES, required_lines))
         # Include the input's inner padding and border so the placeholder is not clipped.
-        self.setFixedHeight(lines * line_spacing + 16)
+        self.setFixedHeight(lines * line_spacing + 12)
 
 
 class RouteChip(QToolButton):
