@@ -97,6 +97,29 @@ class ChatComposer(QFrame):
         self.input.imagePasted.connect(owner.add_pasted_image)
         self.input.returnPressed.connect(owner.send_message)
         self.input.textChanged.connect(lambda: owner.on_input_changed(self.input.text()))
+
+        input_tools_row = QHBoxLayout()
+        input_tools_row.setContentsMargins(0, 0, 0, 0)
+        input_tools_row.setSpacing(0)
+        input_tools_row.setDirection(QHBoxLayout.LeftToRight)
+        input_tools_row.addStretch(1)
+        self.expand_btn = QToolButton(self)
+        self.expand_btn.setObjectName("expandInputBtn")
+        self.expand_btn.setProperty("kiraIconName", "expand")
+        self._expand_icon = make_icon("expand")
+        self._collapse_icon = make_icon("collapse")
+        self.expand_btn.setIcon(self._expand_icon)
+        self.expand_btn.setIconSize(QSize(16, 16))
+        self.expand_btn.setFixedSize(28, 26)
+        self.expand_btn.setCheckable(True)
+        self.expand_btn.setAutoRaise(True)
+        self.expand_btn.setCursor(Qt.PointingHandCursor)
+        self.expand_btn.setFocusPolicy(Qt.NoFocus)
+        self.expand_btn.setAccessibleName("Expand message editor")
+        self.expand_btn.setToolTip("باز کردن فضای بزرگ‌تر برای نوشتن")
+        self.expand_btn.toggled.connect(self._set_input_expanded)
+        input_tools_row.addWidget(self.expand_btn)
+        co.addLayout(input_tools_row)
         co.addWidget(self.input)
 
         bar = QHBoxLayout()
@@ -117,17 +140,6 @@ class ChatComposer(QFrame):
         self.route_menu.aboutToShow.connect(owner.build_badge_menu)
         self.route_badge.setMenu(self.route_menu)
         bar.addWidget(self.route_badge)
-
-        self.expand_btn = QToolButton()
-        self.expand_btn.setObjectName("expandInputBtn")
-        self.expand_btn.setText("EXPAND")
-        self.expand_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.expand_btn.setCheckable(True)
-        self.expand_btn.setCursor(Qt.PointingHandCursor)
-        self.expand_btn.setFocusPolicy(Qt.NoFocus)
-        self.expand_btn.setToolTip("باز کردن فضای بزرگ‌تر برای نوشتن")
-        self.expand_btn.toggled.connect(self._set_input_expanded)
-        bar.addWidget(self.expand_btn)
 
         self.attach_btn = QToolButton()
         self.attach_btn.setProperty("kiraIconName", "attachment")
@@ -259,9 +271,13 @@ class ChatComposer(QFrame):
             setattr(owner, name, getattr(self, name))
 
     def _set_input_expanded(self, expanded):
-        """Resize the draft editor and keep the label synchronized with its state."""
+        """Resize the draft editor and switch the control between expand/collapse icons."""
         self.input.set_expanded(expanded)
-        self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")
+        icon_name = "collapse" if expanded else "expand"
+        self.expand_btn.setProperty("kiraIconName", icon_name)
+        self.expand_btn.setIcon(
+            self._collapse_icon if expanded else self._expand_icon
+        )
         self.expand_btn.setToolTip(
-            "بستن فضای بزرگ نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
+            "جمع کردن کادر نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
         )
