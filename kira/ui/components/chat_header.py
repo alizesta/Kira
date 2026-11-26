@@ -43,7 +43,9 @@ class ChatHeader(QFrame):
         layout.addWidget(self.mode_badge, 0)
 
         self.mood_emotion_icon = QLabel("", self)
+        self.mood_emotion_icon.setObjectName("moodEmotionIcon")
         self.mood_indicator = QLabel("", self)
+        self.mood_indicator.setObjectName("moodIndicator")
         self.mood_emotion_icon.hide()
         self.mood_indicator.hide()
         layout.addWidget(self.mood_emotion_icon, 0)
