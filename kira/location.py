@@ -25,12 +25,12 @@ def request_windows_location_permission(on_result):
     delivered through the callback, which may run on a WinRT worker thread.
     """
     if sys.platform != "win32":
-        return False
+        return None
     try:
         from winrt.windows.devices.geolocation import Geolocator
         operation = Geolocator.request_access_async()
     except (ImportError, AttributeError, OSError, RuntimeError):
-        return False
+        return None
 
     def completed(op, _status):
         try:
