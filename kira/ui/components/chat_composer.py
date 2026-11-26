@@ -210,15 +210,7 @@ class ChatComposer(QFrame):
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
 
-        def _set_input_expanded(self, expanded):
-        """Resize the draft editor and keep the label synchronized with its state."""
-        self.input.set_expanded(expanded)
-        self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")
-        self.expand_btn.setToolTip(
-            "بستن فضای بزرگ نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
-        )
-
-    # The composer runs in RTL: Qt lays out QHBoxLayout items right-to-left.
+        # The composer runs in RTL: Qt lays out QHBoxLayout items right-to-left.
         # Add mic first so the speaker is physically to its left on screen.
         for button, key in (
             (self.mic_btn, "mic"),
@@ -265,3 +257,11 @@ class ChatComposer(QFrame):
 
         for name in self._OWNER_ALIASES:
             setattr(owner, name, getattr(self, name))
+
+    def _set_input_expanded(self, expanded):
+        """Resize the draft editor and keep the label synchronized with its state."""
+        self.input.set_expanded(expanded)
+        self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")
+        self.expand_btn.setToolTip(
+            "بستن فضای بزرگ نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
+        )
