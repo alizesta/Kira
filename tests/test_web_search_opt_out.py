@@ -17,6 +17,7 @@ class ExplicitWebOptOutTests(unittest.TestCase):
             "وقتی بهت می‌گم الان داخل نت سرچ نکن",
             "فعلاً وب نرو",
             "دیگه جستجو نکن",
+            "don't search the web",
         ):
             with self.subTest(message=message):
                 self.assertEqual(websearch.plan(message), (None, False))
