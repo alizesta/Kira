@@ -113,6 +113,7 @@ class VoiceSettingsController(WindowFeatureController):
         # independent; this list switches durable conversations within the selected character.
         conversation_sidebar = QFrame(page)
         conversation_sidebar.setObjectName("conversationSidebar")
+        conversation_sidebar.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
         conversation_sidebar.setFixedWidth(154)
         conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
@@ -138,6 +139,7 @@ class VoiceSettingsController(WindowFeatureController):
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         cv.addWidget(self.context.views.chat_stack, 1)
+        chat_card.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
 
         self.context.views.chat_composer = ChatComposer(
             ComposerOwner(
@@ -156,15 +158,19 @@ class VoiceSettingsController(WindowFeatureController):
         composer = self.context.views.chat_composer
         cv.addWidget(self.context.views.chat_composer)
 
-        # Keep the history rail beside the complete chat card so both share its full height.
-        chat_area = QHBoxLayout()
+        # This host must stay LTR even when QApplication is in Persian RTL mode.
+        # The sidebar is inserted first, so it is physically to the left of the chat card.
+        chat_area_widget = QWidget(page)
+        chat_area_widget.setObjectName("chatArea")
+        chat_area_widget.setLayoutDirection(Qt.LeftToRight)
+        chat_area = QHBoxLayout(chat_area_widget)
         chat_area.setDirection(QHBoxLayout.LeftToRight)
         chat_area.setContentsMargins(0, 0, 0, 0)
         chat_area.setSpacing(8)
         chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chat_area.addWidget(conversation_sidebar, 0)
         chat_area.addWidget(chat_card, 1)
-        root.addLayout(chat_area, 1)
+        root.addWidget(chat_area_widget, 1)
         self.context.views.glow_effects = []                             # neon glow around the composer (colour follows the character); not on the animated avatar: an effect would re-render it every frame
         for widget in (composer,):
             glow = QGraphicsDropShadowEffect(widget)
