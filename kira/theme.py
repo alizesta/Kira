@@ -535,7 +535,6 @@ def character_style(theme, effect="off", appearance=None):
     if effect in ("mica", "acrylic"):
         a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
     # The avatar, history, chat and composer use one flat character-coloured surface.
-    border_alpha = min(0.34, 0.16 + glow * 0.0018)
     return f"""
 QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
 QFrame#conversationSidebar, QFrame#composer {{
