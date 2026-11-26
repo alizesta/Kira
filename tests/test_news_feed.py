@@ -112,6 +112,25 @@ class NewsFeedTests(unittest.TestCase):
         queries = news_feed._queries("mika", "")
         self.assertEqual([item[0] for item in queries], ["medical_science"])
 
+    def test_gaming_queries_belong_to_kira_not_ren(self):
+        kira_queries = " ".join(item[2] for item in news_feed._queries("kira", ""))
+        ren_queries = " ".join(item[2] for item in news_feed._queries("ren", ""))
+        self.assertIn("video games", kira_queries)
+        self.assertIn("gaming hardware", kira_queries)
+        self.assertNotIn("video games", ren_queries)
+        self.assertIn("-gaming", ren_queries)
+
+    def test_confirmed_region_is_long_term_context_even_without_news(self):
+        block = news_feed.build_context(
+            "mika",
+            "hello",
+            {"health_news_region": "Frankfurt, Germany"},
+            now=self.now,
+            db_path=self.db,
+        )
+        self.assertIn("Frankfurt, Germany", block)
+        self.assertIn("دوباره برای دانستن منطقه سؤال نکن", block)
+
     def test_current_prices_are_never_answered_from_week_old_feed(self):
         def search(query):
             return {
