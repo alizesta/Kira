@@ -54,9 +54,9 @@ class NewsFeedRuntime(QObject):
             self._ask_for_region("", "manual")
             return
 
-        started = request_windows_location_permission(self._windows_permission_result.emit)
-        if started:
-            self._location_operation = True
+        operation = request_windows_location_permission(self._windows_permission_result.emit)
+        if operation is not None:
+            self._location_operation = operation
             return
         self._detect_ip_region()
 
@@ -144,8 +144,15 @@ class NewsFeedRuntime(QObject):
         self._worker = worker
         self.state._news_feed_worker = worker
         worker.done.connect(callback)
+        worker.finished.connect(self._on_worker_finished)
         worker.finished.connect(worker.deleteLater)
         worker.start()
+
+    @Slot()
+    def _on_worker_finished(self) -> None:
+        self._worker = None
+        self.state._news_feed_worker = None
+        self._location_operation = None
 
     def refresh_due(self, *, force: bool = False, characters=None) -> None:
         if not self.settings.get("news_feed_enabled", True) or self._busy:
