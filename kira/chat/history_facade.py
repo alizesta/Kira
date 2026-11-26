@@ -85,6 +85,15 @@ class ChatHistoryFacade:
     ):
         return self._persistence.recent_messages(limit, character_id, conversation_id)
 
+    def get_messages(
+        self, limit: int = 1000, character_id: str | None = None,
+        conversation_id: str | None = None, after_id: int = 0,
+    ):
+        reader = getattr(self._persistence, "get_messages", None)
+        if callable(reader):
+            return reader(limit, character_id, conversation_id, after_id)
+        return self._persistence.recent_messages(limit, character_id, conversation_id)
+
     def recent_message_records(
         self, limit: int = 2000, character_id: str | None = None
     ):
