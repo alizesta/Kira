@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
+from contextlib import contextmanager
 import threading
 import time
 from datetime import datetime, timezone
@@ -12,23 +14,19 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _LOG = logging.getLogger(__name__)
 RETENTION_SECONDS = 7 * 24 * 60 * 60
-DEFAULT_REFRESH_HOURS = 6
+DEFAULT_REFRESH_HOURS = 8
 CHARACTER_IDS = ("kira", "ren", "mika")
 
 CHARACTER_QUERIES = {
     "kira": (
-        ("gaming_industry", "video game industry news studios publishers game development announcements last 7 days"),
-        ("game_releases", "video game releases launch dates new games PC console releases last 7 days"),
-        ("gaming_hardware", "PC gaming hardware GPU CPU console gaming technology news last 7 days"),
+        ("gaming_industry", "video game industry game studios publishers releases PC and console games gaming hardware GPU CPU technology news last 7 days"),
     ),
     "ren": (
-        ("economy_markets", "economy macroeconomics central banks inflation interest rates stock market forex currency exchange news analysis last 7 days"),
-        ("crypto", "cryptocurrency Bitcoin Ethereum blockchain regulation market fundamentals news analysis last 7 days"),
-        ("digital_technology", "digital technology AI semiconductors cybersecurity telecom fintech industry news last 7 days -gaming -games"),
+        ("economy_markets", "economy macroeconomics central banks inflation interest rates stock markets forex exchange rates Bitcoin Ethereum cryptocurrency fundamental analysis market news last 7 days"),
+        ("digital_technology", "digital technology AI semiconductors cybersecurity telecom fintech business technology industry news last 7 days -gaming -video games -esports"),
     ),
     "mika": (
-        ("medical_science", "medical science research public health disease prevention health policy news last 7 days"),
-        ("public_health", "WHO public health disease prevention infectious disease research news last 7 days"),
+        ("medical_science", "medical science research clinical studies infectious disease vaccines epidemiology prevention public health news WHO CDC last 7 days"),
     ),
 }
 CATEGORY_LABELS = {
@@ -79,6 +77,35 @@ def _canonical_url(raw_url: object) -> tuple[str, str]:
         return "", ""
 
 
+def is_official_health_source(raw_url: object) -> bool:
+    """Local epidemic alerts are accepted only from recognizable public-health authorities."""
+    _url, host = _canonical_url(raw_url)
+    if not host:
+        return False
+    exact = {
+        "who.int", "cdc.gov", "ecdc.europa.eu", "health.ec.europa.eu",
+        "gesund.bund.de", "canada.ca", "gov.uk",
+    }
+    if host in exact or any(host.endswith("." + domain) for domain in exact):
+        return True
+    return host.endswith((
+        ".gov", ".gov.uk", ".gov.au", ".gov.ca", ".gov.ir", ".gov.in",
+        ".gov.br", ".gov.de", ".gov.jp", ".gouv.fr", ".gc.ca", ".go.jp",
+        ".bund.de",
+    ))
+
+
+_GAME_NEWS_RX = re.compile(
+    r"\b(?:gaming|video games?|game industry|esports?|steam|playstation|xbox|nintendo|epic games|valve)\b",
+    re.I,
+)
+
+
+def is_gaming_news(title: object, summary: object = "") -> bool:
+    """Prevent game-industry stories from entering Ren's economy/technology feed."""
+    return bool(_GAME_NEWS_RX.search(_clean(f"{title or ''} {summary or ''}", 1000)))
+
+
 def _published_epoch(value: object) -> float | None:
     raw = _clean(value, 80)
     if not raw:
@@ -109,11 +136,24 @@ class NewsFeedStore:
         connection.execute("PRAGMA busy_timeout=20000")
         return connection
 
+    @contextmanager
+    def _connection(self):
+        """Close every SQLite handle, including read-only status and expiry queries."""
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _ensure_schema(self):
         with self._init_lock:
             if self._ready:
                 return
-            with self._connect() as db:
+            with self._connection() as db:
                 db.execute("PRAGMA journal_mode=WAL")
                 db.execute(
                     """CREATE TABLE IF NOT EXISTS news_items (
@@ -147,7 +187,7 @@ class NewsFeedStore:
 
     def purge_expired(self, *, now: float | None = None) -> int:
         cutoff = time.time() if now is None else float(now)
-        with self._connect() as db:
+        with self._connection() as db:
             cursor = db.execute("DELETE FROM news_items WHERE expires_at <= ?", (cutoff,))
             return int(cursor.rowcount or 0)
 
@@ -178,7 +218,7 @@ class NewsFeedStore:
         self.purge_expired(now=stamp)
         if not rows:
             return 0
-        with self._connect() as db:
+        with self._connection() as db:
             db.executemany(
                 """INSERT INTO news_items(
                     character_id, category, title, summary, source, url, url_key,
@@ -194,7 +234,7 @@ class NewsFeedStore:
                     region=excluded.region""",
                 rows,
             )
-            changed = db.total_changes
+            changed = len(rows)
             db.execute(
                 """DELETE FROM news_items WHERE character_id = ? AND id NOT IN (
                     SELECT id FROM news_items WHERE character_id = ?
@@ -208,7 +248,7 @@ class NewsFeedStore:
         if character_id not in CHARACTER_IDS:
             return []
         self.purge_expired(now=now)
-        with self._connect() as db:
+        with self._connection() as db:
             rows = db.execute(
                 """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
                    FROM news_items WHERE character_id = ?
@@ -221,7 +261,7 @@ class NewsFeedStore:
         if character_id not in CHARACTER_IDS:
             return
         stamp = time.time() if now is None else float(now)
-        with self._connect() as db:
+        with self._connection() as db:
             db.execute(
                 """INSERT INTO news_feed_runs(character_id, refreshed_at, item_count, last_error)
                    VALUES (?, ?, ?, ?)
@@ -233,7 +273,7 @@ class NewsFeedStore:
     def status(self, character_id: str) -> dict:
         if character_id not in CHARACTER_IDS:
             return {"refreshed_at": 0.0, "item_count": 0, "last_error": ""}
-        with self._connect() as db:
+        with self._connection() as db:
             row = db.execute(
                 "SELECT refreshed_at, item_count, last_error FROM news_feed_runs WHERE character_id = ?",
                 (character_id,),
@@ -243,7 +283,7 @@ class NewsFeedStore:
     def clear_category(self, character_id: str, category: str) -> int:
         if character_id not in CHARACTER_IDS:
             return 0
-        with self._connect() as db:
+        with self._connection() as db:
             cursor = db.execute(
                 "DELETE FROM news_items WHERE character_id = ? AND category = ?",
                 (character_id, category),
@@ -300,7 +340,9 @@ class NewsFeedService:
         now, interval = time.time(), self._interval_seconds()
         for character_id in CHARACTER_IDS:
             status = self.store.status(character_id)
-            if not status["refreshed_at"] or now - float(status["refreshed_at"]) >= interval:
+            last_run = float(status["refreshed_at"] or 0)
+            retry_after = 1800 if status.get("last_error") else interval
+            if not last_run or now - last_run >= retry_after:
                 self.refresh_character_async(character_id)
 
     def refresh_all_async(self) -> None:
@@ -352,8 +394,13 @@ class NewsFeedService:
                 try:
                     found = search(context, query, kind="news", max_results=6)
                     for result in found.get("results") or []:
-                        if isinstance(result, dict):
-                            entry = dict(result)
+                        if not isinstance(result, dict):
+                            continue
+                        if character_id == "ren" and is_gaming_news(result.get("title"), result.get("snippet")):
+                            continue
+                        if category == "local_outbreak" and not is_official_health_source(result.get("url")):
+                            continue
+                        entry = dict(result)
                             entry["category"] = category
                             entry["summary"] = result.get("snippet") or result.get("text") or ""
                             collected.append(entry)
@@ -375,26 +422,92 @@ class NewsFeedService:
     def clear_local_alerts(self) -> None:
         self.store.clear_category("mika", "local_outbreak")
 
+    @staticmethod
+    def _device_location_suggestion() -> tuple[str, str] | None:
+        """Try OS-approved device geolocation first; reverse-geocode it to city and country."""
+        try:
+            from PySide6.QtCore import QEventLoop, QObject, QTimer
+            from PySide6.QtPositioning import QGeoPositionInfoSource
+
+            owner = QObject()
+            source = QGeoPositionInfoSource.createDefaultSource(owner)
+            if source is None:
+                return None
+            loop = QEventLoop()
+            coordinates: dict[str, float] = {}
+
+            def on_position(position):
+                try:
+                    coordinate = position.coordinate()
+                    if coordinate.isValid():
+                        coordinates["lat"] = float(coordinate.latitude())
+                        coordinates["lon"] = float(coordinate.longitude())
+                finally:
+                    loop.quit()
+
+            source.positionUpdated.connect(on_position)
+            try:
+                source.errorOccurred.connect(lambda *_: loop.quit())
+            except Exception:
+                pass
+            timeout = QTimer()
+            timeout.setSingleShot(True)
+            timeout.timeout.connect(loop.quit)
+            timeout.start(8000)
+            source.requestUpdate(7500)
+            loop.exec()
+            source.stopUpdates()
+            if "lat" not in coordinates or "lon" not in coordinates:
+                return None
+
+            from urllib.parse import urlencode
+            from .webintel.netguard import fetch
+            query = urlencode({
+                "format": "jsonv2", "lat": f"{coordinates['lat']:.6f}",
+                "lon": f"{coordinates['lon']:.6f}", "zoom": 10,
+            })
+            response = fetch(
+                "https://nominatim.openstreetmap.org/reverse?" + query,
+                timeout=6, max_bytes=64_000, max_redirects=1,
+            )
+            data = json.loads(response.body.decode("utf-8", errors="replace"))
+            address = data.get("address") or {}
+            city = _clean(
+                address.get("city") or address.get("town") or address.get("village")
+                or address.get("municipality") or address.get("county"), 100,
+            )
+            country = _clean(address.get("country"), 100)
+            return (city, country) if city and country else None
+        except Exception as exc:  # noqa: BLE001 - no provider or denied permission falls back to IP
+            _LOG.info("Device geolocation unavailable: %s", type(exc).__name__)
+            return None
+
     def detect_region_async(self, callback) -> None:
-        """Suggest an approximate public-IP city and country; never persist or confirm it."""
+        """Suggest device GPS first and public-IP geolocation second; never persist or confirm."""
         if not callable(callback):
             return
 
         def run():
-            city = country = error = ""
+            city = country = source = error = ""
+            device = self._device_location_suggestion()
+            if device:
+                city, country = device
+                source = "device_gps"
+            else:
+                try:
+                    from .webintel.netguard import fetch
+                    response = fetch("https://ipapi.co/json/", timeout=5, max_bytes=64_000, max_redirects=1)
+                    data = json.loads(response.body.decode("utf-8", errors="replace"))
+                    city = _clean(data.get("city"), 100)
+                    country = _clean(data.get("country_name") or data.get("country"), 100)
+                    if not city or not country:
+                        raise ValueError("IP service returned no city/country")
+                    source = "public_ip"
+                except Exception as exc:  # noqa: BLE001 - location is optional
+                    error = type(exc).__name__
+                    _LOG.info("Could not obtain a location suggestion: %s", error)
             try:
-                from .webintel.netguard import fetch
-                response = fetch("https://ipapi.co/json/", timeout=5, max_bytes=64_000, max_redirects=1)
-                data = json.loads(response.body.decode("utf-8", errors="replace"))
-                city = _clean(data.get("city"), 100)
-                country = _clean(data.get("country_name") or data.get("country"), 100)
-                if not city or not country:
-                    raise ValueError("IP service returned no city/country")
-            except Exception as exc:  # noqa: BLE001 - location is optional
-                error = type(exc).__name__
-                _LOG.info("Could not obtain an IP location suggestion: %s", error)
-            try:
-                callback(city, country, error)
+                callback(city, country, source, error)
             except Exception:
                 _LOG.debug("Location suggestion callback failed", exc_info=True)
 
