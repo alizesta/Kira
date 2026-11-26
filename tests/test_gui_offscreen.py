@@ -165,6 +165,31 @@ class GuiTests(unittest.TestCase):
         self.assertGreaterEqual(self.win.route_list.minimumHeight(), 176)
         self.assertEqual(self.win.route_list.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
 
+    def test_chat_composer_input_surface_tracks_available_width(self):
+        from PySide6.QtWidgets import QSizePolicy
+
+        composer = self.win.chat_composer
+        surface = composer.input_surface
+        host = composer.input_surface_host
+
+        self.assertEqual(surface.sizePolicy().horizontalPolicy(), QSizePolicy.Expanding)
+        self.assertEqual(surface.minimumWidth(), 0)
+
+        self.win.resize(900, self.win.height())
+        APP.processEvents()
+        narrow_width = surface.width()
+        narrow_host_width = host.width()
+
+        self.win.resize(1280, self.win.height())
+        APP.processEvents()
+        wide_width = surface.width()
+        wide_host_width = host.width()
+
+        self.assertGreater(wide_host_width, narrow_host_width)
+        self.assertGreater(wide_width, narrow_width)
+        self.assertEqual(wide_width, wide_host_width)
+
+
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
