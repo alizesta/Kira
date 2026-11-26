@@ -602,11 +602,30 @@ def initialize_main_window(
     self.views.new_chat_btn.setToolTip("شروع یک گفتگوی مستقل؛ تاریخچهٔ قبلی حفظ می‌شود.")
     self.views.new_chat_btn.clicked.connect(self.controllers.require("session").new_chat)
     toolbar.addWidget(self.views.new_chat_btn)
+    self.views.news_feed_btn = QPushButton("خبرها", self.host)
+    self.views.news_feed_btn.setObjectName("newsFeedButton")
+    self.views.news_feed_btn.setToolTip("فید خبری مستقلِ شخصیت فعال؛ حافظهٔ خبری هفت روز اخیر")
+    def _open_news_feed():
+        from .dialogs.news_feed import NewsFeedDialog
+        dialog = NewsFeedDialog(
+            self.state.cur.cid,
+            self.services.settings,
+            self.host,
+        )
+        dialog.exec()
+    self.views.news_feed_btn.clicked.connect(_open_news_feed)
+    toolbar.addWidget(self.views.news_feed_btn)
     toolbar.addStretch(1)
     toolbar.addWidget(self.views.save_btn)
     central_layout.addWidget(toolbar_frame)
     central_layout.addWidget(self.views.tabs, 1)
     self.host.setCentralWidget(central)
+    from .news_feed_runtime import NewsFeedRuntime
+    self.state._news_feed_runtime = NewsFeedRuntime(
+        self.host,
+        self.services.settings,
+        self.state,
+    )
     self.views.tabs.currentChanged.connect(_ensure_settings_tab)
     self.views.tabs.currentChanged.connect(self.controllers.require("session")._sync_nav)
 
@@ -643,5 +662,6 @@ def initialize_main_window(
     for warning in LOAD_WARNINGS + self.adapters.director.library.warnings:
         self.controllers.require("session").add_chat("system", warning)
     self.controllers.require("lifecycle").check_status()
+    self.state._news_feed_runtime.start()
     self.adapters.director.event("app_startup")
 
