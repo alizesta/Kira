@@ -129,8 +129,10 @@ class ChatComposer(QFrame):
         self.input_surface = QFrame(self)
         self.input_surface.setObjectName("chatInputSurface")
         input_surface_layout = QVBoxLayout(self.input_surface)
-        input_surface_layout.setContentsMargins(8, 6, 8, 6)
-        input_surface_layout.setSpacing(2)
+        # Compact vertical rhythm: prompt, expand control and action row all
+        # remain inside this single surface without wasting the draft area.
+        input_surface_layout.setContentsMargins(8, 3, 8, 3)
+        input_surface_layout.setSpacing(0)
 
         input_tools_host = QWidget(self.input_surface)
         input_tools_host.setObjectName("expandInputToolbar")
@@ -138,7 +140,7 @@ class ChatComposer(QFrame):
         # Stretch first, then the button: the icon is always the physical rightmost item.
         input_tools_host.setLayoutDirection(Qt.LeftToRight)
         input_tools_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        input_tools_host.setFixedHeight(26)
+        input_tools_host.setFixedHeight(20)
         input_tools_row = QHBoxLayout(input_tools_host)
         input_tools_row.setContentsMargins(0, 0, 0, 0)
         input_tools_row.setSpacing(0)
@@ -174,10 +176,11 @@ class ChatComposer(QFrame):
         input_surface_layout.addWidget(self.input, 1)
 
         bar = QHBoxLayout()
-        bar.setSpacing(2)
+        bar.setSpacing(1)
 
         self.route_badge = route_chip_factory()
         self.route_badge.setObjectName("routeChip")
+        self.route_badge.setFixedHeight(32)
         self.route_badge.setText("● Ready")
         self.route_badge.setProperty("kiraIconName", "chevron_up")
         self.route_badge.setIcon(make_icon("chevron_up", normal="#4FD8FF", hover="#FFFFFF"))
@@ -196,6 +199,7 @@ class ChatComposer(QFrame):
         self.attach_btn.setProperty("kiraIconName", "attachment")
         self.attach_btn.setIcon(make_icon("attachment"))
         self.attach_btn.setIconSize(QSize(18, 18))
+        self.attach_btn.setFixedSize(32, 32)
         self.attach_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.attach_btn.setToolTip("پیوست عکس یا فایل (می‌توانی فایل را روی پنجره بکشی یا عکس را Ctrl+V کنی)")
         self.attach_btn.setCursor(Qt.PointingHandCursor)
@@ -207,6 +211,7 @@ class ChatComposer(QFrame):
         self.search_btn.setProperty("kiraIconName", "search")
         self.search_btn.setIcon(make_icon("search"))
         self.search_btn.setIconSize(QSize(18, 18))
+        self.search_btn.setFixedSize(32, 32)
         self.search_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.search_btn.setCursor(Qt.PointingHandCursor)
         self.search_btn.setFocusPolicy(Qt.NoFocus)
@@ -239,6 +244,7 @@ class ChatComposer(QFrame):
         # Keep the microphone as a single-action button: no split-button arrow.
         self.mic_btn.setMenu(None)
         self.mic_btn.setPopupMode(QToolButton.DelayedPopup)
+        self.mic_btn.setFixedSize(32, 32)
         self.mic_btn.setToolTip("روشن/خاموش کردن میکروفون")
         self.wake_btn = QAction("حالت بیدارباش", self.mic_btn)
         self.wake_btn.setCheckable(True)
@@ -246,6 +252,7 @@ class ChatComposer(QFrame):
         self.wake_btn.triggered.connect(owner.toggle_wake)
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
+        self.voice_btn.setFixedSize(32, 32)
         self.voice_btn.setProperty("voiceOnIcon", make_icon("speaker"))
         self.voice_btn.setProperty("voiceOffIcon", make_icon("speaker_muted"))
         self.voice_btn.setIcon(
@@ -262,6 +269,7 @@ class ChatComposer(QFrame):
         self.game_mode_btn.setProperty("kiraIconName", "eye")
         self.game_mode_btn.setIcon(make_icon("eye"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
+        self.game_mode_btn.setFixedSize(32, 32)
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.game_mode_btn.setCheckable(True)
         self.game_mode_btn.setChecked(False)
