@@ -611,6 +611,7 @@ def initialize_main_window(
             self.state.cur.cid,
             self.services.settings,
             self.host,
+            chat_client=self.session.client,
         )
         dialog.exec()
     self.views.news_feed_btn.clicked.connect(_open_news_feed)
@@ -625,6 +626,7 @@ def initialize_main_window(
         self.host,
         self.services.settings,
         self.state,
+        chat_client=self.session.client,
     )
     self.views.tabs.currentChanged.connect(_ensure_settings_tab)
     self.views.tabs.currentChanged.connect(self.controllers.require("session")._sync_nav)
