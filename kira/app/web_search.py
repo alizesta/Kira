@@ -111,8 +111,8 @@ class WebSearchApplicationService:
 
         Keep command parsing and automatic-search suppression out of the UI
         mixin. A strong local/tool plan or a dedicated web-tool plan takes
-        precedence over automatic search; an explicit /web request always
-        wins and preserves the user's literal query.
+        precedence over automatic search; an explicit /web request wins unless
+        the same current message explicitly forbids web access.
         """
         user_text = str(text or "")
         # A direct opt-out is stronger than auto-search, /web metadata, and tool plans.
