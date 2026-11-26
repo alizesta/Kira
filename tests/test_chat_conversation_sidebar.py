@@ -187,6 +187,8 @@ class ConversationSidebarTests(unittest.TestCase):
 
     def test_expand_control_is_pinned_to_physical_right_in_rtl(self):
         self.assertIn('input_tools_host.setLayoutDirection(Qt.LeftToRight)', self.composer_source)
+        self.assertIn("input_tools_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)", self.composer_source)
+        self.assertIn("input_tools_host.setFixedHeight(26)", self.composer_source)
         row = self.composer_source.split("input_tools_row = QHBoxLayout(input_tools_host)", 1)[1].split("input_surface_layout.addWidget(input_tools_host)", 1)[0]
         self.assertIn("input_tools_row.setDirection(QHBoxLayout.LeftToRight)", row)
         self.assertLess(row.index("input_tools_row.addStretch(1)"), row.index("input_tools_row.addWidget(self.expand_btn"))
