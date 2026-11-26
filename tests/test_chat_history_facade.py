@@ -19,6 +19,9 @@ class _Persistence:
     def recent_messages(self, *args):
         return ["message"]
 
+    def get_messages(self, *args):
+        return ["full message"]
+
     def recent_message_records(self, *args):
         return [{"id": 1}]
 
@@ -63,6 +66,10 @@ class ChatHistoryFacadeTests(unittest.TestCase):
             {"id": "conversation-1", "character_id": "ren"},
         )
         self.assertEqual(self.facade.recent_messages(8, "ren", "conversation-1"), ["message"])
+        self.assertEqual(
+            self.facade.get_messages(3, "ren", "conversation-1"),
+            ["full message"],
+        )
         self.assertEqual(self.facade.message_count("ren", "conversation-1"), 3)
         self.assertEqual(self.facade.last_persistence_error, "disk warning")
         self.assertEqual(self.facade.archive_conversation("conversation-1"), ("archived", "conversation-1"))
