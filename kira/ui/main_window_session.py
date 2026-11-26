@@ -346,23 +346,19 @@ class SessionController(WindowFeatureController):
                 row_widget = QWidget(widget)
                 row_widget.setObjectName("conversationRow")
                 row_widget.setLayoutDirection(Qt.LeftToRight)
+                row_widget.setProperty("active", conversation_id == current_id)
                 row_widget.setToolTip(date_tooltip)
                 row_layout = QHBoxLayout(row_widget)
-                row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(1)
+                row_layout.setContentsMargins(2, 0, 2, 0)
+                row_layout.setSpacing(3)
 
-                open_button = QPushButton(
-                    "\n".join(textwrap.wrap(
-                        label, width=19, max_lines=2, placeholder="…",
-                        break_long_words=True, break_on_hyphens=True,
-                    )),
-                    row_widget,
-                )
+                display_label = label if len(label) <= 19 else label[:18].rstrip() + "…"
+                open_button = QPushButton(display_label, row_widget)
                 open_button.setObjectName("conversationOpenButton")
                 open_button.setFlat(True)
                 open_button.setMinimumWidth(0)
-                open_button.setMinimumHeight(42)
-                open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                open_button.setFixedHeight(32)
+                open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 open_button.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
                 open_button.setCursor(Qt.PointingHandCursor)
                 open_button.setToolTip(date_tooltip)
@@ -370,10 +366,25 @@ class SessionController(WindowFeatureController):
                     lambda checked=False, cid=conversation_id: self.switch_conversation(cid)
                 )
 
+                if pinned:
+                    pin_button = QToolButton(row_widget)
+                    pin_button.setObjectName("conversationPinIndicator")
+                    pin_button.setIcon(make_icon(
+                        "pin", normal="#D5D8E0", hover="#FFFFFF",
+                        checked="#FFFFFF", disabled="#8A8F9B",
+                    ))
+                    pin_button.setIconSize(QSize(14, 14))
+                    pin_button.setFixedSize(24, 26)
+                    pin_button.setAutoRaise(True)
+                    pin_button.setFocusPolicy(Qt.NoFocus)
+                    pin_button.setToolTip(
+                        "گفتگوی سنجاق‌شده" if lang == "fa" else "Pinned conversation"
+                    )
+
                 more_button = QToolButton(row_widget)
                 more_button.setObjectName("conversationMenuButton")
                 more_button.setText("⋯")
-                more_button.setFixedSize(25, 30)
+                more_button.setFixedSize(26, 26)
                 more_button.setAutoRaise(True)
                 more_button.setFocusPolicy(Qt.NoFocus)
                 more_button.setCursor(Qt.PointingHandCursor)
@@ -410,8 +421,10 @@ class SessionController(WindowFeatureController):
                 more_button.setPopupMode(QToolButton.InstantPopup)
 
                 row_layout.addWidget(open_button, 1)
+                if pinned:
+                    row_layout.addWidget(pin_button, 0)
                 row_layout.addWidget(more_button, 0)
-                item.setSizeHint(QSize(0, 46))
+                item.setSizeHint(QSize(0, 36))
                 widget.setItemWidget(item, row_widget)
                 if conversation_id == current_id:
                     selected = item
@@ -1338,42 +1351,39 @@ class SessionController(WindowFeatureController):
         return url
 
     def chat_actions_html(self, kind, text):
-        """Neon SVG icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
+        """Render compact, consistently sized message-action icon buttons."""
         if kind not in ("assistant", "user") or not str(text or "").strip():
             return ""
         self.context.state._chat_action_seq += 1
         key = str(self.context.state._chat_action_seq)
         self.context.state._chat_action_texts[key] = str(text)
-        # Keep action targets for all messages currently present in the chat view.
-        # (action, svg icon name, text fallback, colour, background, border, tooltip)
         actions = [
             ("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
             ("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
         ]
         if kind == "assistant":
             actions.append(("speak", "speaker", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+
         view = getattr(self.context.session, "view", None)
         cells = []
         for action, icon_name, glyph, colour, background, border, tooltip in actions:
             try:
                 url = self._chat_action_icon_url(view, action, icon_name, colour)
-                inner = f'&nbsp;&nbsp;<img src="{url}" width="18" height="18">&nbsp;&nbsp;'
-            except Exception:                                # noqa: BLE001 - fall back to the text glyph
+                inner = f'<img src="{url}" width="16" height="16" align="middle">'
+            except Exception:  # noqa: BLE001 - keep a visible fallback if SVG loading fails
                 _log.debug("Could not load the SVG icon for chat action %s", action, exc_info=True)
-                inner = f'&nbsp;&nbsp;&nbsp;{glyph}&nbsp;&nbsp;&nbsp;'
-            # The whole chip is the link (padding sits inside <a>): a click anywhere on the chip works, not only on the icon.
+                inner = f'<span style="color:{colour};font-size:13pt;">{glyph}</span>'
             cells.append(
-                f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:7px;">'
+                f'<td bgcolor="{background}" width="30" height="28" align="center" valign="middle" '
+                f'style="border:1px solid {border};border-radius:8px;">'
                 f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
-                f'style="color:{colour};text-decoration:none;font-size:10pt;font-weight:600;">'
-                f'{inner}</a>'
+                f'style="text-decoration:none;">{inner}</a>'
                 f'</td>'
             )
-        links = "".join(cells)
         return (
-            '<table dir="rtl" align="right" border="0" cellspacing="5" cellpadding="1" '
-            'style="margin-top:6px;border-top:1px solid #314968;padding-top:4px;">'
-            f'<tr>{links}</tr></table>'
+            '<table dir="rtl" align="right" border="0" cellspacing="4" cellpadding="0" '
+            'style="margin-top:5px;border-top:1px solid #314968;padding-top:4px;">'
+            f'<tr>{"".join(cells)}</tr></table>'
         )
 
     def handle_chat_link(self, url):
