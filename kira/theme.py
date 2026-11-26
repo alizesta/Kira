@@ -71,7 +71,7 @@ QFrame#avatarCard {
     border: 1px solid rgba(140,99,255,0.60); border-radius: 19px;
 }
 QFrame#chatCard, QFrame#conversationSidebar {
-    background: rgba(53,217,242,0.05); border: 1px solid rgba(53,217,242,0.42); border-radius: 19px;
+    background: transparent; border: none; border-radius: 0px;
 }
 QListWidget#conversationList {
     background: transparent; alternate-background-color: transparent; color: #EAF2FF;
