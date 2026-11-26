@@ -222,6 +222,8 @@ jobs:
           kira/tools/autonomy.py
           kira/chat_sessions.py
           kira/ui/main_window.py
+          kira/ui_widgets.py
+          kira/ui/components/chat_composer.py
           kira/ui/window_feature_controller.py
           kira/ui/window_presentation_context.py
           kira/ui/feature_controller_registry.py
