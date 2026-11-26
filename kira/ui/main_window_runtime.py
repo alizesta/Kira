@@ -557,6 +557,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
     def _running_background_workers(self):
         """Return owned threads and processes that must finish before Qt destroys the window."""
         workers = list(self.context.state._provider_workers)
+        workers.extend(getattr(self.context.state, "_news_feed_workers", ()))
         workers.append(getattr(self, "_gemini_worker", None))
         workers.append(self.feature_controller("attachments_vision").perception_worker())
         for session in getattr(self.context.state, "sessions", {}).values():
@@ -711,6 +712,9 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         # ChatApplicationService owns cancellation and persists partial output once.
         self.feature_controller("attachments_vision")._cancel_perception_worker()
         self.context.services.desktop_context_application_service.clear()
+        news_runtime = getattr(self.context.state, "_news_feed_runtime", None)
+        if news_runtime is not None:
+            news_runtime.shutdown()
         self.context.state._closing = True
         self._voice_session_requested = False
         self._pending_gemini_start = False
