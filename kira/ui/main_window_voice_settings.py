@@ -130,7 +130,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.conversation_list.setObjectName("conversationList")
         self.context.views.conversation_list.setMinimumWidth(0)
         self.context.views.conversation_list.setAlternatingRowColors(True)
-        self.context.views.conversation_list.setSpacing(2)
+        self.context.views.conversation_list.setSpacing(0)
         self.context.views.conversation_list.setWordWrap(False)
         sidebar_layout.addWidget(self.context.views.conversation_list, 1)
 
