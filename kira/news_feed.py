@@ -368,7 +368,14 @@ _LIVE_VALUE = re.compile(
 )
 
 
-def can_answer_from_feed(character_id: str, query: str, settings: dict, *, now: float | None = None) -> bool:
+def can_answer_from_feed(
+    character_id: str,
+    query: str,
+    settings: dict,
+    *,
+    now: float | None = None,
+    db_path: str | Path | None = None,
+) -> bool:
     """Only suppress automatic search for news questions covered by fresh feed items.
 
     Explicit /web requests and live prices are never handled from this seven-day cache.
@@ -376,7 +383,9 @@ def can_answer_from_feed(character_id: str, query: str, settings: dict, *, now: 
     if not _NEWS_INTENT.search(str(query or "")) or _LIVE_VALUE.search(str(query or "")):
         return False
     region = str(settings.get("health_news_region") or "").strip()
-    items = get_items(character_id, region=region, limit=MAX_ITEMS_PER_CHARACTER, now=now)
+    items = get_items(
+        character_id, region=region, limit=MAX_ITEMS_PER_CHARACTER, now=now, db_path=db_path
+    )
     # An unknown publication date is useful as a lead, but it cannot prove that
     # a stored story is recent enough to replace a fresh search.
     if not any(item.get("published_ts") for item in items):
@@ -400,12 +409,15 @@ def build_context(
     settings: dict | None = None,
     *,
     now: float | None = None,
+    db_path: str | Path | None = None,
 ) -> str:
     """Return a short, sourced, character-only memory block for the current turn."""
     character_id = _safe_character_id(character_id)
     settings = settings or {}
     region = str(settings.get("health_news_region") or "").strip()
-    items = get_items(character_id, region=region, limit=MAX_CONTEXT_ITEMS, now=now)
+    items = get_items(
+        character_id, region=region, limit=MAX_CONTEXT_ITEMS, now=now, db_path=db_path
+    )
     if not items:
         return ""
     name = CHARACTER_LABELS.get(character_id, character_id)
