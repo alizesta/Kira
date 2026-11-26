@@ -118,6 +118,17 @@ class ChatComposer(QFrame):
         self.route_badge.setMenu(self.route_menu)
         bar.addWidget(self.route_badge)
 
+        self.expand_btn = QToolButton()
+        self.expand_btn.setObjectName("expandInputBtn")
+        self.expand_btn.setText("EXPAND")
+        self.expand_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.expand_btn.setCheckable(True)
+        self.expand_btn.setCursor(Qt.PointingHandCursor)
+        self.expand_btn.setFocusPolicy(Qt.NoFocus)
+        self.expand_btn.setToolTip("باز کردن فضای بزرگ‌تر برای نوشتن")
+        self.expand_btn.toggled.connect(self._set_input_expanded)
+        bar.addWidget(self.expand_btn)
+
         self.attach_btn = QToolButton()
         self.attach_btn.setProperty("kiraIconName", "attachment")
         self.attach_btn.setIcon(make_icon("attachment"))
@@ -199,7 +210,15 @@ class ChatComposer(QFrame):
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
 
-        # The composer runs in RTL: Qt lays out QHBoxLayout items right-to-left.
+        def _set_input_expanded(self, expanded):
+        """Resize the draft editor and keep the label synchronized with its state."""
+        self.input.set_expanded(expanded)
+        self.expand_btn.setText("COLLAPSE" if expanded else "EXPAND")
+        self.expand_btn.setToolTip(
+            "بستن فضای بزرگ نوشتن" if expanded else "باز کردن فضای بزرگ‌تر برای نوشتن"
+        )
+
+    # The composer runs in RTL: Qt lays out QHBoxLayout items right-to-left.
         # Add mic first so the speaker is physically to its left on screen.
         for button, key in (
             (self.mic_btn, "mic"),
