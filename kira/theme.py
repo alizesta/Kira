@@ -114,9 +114,12 @@ QToolButton#conversationPinIndicator:hover {
 }
 QTextEdit#chatView { background: transparent; border: none; padding: 3px; selection-background-color: rgba(140,99,255,0.45); }
 QPlainTextEdit#chatInput { background: transparent; border: none; padding: 4px 6px; selection-background-color: rgba(140,99,255,0.45); }
+QWidget#expandInputToolbar {
+    background: transparent; border: none; margin: 0px; padding: 0px;
+}
 QToolButton#expandInputBtn {
     background: transparent; border: none; border-radius: 7px;
-    padding: 4px 9px; color: #AEB9D0; font-size: 8pt; font-weight: 700;
+    padding: 0px; margin: 0px;
 }
 QToolButton#expandInputBtn:hover, QToolButton#expandInputBtn:checked {
     background: rgba(255,255,255,0.10); border: none; color: #FFFFFF;
@@ -611,8 +614,11 @@ QPlainTextEdit#chatInput {{
     padding: 5px 4px;
     selection-background-color: rgba({mr},{mg},{mb},0.55);
 }}
+QWidget#expandInputToolbar {{
+    background: transparent; border: none; margin: 0px; padding: 0px;
+}}
 QToolButton#expandInputBtn {{
-    background: transparent; border: none; border-radius: 7px; padding: 2px;
+    background: transparent; border: none; border-radius: 7px; padding: 0px; margin: 0px;
 }}
 QToolButton#expandInputBtn:hover, QToolButton#expandInputBtn:checked {{
     background: rgba({sr},{sg},{sb},0.18); border: none;
