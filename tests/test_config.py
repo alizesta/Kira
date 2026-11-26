@@ -154,7 +154,7 @@ class ConfigTests(unittest.TestCase):
         loaded = config.load_settings()
         self.assertEqual(loaded["health_news_region"], "Abadan, Khuzestan, Iran")
         self.assertEqual(loaded["news_feed_enabled"], True)
-        self.assertEqual(loaded["news_feed_interval_hours"], 4)
+        self.assertEqual(loaded["news_feed_interval_hours"], 6)
         self.assertEqual(loaded["settings_version"], 9)
 
     def test_current_version_route_repair_is_persisted(self):
