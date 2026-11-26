@@ -82,7 +82,7 @@ class VoiceSettingsController(WindowFeatureController):
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
         self.context.views.avatar = AvatarView(self.context.adapters.animator, view="card")
-        self.context.views.avatar.setMinimumSize(150, 190)
+        self.context.views.avatar.setMinimumSize(100, 190)
         self.context.views.avatar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         av.addWidget(self.context.views.avatar, 1)
         self.tagline = QLabel()
