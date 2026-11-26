@@ -16,6 +16,7 @@ from .main_window_session_support import (
     QGroupBox,
     QImage,
     QLabel,
+        QListWidgetItem,
     QLineEdit,
     QPushButton,
     QScrollArea,
