@@ -79,6 +79,7 @@ QListWidget#conversationList {
 }
 QListWidget#conversationList::item { background: transparent; border: none; padding: 0px; }
 QListWidget#conversationList::item:selected { background: transparent; color: #FFFFFF; }
+QWidget#conversationRow { background: transparent; border: none; }
 QLabel#conversationListTitle { color: #EAF2FF; font-weight: 700; padding: 3px 5px; }
 QWidget#conversationRow { background: transparent; border: none; }
 QPushButton#conversationOpenButton {
