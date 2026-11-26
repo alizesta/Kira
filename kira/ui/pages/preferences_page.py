@@ -85,6 +85,14 @@ class PreferencesPage(QScrollArea):
         self.web_test_btn.clicked.connect(self.web_search_test_requested.emit)
         language_form.addRow("", self.web_test_btn)
 
+        news_box, news_form = self._group("g_news_region")
+        self.health_news_region = QLineEdit(str(settings.get("health_news_region") or ""))
+        self.health_news_region.setPlaceholderText("مثلاً: آبادان، ایران")
+        self.health_news_region.setToolTip(
+            "منطقهٔ تأییدشده برای هشدارهای سلامت میکا. با تغییر این مقدار، منطقهٔ خبرهای محلی عوض می‌شود."
+        )
+        news_form.addRow("منطقهٔ هشدارهای سلامت میکا (شهر، کشور)", self.health_news_region)
+
         design_box, design_form = self._group("g_design")
         self.ui_design_guidance_chk = SwitchCheckBox()
         self._register(self.ui_design_guidance_chk.setText, "ui_design_guidance")
@@ -120,6 +128,7 @@ class PreferencesPage(QScrollArea):
             self.about_labels[key] = self._row(about_form, key, label)
 
         layout.addWidget(language_box)
+        layout.addWidget(news_box)
         layout.addWidget(design_box)
         layout.addWidget(memory_box)
         layout.addWidget(about_box)
