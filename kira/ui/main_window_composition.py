@@ -626,7 +626,7 @@ def initialize_main_window(
         self.host,
         self.services.settings,
         self.state,
-        chat_client=self.session.client,
+        chat_client=lambda: self.session.client,
     )
     self.views.tabs.currentChanged.connect(_ensure_settings_tab)
     self.views.tabs.currentChanged.connect(self.controllers.require("session")._sync_nav)
