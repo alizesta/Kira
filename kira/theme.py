@@ -66,12 +66,11 @@ QLabel#status { color: #8E9BC4; font-size: 8.5pt; }
 QLabel#sectionTitle { color: #C8B8FF; font-size: 11pt; font-weight: 700; }
 QToolTip { background: #120F26; color: #F0F6FF; border: 1px solid #8C63FF; border-radius: 7px; padding: 5px 8px; }
 
-QFrame#avatarCard {
-    background: rgba(140,99,255,0.07);
-    border: 1px solid rgba(140,99,255,0.60); border-radius: 19px;
-}
-QFrame#chatCard, QFrame#conversationSidebar {
-    background: transparent; border: none; border-radius: 0px;
+QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
+QFrame#conversationSidebar, QFrame#composer {
+    background: #0A0A1C;
+    border: none;
+    border-radius: 0px;
 }
 QListWidget#conversationList {
     background: transparent; alternate-background-color: transparent; color: #EAF2FF;
@@ -109,11 +108,15 @@ QToolButton#conversationPinIndicator {
 QToolButton#conversationPinIndicator:hover {
     background: rgba(255,255,255,0.08); border: none;
 }
-QFrame#composer {
-    background: rgba(140,99,255,0.08); border: 1px solid rgba(140,99,255,0.72); border-radius: 16px;
-}
 QTextEdit#chatView { background: transparent; border: none; padding: 3px; selection-background-color: rgba(140,99,255,0.45); }
 QPlainTextEdit#chatInput { background: transparent; border: none; padding: 4px 6px; selection-background-color: rgba(140,99,255,0.45); }
+QToolButton#expandInputBtn {
+    background: transparent; border: none; border-radius: 7px;
+    padding: 4px 9px; color: #AEB9D0; font-size: 8pt; font-weight: 700;
+}
+QToolButton#expandInputBtn:hover, QToolButton#expandInputBtn:checked {
+    background: rgba(255,255,255,0.10); border: none; color: #FFFFFF;
+}
 
 QTextEdit, QPlainTextEdit, QLineEdit, QSpinBox, QDoubleSpinBox {
     background: rgba(255,255,255,0.05); color: #EAF2FF; border: 1px solid rgba(255,255,255,0.24);
@@ -536,13 +539,13 @@ def character_style(theme, effect="off", appearance=None):
     # Keep the character-tinted glass, but make the edge a quiet separator rather than a neon outline.
     border_alpha = min(0.34, 0.16 + glow * 0.0018)
     return f"""
-QFrame#avatarCard {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}), stop:1 rgba({r},{g},{b},{a_card}));
-    border: 1px solid rgba({mr},{mg},{mb},{border_alpha:.2f}); border-radius: 19px;
-}}
-QFrame#chatCard, QFrame#conversationSidebar {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 10},{g + 10},{b + 20},{a_card}), stop:1 rgba({max(r - 6, 0)},{max(g - 6, 0)},{max(b - 4, 0)},{a_card}));
-    border: 1px solid rgba({mr},{mg},{mb},{max(0.20, border_alpha - 0.05):.2f}); border-radius: 19px;
+QWidget#chatPage, QFrame#avatarCard, QFrame#chatCard,
+QFrame#conversationSidebar, QFrame#composer {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}),
+        stop:1 rgba({r},{g},{b},{a_card}));
+    border: none;
+    border-radius: 0px;
 }}
 QListWidget#conversationList {{
     background: transparent; alternate-background-color: transparent; color: #EAF2FF;
@@ -565,12 +568,18 @@ QToolButton#conversationMenuButton {{
 QToolButton#conversationMenuButton:hover {{
     background: rgba({sr},{sg},{sb},0.14); border: none; color: #FFFFFF;
 }}
-QFrame#composer {{
-    background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
-    border: 1px solid rgba({sr},{sg},{sb},{max(0.18, border_alpha - 0.02):.2f}); border-radius: 16px;
-}}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
+QPlainTextEdit#chatInput {{
+    background: transparent; border: none; selection-background-color: rgba({mr},{mg},{mb},0.55);
+}}
+QToolButton#expandInputBtn {{
+    background: transparent; border: none; border-radius: 7px;
+    padding: 4px 9px; color: #D3D9E8; font-size: 8pt; font-weight: 700;
+}}
+QToolButton#expandInputBtn:hover, QToolButton#expandInputBtn:checked {{
+    background: rgba({sr},{sg},{sb},0.14); border: none; color: #FFFFFF;
+}}
 QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(225,239,255,0.28); }}
 QToolButton#sendBtn:hover {{ border: 1px solid rgba(235,247,255,0.42); }}
 QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.26); border: 1px solid rgba({sr},{sg},{sb},0.32); }}
