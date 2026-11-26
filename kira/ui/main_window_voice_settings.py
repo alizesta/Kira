@@ -118,8 +118,8 @@ class VoiceSettingsController(WindowFeatureController):
         conversation_sidebar.setFixedWidth(154)
         conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
-        sidebar_layout.setContentsMargins(2, 4, 2, 4)
-        sidebar_layout.setSpacing(5)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(2)
         self.context.views.conversation_list_title = QLabel(
             "مکالمه‌ها" if lang == "fa" else "Conversations",
             conversation_sidebar,
