@@ -169,7 +169,12 @@ class NewsFeedRuntime(QObject):
             output = {}
             for character_id in selected:
                 previous = news_feed.get_refresh_state(character_id)
-                if not force and previous and float(previous.get("refreshed_at") or 0) > cutoff:
+                if (
+                    not force
+                    and previous
+                    and previous.get("status") == "ok"
+                    and float(previous.get("refreshed_at") or 0) > cutoff
+                ):
                     continue
                 output[character_id] = news_feed.refresh_character(character_id, settings_snapshot)
             return output
