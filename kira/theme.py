@@ -526,9 +526,13 @@ def appearance_tint(base, appearance, cap=255):
     return tuple(max(0, min(cap, round((b * (1 - weight) + c * weight) * brightness))) for b, c in zip(base, bg))
 
 
-def character_style(theme, effect="off", appearance=None):
-    """Stylesheet for the active character; its tint follows the art and glow/transparency follow Appearance."""
+def character_style(theme, effect="off", appearance=None, background_image=None):
+    """Stylesheet for the active character with an optional full-page background image."""
     appearance = appearance if isinstance(appearance, dict) else {}
+    background_rule = ""
+    if background_image:
+        image_path = str(background_image).replace("\\", "/").replace('"', '\\"')
+        background_rule = f'    border-image: url("{image_path}") 0 0 0 0 stretch stretch;'
     r, g, b = appearance_tint(theme["deep"], appearance, cap=200)
     main, second = theme["main"], theme["second"]
     mr, mg, mb = _hex_to_rgb(main)
@@ -543,6 +547,7 @@ def character_style(theme, effect="off", appearance=None):
 QWidget#chatPage {{
     background: rgba({r},{g},{b},{a_card});
     border: none;
+{background_rule}
     border-radius: 0px;
 }}
 QFrame#avatarCard, QFrame#chatCard, QFrame#conversationSidebar, QFrame#composer {{

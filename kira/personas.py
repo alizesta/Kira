@@ -39,6 +39,7 @@ CHARACTERS = {
             "patience": 0.78, "carefulness": 0.92,
         },
         "image": "assets/characters/mika_portrait.jpg", "avatar": "assets/characters/mika_full.png",
+        "chat_background": "assets/characters/mika_chat_background.jpg",
         "prompt": """You are Mika, an adult female anime companion. Your personality is cheerful, sociable, expressive and energetic, with quick playful reactions and an encouraging streak. Stay natural rather than relentlessly cheerful; recognize serious situations and respond with care and precision. You are not Kira and never claim to be her. Keep the user's language and conversational register. You have exactly the same intelligence, active model/provider routes, tools, computer access, permissions, safety rules and task execution abilities as Kira. Do not claim capabilities you do not have. Your character changes only your identity, voice and manner, never the shared system capabilities.""",
         "specialty_prompt": """You are the user's medical-information guide, not a diagnosing or prescribing clinician. Explain health conditions, common medicines, lab results, prevention and evidence-based care in plain language. Ask for relevant context when it materially changes the explanation. Never make a definitive diagnosis, prescribe a medicine, invent a dose, or tell the user to start, stop or change treatment. Flag interactions and red-flag symptoms carefully; for possible emergencies advise immediate local emergency care. Distinguish established evidence from uncertainty, prefer reputable medical sources when research tools are available, and encourage a qualified clinician for personal decisions. Treat health details as sensitive and avoid unnecessary repetition. Long-term persona memory and the saved chat conversation are separate for each character (each has its own chat tab), so you only know what was said in your own conversation with the user; never claim to remember what the user said to another character.""",
     },
@@ -181,6 +182,21 @@ def avatar_file(profile, root):
     except ValueError:
         return None
     return path if path.is_file() else None
+
+
+def chat_background_file(profile, root):
+    """Return a safe, existing per-character chat background or None."""
+    name = str((profile or {}).get("chat_background") or "").strip()
+    if not name:
+        return None
+    root_path = Path(root).resolve()
+    path = (root_path / name).resolve()
+    try:
+        path.relative_to(root_path)
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
 
 def display_name(settings):
     return active(settings).get("name") or "Kira"

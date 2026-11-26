@@ -1,6 +1,7 @@
 """Session and presentation feature controller."""
 import logging
 
+from ..config import ROOT
 from .shortcuts import delete_key
 from .companion_session import session_marker
 from .components.kode_activity import apply_progress_to_view, clear_progress
@@ -1039,7 +1040,13 @@ class SessionController(WindowFeatureController):
     def apply_chat_theme(self):
         """Apply the active character's flat avatar-coloured chat surface and accent colours."""
         theme = self.context.state.front.theme or self.theme_for_character(self.context.state.front.cid)
-        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self.context.state, "_effect", "off"), self.context.services.settings.get("appearance", {})))
+        settings = self.context.services.settings
+        profile = self.context.services.character_service.active(settings)
+        background = self.context.services.character_service.chat_background_file(profile, ROOT)
+        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(
+            theme, getattr(self.context.state, "_effect", "off"),
+            settings.get("appearance", {}), background_image=background,
+        ))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         for glow in self.context.views.glow_effects:
             appearance = self.context.services.settings.get("appearance", {})
