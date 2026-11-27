@@ -43,6 +43,8 @@ avatar. The user will supply Kira's picture; place it there.
 * Done (Claude 2, 2nd pass): left column no longer clipped (conversation sidebar ignores its min width, no scrollbar), Quick People rows show picture 48 px + badge (Ren flame, Mika flower, Kira star) + "Online".
 * Still different: the extra header button is the real "Show character on desktop" action (kept); the OS-style top bar with the hamburger above the page; Kira's picture (waiting for the user, `assets/dashboard/kira_portrait.png`); bubble corners / typing box not seen in a render yet (no messages in the offscreen window).
 
+* Done (Claude 2, 3rd pass, display only): red dot on the bell, playlist waveform, rain-cloud icon in Today's Vibe, "Kira ✦ / Always here for you" caption above Call/Voice/Surprise.
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the

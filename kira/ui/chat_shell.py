@@ -210,6 +210,38 @@ def _soon(context, lang) -> None:
         status.setText("به‌زودی" if lang == "fa" else "Coming soon")
 
 
+class _Waveform(QWidget):
+    """The thin bar waveform under the playlist title (decorative)."""
+
+    _BARS = (3, 6, 4, 9, 5, 12, 7, 4, 10, 14, 8, 5, 11, 6, 3, 8, 13, 9, 5, 7, 4, 10, 6, 3, 8, 12, 7, 4, 9, 5, 3, 6, 4, 8, 5, 3)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(18)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        step = max(4, self.width() // len(self._BARS))
+        for index, bar in enumerate(self._BARS):
+            x = index * step
+            if x + 2 > self.width():
+                break
+            painter.fillRect(x, self.height() - bar, 2, bar, QColor("#8b5cf6" if index < 14 else "#4a3b86"))
+
+
+class _BellButton(QPushButton):
+    """Round bell icon with the small red "new" dot of the reference."""
+
+    def paintEvent(self, event) -> None:                   # noqa: N802 - Qt API
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#ff4d8d"))
+        painter.drawEllipse(self.width() - 14, 6, 8, 8)
+
+
 def _display_button(context, lang, text, name, parent) -> QPushButton:
     button = QPushButton(text, parent)
     button.setObjectName(name)
@@ -426,7 +458,15 @@ def _build_greeting(context, lang) -> QWidget:
     texts.addWidget(_label("امیدوارم روزت مهربان بوده باشه." if fa else "Hope your day was kind to you.", "dashGreetingSub"))
     row.addLayout(texts, 1)
     for glyph in ("♫", "☾", "🔔"):
-        row.addWidget(_display_button(context, lang, glyph, "roundIcon", box))
+        if glyph == "🔔":
+            button = _BellButton(glyph, box)
+            button.setObjectName("roundIcon")
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(lambda checked=False: _soon(context, lang))
+        else:
+            button = _display_button(context, lang, glyph, "roundIcon", box)
+        row.addWidget(button)
     return box
 
 
@@ -478,7 +518,9 @@ def _build_stats(context, parts, lang) -> QWidget:
     vibe, texts, body = _stat_card("☆", "حال‌وهوای امروز" if fa else "Today's Vibe", True)
     texts.addWidget(_label("شب بارونی،" if fa else "Rainy night,", "statValue"))
     texts.addWidget(_label("مناسب حرف‌های عمیق." if fa else "perfect for deep talks.", "statSub"))
-    body.addWidget(_label("☁", "dashHeart"))
+    cloud = _label("🌧", "dashHeart")
+    cloud.setStyleSheet("font-size: 34px; color: #a78bfa;")
+    body.addWidget(cloud)
     row.addWidget(vibe, 1)
     return box
 
@@ -489,6 +531,10 @@ def _build_right(avatar_card, context, lang) -> None:
     if layout is None:
         return
     avatar_card.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
+    caption = _label("Kira ✦", "dashName")
+    caption.setStyleSheet("font-size: 26px; font-weight: 600; padding-left: 12px;")
+    layout.addWidget(caption)
+    layout.addWidget(_label("همیشه اینجام برات" if fa else "Always here for you", "dashGreetingSub"))
     actions = _frame("dashActions")
     actions_row = QHBoxLayout(actions)
     actions_row.setContentsMargins(8, 8, 8, 8)
@@ -507,6 +553,7 @@ def _build_right(avatar_card, context, lang) -> None:
     texts.setSpacing(1)
     texts.addWidget(_label("پلی‌لیست کیرا" if fa else "Kira's Playlist", "dashTrackSub"))
     texts.addWidget(_label("افکار نیمه‌شب" if fa else "Midnight Thoughts", "dashTrackTitle"))
+    texts.addWidget(_Waveform())
     row.addWidget(cover)
     row.addLayout(texts, 1)
     row.addWidget(_display_button(context, lang, "▶", "dashPlay", playlist))
