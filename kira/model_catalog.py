@@ -204,8 +204,28 @@ def group_model_rows(rows, settings):
         provider_labels = list(dict.fromkeys(member["provider_label"] for member in members))
         member_keys = tuple((member["provider"], member["model"]) for member in members)
 
-        tabs = [tab for tab in TABS if any(tab in member["tabs"] for member in members)]
-        prices = {member["price"] for member in members}
+        available_members = [
+            member for member in members if TAB_ARCHIVED not in member.get("tabs", [])
+        ]
+        archived_members = [
+            member for member in members if TAB_ARCHIVED in member.get("tabs", [])
+        ]
+        # A grouped model belongs to exactly one price/archive category. Mixed
+        # provider prices are conservatively classified as paid/unknown rather
+        # than duplicating the same model in both Free and Paid tabs.
+        if not available_members:
+            category_tab = TAB_ARCHIVED
+        elif all(member.get("price") == "free" for member in available_members):
+            category_tab = TAB_FREE
+        else:
+            category_tab = TAB_PAID
+        tabs = [category_tab]
+        if any(bool(member.get("enabled")) for member in available_members):
+            tabs.insert(0, TAB_ACTIVE)
+
+        prices = {member["price"] for member in available_members} or {
+            member["price"] for member in members
+        }
         price = next(iter(prices)) if len(prices) == 1 else "unknown"
         price_details = "؛ ".join(
             f'{member["provider_label"]}: {member["price"]}'
@@ -247,22 +267,32 @@ def group_model_rows(rows, settings):
             "member_keys": member_keys,
             "members": members,
             "member_count": len(members),
-            "enabled": any(bool(member.get("enabled")) for member in members),
+            "enabled": any(bool(member.get("enabled")) for member in available_members),
             "tabs": tabs,
+            "category_tab": category_tab,
             "price": price,
-            "free": members[0].get("free") if len({member.get("free") for member in members}) == 1 else None,
+            "free": (
+                available_members[0].get("free")
+                if available_members and len({member.get("free") for member in available_members}) == 1
+                else None
+            ),
+            "toggle_member_keys": tuple(
+                (member["provider"], member["model"]) for member in available_members
+            ),
+            "archived_member_keys": tuple(
+                (member["provider"], member["model"]) for member in archived_members
+            ),
+            "archived_member_count": len(archived_members),
             "price_tooltip": (
                 "وضعیت هزینه در APIها: " + price_details
                 if len(prices) > 1 else price_details
             ),
-            "status": "available" if any(member.get("status") == "available" for member in members)
-                      else members[0].get("status", "unknown"),
+            "status": "available" if any(
+                member.get("status") == "available" for member in available_members
+            ) else members[0].get("status", "unknown"),
             "route_id": first.get("route_id", ""),
             "reason": "؛ ".join(reasons),
-            "restorable": any(
-                member.get("restorable") and TAB_ARCHIVED in member.get("tabs", [])
-                for member in members
-            ),
+            "restorable": any(member.get("restorable") for member in archived_members),
             "test": combined_test,
             "order": min(int(member.get("order", 10 ** 6)) for member in members),
         })
