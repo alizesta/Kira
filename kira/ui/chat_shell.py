@@ -63,7 +63,7 @@ QLabel#dashOnline { color: #46e08a; font-size: 11px; }
 QLabel#dashQuoteText { color: #d9ccff; font-size: 13px; }
 QLabel#dashHeart { color: #a855f7; font-size: 16px; }
 QPushButton#charTab { background: transparent; border: none; border-radius: 12px; padding: 6px 10px; color: #e9e3ff;
-    text-align: %ALIGN%; font-size: 14px; min-height: 44px; }
+    text-align: %ALIGN%; font-size: 14px; min-height: 40px; }
 QPushButton#charTab:hover { background: #170d33; }
 QPushButton#charTab:checked { background: #1a1038; border: 1px solid #3b2380; }
 QPushButton#charAddButton { background: transparent; border: 1px dashed #3b2380; border-radius: 12px; color: #b9a3f5; }
@@ -320,7 +320,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
         layout.addWidget(tabs_frame)
     sidebar.setMinimumWidth(0)
     sidebar.setMaximumWidth(16777215)
-    sidebar.setMinimumHeight(220)
+    sidebar.setMinimumHeight(60)
     layout.addWidget(sidebar, 1)
     scroll.setWidget(column)
     return scroll
@@ -348,7 +348,7 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
         button.setCheckable(True)
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
-        button.setMinimumHeight(42)
+        button.setFixedHeight(46)
         if glyph in _ICONS:
             button.setIcon(make_icon(glyph, normal="#cbbcff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
             button.setIconSize(QSize(20, 20))
@@ -392,8 +392,10 @@ def _build_profile(context, parts, lang) -> QFrame:
     top.addWidget(picture)
     top.addLayout(names, 1)
     outer.addLayout(top)
-    outer.addWidget(_label("«همیشه اینجام، برای هر چیزی که لازم داری.»" if fa
-                           else "“I'm always here, for whatever you need.”", "dashQuoteText"))
+    quote = _label("«همیشه اینجام، برای هر چیزی که لازم داری.»" if fa
+                   else "“I'm always here, for whatever you need.”", "dashQuoteText")
+    quote.setWordWrap(True)
+    outer.addWidget(quote)
     heart = _label("♡", "dashHeart")
     heart.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
     outer.addWidget(heart)

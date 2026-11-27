@@ -51,7 +51,7 @@ QLabel#todayChip { background: #150c2e; border: 1px solid #2a1a52; border-radius
 QToolButton#headerIcon { background: transparent; border: none; color: #cbbcff; font-size: 16px; padding: 4px; }
 QFrame#dashTyping { background: #120a26; border: 1px solid #2a1a52; border-radius: 14px; margin: 4px 14px; }
 QLabel#dashTypingText { color: #b9a3f5; font-size: 13px; }
-QPushButton#navItem { min-height: 48px; font-size: 15px; }
+QPushButton#navItem { font-size: 15px; font-weight: 400; }
 QLabel#dashGreeting { font-size: 28px; }
 QFrame#statCard { min-height: 112px; }
 QLabel#statValue { font-size: 17px; }
@@ -105,12 +105,12 @@ def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", ava
     cell = f"{extra_html}{body}{meta}{footer_html or ''}"
     spacer = '<p style="margin:0;font-size:3pt;">&nbsp;</p>'
     if kind == "user":
-        return (f'<table align="right" width="72%" cellspacing="0" cellpadding="{USER_PAD}" style="margin:7px 4px;">'
+        return (f'<table align="right" cellspacing="0" cellpadding="{USER_PAD}" style="margin:7px 4px;">'
                 f'<tr><td>{cell}</td></tr></table>{spacer}')
     avatar = (f'<td width="{AVATAR_SIZE + 10}" valign="top"><img src="{avatar_url}" width="{AVATAR_SIZE}" height="{AVATAR_SIZE}"></td>'
               if avatar_url else "")
     return (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin:7px 0;"><tr>{avatar}'
-            f'<td valign="top"><table width="78%" cellspacing="0" cellpadding="{ASSISTANT_PAD}">'
+            f'<td valign="top"><table cellspacing="0" cellpadding="{ASSISTANT_PAD}">'
             f'<tr><td>{cell}</td></tr></table></td></tr></table>{spacer}')
 
 
@@ -546,7 +546,6 @@ def apply_dashboard_chat(context) -> bool:
         ("typing follows status", lambda: _wrap_status(context, controller, parts)),
         ("bubbles", lambda: _install_bubbles(controller)),
         ("avatar pictures and bubble shapes", lambda: _wrap_session_views(context, controller)),
-        ("date chip", lambda: _wrap_date_chip(context, controller, lang)),
         ("column widths", lambda: _wrap_resize(context, controller)),
         ("style survives theme changes", lambda: _wrap_theme(context, controller, page, parts)),
     )

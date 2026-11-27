@@ -37,12 +37,10 @@ Put one picture per character at `assets/dashboard/<character id>_portrait.png` 
 `mika_portrait.png`). A character with a picture shows the portrait card (name over the lower edge); one without keeps the animated
 avatar. The user will supply Kira's picture; place it there.
 
-## Not done yet
+## Not done yet (updated 2026-11-27 Claude 2, after rendering the real window offscreen)
 
-* Rounded bubble corners (QTextBrowser cannot draw them; needs a custom message-list widget, which is a separate, large task).
-* "Kira is typing..." box styled like the reference (progress lines are still drawn by `kode_activity`).
-* The news panel still sits in the right column (the reference has none); decide where it should live.
-* Exact sizes and spacing: nothing has been compared with the reference at pixel level.
+* Steps 1-4 of the user's order (rounded bubbles, typing box, news panel hidden, column proportions) were written by Claude 1 in 7c72d69; Claude 2 rendered them (tests/window_factory needs `vision_runtime_provider` + `desktop_context_application_service` stubs) and fixed: nav buttons were 66 px (QSS min-height + padding add up; now fixed 46), duplicate "Today" chip removed (header chip only), bubbles shrink to their text, profile quote wraps, left column fits 1024 px.
+* Still different from the reference: left column is clipped on the right by its scrollbar; Quick People rows have no Online dot / flame / flower and tiny avatars; extra person icon in the chat header; the OS-style top bar (hamburger) above the page; Kira's picture (waiting for the user).
 
 ## Test checklist for the final pass
 
