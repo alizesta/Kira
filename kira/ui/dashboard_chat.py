@@ -23,12 +23,13 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QRectF, QTimer, QUrl, Qt
+from PySide6.QtCore import QEvent, QObject, QRectF, QSize, QTimer, QUrl, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QTextDocument, QTextTable
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QToolButton, QWidget
 
 from .. import chat_render
 from ..config import ROOT
+from ..ui_icons import make_icon
 
 _LOG = logging.getLogger("kira.ui")
 AVATAR_URL = "kira-avatar://self"
@@ -46,7 +47,7 @@ QToolButton#sparkBtn { background: #1a1038; border: 2px solid #5b2fd6; border-ra
     min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px; }
 QToolButton#sparkBtn:checked { background: #3b2380; color: #ffffff; }
 QToolButton#emojiBtn { background: transparent; border: none; color: #cbbcff; font-size: 20px; }
-QToolButton#sendBtn { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #7c3aed, stop:1 #a855f7); border: none;
+QToolButton#sendBtn { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #7c3aed, stop:1 #a855f7); border: 2px solid #d8c8ff;
     border-radius: 22px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; }
 QLabel#todayChip { background: #150c2e; border: 1px solid #2a1a52; border-radius: 12px; color: #cbbcff; padding: 4px 16px; }
 QToolButton#headerIcon { background: transparent; border: none; color: #cbbcff; font-size: 16px; padding: 4px; }
@@ -110,7 +111,7 @@ def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", ava
         cells = re.search(r"<tr>(.*)</tr>", footer_html or "", re.S)
         icons = cells.group(1) if cells else ""
         meta = (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin-top:6px;"><tr>'
-                f'<td align="left" valign="middle">{stamp_html}</td><td width="100%"></td>{icons}</tr></table>')
+                f'<td align="left" valign="middle" style="white-space:nowrap;">{stamp_html}</td><td width="100%">&nbsp;&nbsp;</td>{icons}</tr></table>')
     else:
         meta = ""
     cell = f"{extra_html}{body}{meta}"
@@ -301,7 +302,8 @@ def _build_composer(context, lang) -> None:
 
     spark = QToolButton(surface)
     spark.setObjectName("sparkBtn")
-    spark.setText("✦")
+    spark.setIcon(make_icon("eye", normal="#c4b5fd", hover="#ffffff", checked="#ffffff"))   # Eye Vision
+    spark.setIconSize(QSize(22, 22))
     spark.setCheckable(True)
     spark.setCursor(Qt.PointingHandCursor)
     spark.setFocusPolicy(Qt.NoFocus)
@@ -338,6 +340,9 @@ def _build_composer(context, lang) -> None:
     pill.addWidget(spark)
     pill.addWidget(field, 1)
     pill.addWidget(emoji)
+    if send is not None:                                     # neon send button: white neon plane on a glowing violet disc
+        send.setIcon(make_icon("send", normal="#ffffff", hover="#ffffff", disabled="#8b7bd8"))
+        send.setIconSize(QSize(22, 22))
     for widget in (attach, stop, send):
         _detach(bar, widget)
         if widget is not None:

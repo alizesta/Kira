@@ -55,6 +55,8 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 8th pass): bubble = text-block top/height + the table's real width (block rects are line-box wide, so they cannot give the width); more top padding; time on the left and the action icons on the right in ONE table row (`bubble_html` pulls the icon cells out of `chat_actions_html`); the Kira/Online profile card is no longer in the left column - the conversation list (New chat + Conversations) sits right under the nav, Quick People below it.
 
+* Done (Claude 2, 9th pass): New chat button hidden; lightning-bolt energy widget hidden; Kira's mood face (all `emotion_*` SVGs, converted to a cat head with ears at load time in `ui_icons._cat_face`) now stands before the "Kira's Mood" title, static emoji removed; composer's left square button shows the neon Eye icon (it still opens the tools tray); send button has a neon plane icon and a light-violet border (a QGraphicsDropShadowEffect was tried and crashes because appearance_runtime replaces graphics effects).
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the

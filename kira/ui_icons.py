@@ -49,6 +49,14 @@ def _asset_name(name):
     return value
 
 
+_CAT_HEAD = '<path d="M4 12V4l5 3.4a9.5 9.5 0 0 1 6 0L20 4v8a8 8 0 0 1-16 0z"/>'
+
+
+def _cat_face(source):
+    """Mood faces are cat faces: the round head of the SVG becomes a head with two pointed ears (same eyes and mouth)."""
+    return source.replace('<circle cx="12" cy="12" r="9"/>', _CAT_HEAD, 1)
+
+
 def _svg_text(name):
     """Read the SVG asset for an icon or mood group."""
     asset = _asset_name(name)
@@ -56,6 +64,8 @@ def _svg_text(name):
         path = _SVG_DIR / f"{asset}.svg"
         try:
             _SVG_SOURCE[asset] = path.read_text(encoding="utf-8") if path.is_file() else None
+            if _SVG_SOURCE[asset] and asset.startswith("emotion_"):
+                _SVG_SOURCE[asset] = _cat_face(_SVG_SOURCE[asset])
         except OSError:
             _SVG_SOURCE[asset] = None
     return _SVG_SOURCE[asset]

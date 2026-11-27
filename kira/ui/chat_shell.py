@@ -479,6 +479,9 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     sidebar.setMaximumWidth(16777215)
     sidebar.setMinimumHeight(150)
     sidebar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)   # its inner rows must not widen the column
+    new_chat = getattr(context.views, "new_chat_btn", None)
+    if new_chat is not None:
+        new_chat.hide()                                    # the Chat item above already starts a conversation view
     layout.addWidget(sidebar, 1)
     if tabs_frame is not None:
         layout.addWidget(_label("افراد سریع" if fa else "Quick People", "dashSection"))
@@ -651,7 +654,7 @@ def _stat_card(title_glyph, title, with_arrow) -> tuple[QFrame, QVBoxLayout, QHB
     outer.setContentsMargins(12, 10, 12, 10)
     outer.setSpacing(4)
     head = QHBoxLayout()
-    head.addWidget(_label(f"{title_glyph}  {title}", "statTitle"))
+    head.addWidget(_label(f"{title_glyph}  {title}" if title_glyph else title, "statTitle"))
     head.addStretch(1)
     if with_arrow:
         head.addWidget(_label("›", "statSub"))
@@ -681,17 +684,20 @@ def _build_stats(context, parts, lang) -> QWidget:
     body.addWidget(_Ring(72))
     row.addWidget(bond, 1)
 
-    mood, texts, body = _stat_card("☺", f"حال {name}" if fa else f"{name}'s Mood", True)
+    mood, texts, body = _stat_card("", f"حال {name}" if fa else f"{name}'s Mood", True)
+    face = getattr(context.views, "mood_emotion_icon", None)
+    if face is not None:                                    # the cat face stands before the title (the old static emoji is gone)
+        face.setParent(None)
+        face.setStyleSheet("border: none; background: transparent; padding: 0px;")
+        mood.layout().itemAt(0).layout().insertWidget(0, face)
+    bolt = getattr(context.views, "mood_indicator", None)
+    if bolt is not None:
+        bolt.setParent(None)                               # the lightning bolt is not shown any more
+        bolt.hide()
     parts["mood_title"] = _label("آرام" if fa else "Calm", "statValue")
     parts["mood_sub"] = _label("آسوده" if fa else "Relaxed", "statSub")
     texts.addWidget(parts["mood_title"])
     texts.addWidget(parts["mood_sub"])
-    for name in ("mood_emotion_icon", "mood_indicator"):    # moved here from the old left-bottom corner, frame removed
-        widget = getattr(context.views, name, None)
-        if widget is not None:
-            widget.setParent(None)
-            widget.setStyleSheet("border: none; background: transparent; padding: 0px;")
-            body.addWidget(widget)
     parts["sparkline"] = _Sparkline()
     body.addWidget(parts["sparkline"])
     row.addWidget(mood, 1)

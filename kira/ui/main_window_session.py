@@ -1417,7 +1417,7 @@ class SessionController(WindowFeatureController):
                 _log.debug("Could not load the SVG icon for chat action %s", action, exc_info=True)
                 inner = f'<span style="color:{colour};font-size:13pt;">{glyph}</span>'
             cells.append(
-                f'<td width="22" height="22" align="right" valign="middle">'
+                f'<td width="26" height="22" align="right" valign="middle">'
                 f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
                 f'style="text-decoration:none;">{inner}</a>'
                 f'</td>'
