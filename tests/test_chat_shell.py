@@ -6,7 +6,10 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPropertyAnimation
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QListWidget, QPushButton, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QToolButton, QVBoxLayout, QWidget,
+)
 
 from kira.ui import chat_shell
 
@@ -36,18 +39,41 @@ def build(settings=None):
     header_layout = QHBoxLayout(header)
     title = QLabel("Kira", header)
     header_layout.addWidget(title)
-    opened = []
-    session = SimpleNamespace(go_tab=opened.append)
+
+    opened, deleted = [], []
+
+    def refresh_conversation_list():
+        """Like SessionController.refresh_conversation_list: rebuilds one active row with an options button."""
+        conversation_list.clear()
+        item = QListWidgetItem()
+        item.setToolTip("آخرین فعالیت: 2026-11-27 16:32:10")
+        conversation_list.addItem(item)
+        row = QWidget(conversation_list)
+        row.setProperty("active", True)
+        row_layout = QHBoxLayout(row)
+        row_layout.addWidget(QPushButton("chat", row), 1)
+        row_layout.addWidget(QToolButton(row), 0)
+        conversation_list.setItemWidget(item, row)
+        return True
+
+    session = SimpleNamespace(
+        go_tab=opened.append,
+        delete_conversation=deleted.append,
+        apply_chat_theme=lambda: page.setStyleSheet("THEME { color: red; }"),
+        refresh_conversation_list=refresh_conversation_list,
+    )
     views = SimpleNamespace(
         chat_page=page, avatar_card=avatar_card, char_tabs_row=tabs_row,
         conversation_list=conversation_list, title=title, tab_keys=["tab_chat", "tab_general"],
     )
     context = SimpleNamespace(
         views=views,
+        state=SimpleNamespace(cur=SimpleNamespace(conversation_id="c1")),
         services=SimpleNamespace(settings=settings if settings is not None else {"ui_lang": "fa"}),
         controllers=SimpleNamespace(require=lambda name: session),
     )
-    parts = SimpleNamespace(page=page, tabs=tabs, avatar_card=avatar_card, sidebar=sidebar, header=header, opened=opened)
+    parts = SimpleNamespace(page=page, tabs=tabs, avatar_card=avatar_card, sidebar=sidebar, header=header,
+                            opened=opened, deleted=deleted, session=session, list=conversation_list)
     return context, parts
 
 
@@ -89,6 +115,15 @@ class ChatShellTests(unittest.TestCase):
         self.assertFalse(context.services.settings[chat_shell.SETTING_KEY])
         self.assertEqual(self.save.call_count, 2)
 
+    def test_closed_panel_stays_closed_when_a_window_resize_shows_it_again(self):
+        context, p = build()
+        chat_shell.apply_chat_shell(context)
+        p.page.show()
+        p.avatar_card.show()                               # what SessionController.resizeEvent does on every resize
+        QTest.qWait(30)
+        self.assertTrue(p.avatar_card.isHidden())
+        p.page.close()
+
     def test_sidebar_is_widened_and_gets_a_footer(self):
         context, p = build()
         chat_shell.apply_chat_shell(context)
@@ -97,6 +132,30 @@ class ChatShellTests(unittest.TestCase):
         self.assertIsNotNone(p.sidebar.findChild(QFrame, "sidebarProfile"))
         p.sidebar.findChild(QPushButton, "sidebarSettingsButton").click()
         self.assertEqual(p.opened, [1])
+
+    def test_delete_button_deletes_the_open_conversation(self):
+        context, p = build()
+        chat_shell.apply_chat_shell(context)
+        p.sidebar.findChild(QPushButton, "sidebarDeleteButton").click()
+        self.assertEqual(p.deleted, ["c1"])
+
+    def test_skin_survives_the_theme_replacing_the_stylesheet(self):
+        context, p = build()
+        chat_shell.apply_chat_shell(context)
+        p.session.apply_chat_theme()
+        sheet = p.page.styleSheet()
+        self.assertIn("THEME", sheet)
+        self.assertIn("conversationSidebar", sheet)
+        self.assertLess(sheet.index("THEME"), sheet.index("conversationSidebar"))   # the skin is last, so it wins
+
+    def test_active_row_gets_time_and_dot_after_every_rebuild(self):
+        context, p = build()
+        chat_shell.apply_chat_shell(context)
+        for _ in range(2):
+            p.session.refresh_conversation_list()
+            row = p.list.itemWidget(p.list.item(0))
+            self.assertEqual(row.findChild(QLabel, "conversationTime").text(), "16:32")
+            self.assertEqual(len(row.findChildren(QLabel, "conversationDot")), 1)
 
     def test_applying_twice_changes_nothing(self):
         context, p = build()
