@@ -177,6 +177,47 @@ class PortraitTests(unittest.TestCase):
         self.assertTrue(avatar.isHidden())
 
 
+class TypingAndBubbleRenderTests(unittest.TestCase):
+    def test_typing_indicator_is_hidden_until_active_and_stops_cleanly(self):
+        host = QFrame()
+        host_layout = QVBoxLayout(host)
+        composer = QFrame(host)
+        host_layout.addWidget(composer)
+        context, _status = context_with(chat_composer=composer)
+        parts = {}
+
+        dashboard_chat._build_typing(context, "fa", parts)
+        typing = parts["typing"]
+        self.assertTrue(typing.isHidden())
+
+        typing.set_active(True)
+        self.assertFalse(typing.isHidden())
+        self.assertTrue(typing._timer.isActive())
+
+        typing.set_active(False)
+        self.assertTrue(typing.isHidden())
+        self.assertFalse(typing._timer.isActive())
+
+    def test_bubble_underlay_installs_and_paints_rounded_message_tables(self):
+        view = QTextBrowser()
+        view.resize(640, 480)
+        dashboard_chat._install_underlay(view)
+        view.setHtml(dashboard_chat.bubble_html(
+            "user", "سلام کیرا", "rtl", stamp="8:18 PM"
+        ))
+        view.show()
+        _APP.processEvents()
+
+        tables = list(dashboard_chat._bubble_tables(view.document().rootFrame()))
+        self.assertEqual(len(tables), 1)
+        self.assertIsNotNone(dashboard_chat._content_rect(
+            view.document(), view.document().documentLayout(), tables[0]
+        ))
+        self.assertIsNotNone(view._kira_underlay)
+        view._kira_underlay._paint()
+        view.close()
+
+
 class DateChipTests(unittest.TestCase):
     def test_first_message_of_a_conversation_starts_under_today(self):
         view = QTextBrowser()
