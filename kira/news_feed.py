@@ -40,6 +40,10 @@ CATEGORY_LABELS = {
     "gaming_industry": "صنعت بازی",
     "game_releases": "عرضهٔ بازی‌ها",
     "gaming_hardware": "سخت‌افزار گیمینگ",
+    "gaming_news": "اخبار گیمینگ",
+    "gaming_community": "جامعهٔ گیمینگ",
+    "gaming_rumor": "لیک و شایعهٔ گیمینگ",
+    "iran_health": "سلامت و پزشکی ایران",
     "economy_markets": "اقتصاد و بازارها",
     "crypto": "رمزارز",
     "digital_technology": "فناوری دیجیتال",
@@ -55,7 +59,9 @@ CHARACTER_GUIDANCE = {
     "kira": (
         "تو کیرا هستی و خبرهای بازی را با لحن خودمانی، پرانرژی و طبیعی به فارسی تعریف می‌کنی. "
         "خبرهای عرضه، آپدیت، رایگان‌شدن بازی، تخفیف و قطعی سرورها را از هم تفکیک کن. "
-        "تاریخ و منبع را روشن کن و خبر تأییدنشده را قطعی جلوه نده."
+        "تاریخ و منبع را روشن کن و خبر تأییدنشده را قطعی جلوه نده. "
+        "منابع رسمی، گزارش خبرنگار، پست شبکه اجتماعی، لیک و بحث کاربران را از هم جدا کن. "
+        "برای لیک و شایعه صریحاً سطح تأیید را بگو و هیچ ادعای شبکه اجتماعی را خبر قطعی معرفی نکن."
     ),
     "ren": (
         "تو رن هستی و خبرهای اقتصاد و بازار را به فارسی، دقیق و تحلیلی روایت می‌کنی؛ خبر بازی در این فید جایی ندارد. "
@@ -258,7 +264,7 @@ class NewsFeedStore:
             if published_epoch is not None:
                 expires_at = min(expires_at, published_epoch + RETENTION_SECONDS)
             rows.append((
-                character_id, category, title, summary, host, url, url, published_at,
+                character_id, category, title, summary, _clean(item.get("source_label") or host, 100), url, url, published_at,
                 stamp, expires_at, _clean(region, 220),
             ))
         self.purge_expired(now=stamp)
@@ -444,6 +450,15 @@ class NewsFeedService:
         if character_id == "mika" and isinstance(region_obj, dict) and region_obj.get("confirmed") is True:
             region = ", ".join(filter(None, (_clean(region_obj.get("city"), 100), _clean(region_obj.get("country"), 100))))
         try:
+            # RSS is the primary collection path for Kira and Mika. Search remains
+            # enabled as a complementary discovery path; Ren intentionally keeps
+            # its existing search-only behaviour until its feed strategy is reviewed.
+            if character_id in ("kira", "mika"):
+                from .news_sources import collect_character_feeds
+                rss_items, rss_errors = collect_character_feeds(character_id)
+                collected.extend(rss_items)
+                errors.extend("RSS " + error for error in rss_errors)
+
             from .webintel.engine import Context, search
             context = Context(lambda: settings, _EmptyResearchStore(), lambda: "")
             for category, query in self._queries(character_id, settings):
