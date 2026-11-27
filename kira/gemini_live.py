@@ -12,6 +12,7 @@ import threading
 from PySide6.QtCore import QThread, Signal
 
 from .audio_devices import resolve_input_device
+from .settings_schema import GEMINI_LIVE_MODELS_WITHOUT_PROACTIVE_AUDIO
 
 
 INPUT_RATE = 16_000
@@ -373,7 +374,9 @@ class GeminiLiveWorker(QThread):
         if self.system_instruction:
             config_values["system_instruction"] = self.system_instruction
         proactivity_type = getattr(types, "ProactivityConfig", None)
-        if callable(proactivity_type) and bool(self.settings.get("gemini_live_proactive_audio", True)):
+        model_supports_proactive_audio = self.model.casefold() not in GEMINI_LIVE_MODELS_WITHOUT_PROACTIVE_AUDIO
+        if (callable(proactivity_type) and model_supports_proactive_audio
+                and bool(self.settings.get("gemini_live_proactive_audio", True))):
             config_values["proactivity"] = proactivity_type(proactive_audio=True)
         config = types.LiveConnectConfig(**config_values)
         mic_device = _device_index(sd, self.settings.get("mic_device", ""), input_device=True)

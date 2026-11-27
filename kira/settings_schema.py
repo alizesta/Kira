@@ -8,6 +8,17 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
+
+# Current Google Gemini Live API model IDs. Keep retired 1.5/2.0 Live IDs out of the picker.
+GEMINI_LIVE_MODELS = (
+    "gemini-3.8-live",
+    "gemini-3.8-live-extended-thinking",
+    "gemini-3.1-flash-live-preview",
+    "gemini-2.5-flash-native-audio-preview-12-2025",
+)
+
+# Gemini 3.1 Live Preview does not accept ProactivityConfig in its session setup.
+GEMINI_LIVE_MODELS_WITHOUT_PROACTIVE_AUDIO = frozenset({"gemini-3.1-flash-live-preview"})
 SETTINGS_SCHEMA_VERSION = 9
 
 DEFAULTS = {
