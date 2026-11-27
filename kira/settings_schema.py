@@ -16,6 +16,9 @@ GEMINI_LIVE_MODELS = (
     "gemini-3.1-flash-live-preview",
     "gemini-2.5-flash-native-audio-preview-12-2025",
 )
+
+# Gemini 3.1 Live Preview does not accept ProactivityConfig in its session setup.
+GEMINI_LIVE_MODELS_WITHOUT_PROACTIVE_AUDIO = frozenset({"gemini-3.1-flash-live-preview"})
 SETTINGS_SCHEMA_VERSION = 9
 
 DEFAULTS = {
