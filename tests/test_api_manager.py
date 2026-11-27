@@ -96,6 +96,49 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(am.candidate_services("sk-or-v1-" + "x" * 32), ["openrouter"])
         self.assertEqual(am.candidate_services("AQ." + "x" * 50), ["google"])
 
+    def test_apinex_key_discovers_catalog_and_registers_chat_provider(self):
+        key = "sk-apx-" + "a" * 40
+        catalog = R(200, {"data": [
+            {"id": "free/deepseek-v4.1-flash", "context_length": 1048576,
+             "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "free/gemini-3.8-flash", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "free/qwen-3.8-max", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "claude-opus-5.5", "pricing": {"prompt": "0.50", "completion": "0.50"}},
+            {"id": "whisper-large-v3"},
+        ]}, headers={"x-ratelimit-limit-requests": "15"})
+
+        detection, net = run_detect({"api.apinex.bond": catalog}, key)
+
+        self.assertEqual((detection.state, detection.service), ("ok", "apinex"))
+        self.assertEqual(net.hosts(), {"api.apinex.bond"})
+        url, headers, params = net.calls[0]
+        self.assertEqual(url, "https://api.apinex.bond/v1/models")
+        self.assertEqual(headers.get("Authorization"), f"Bearer {key}")
+        self.assertNotIn(key, url + json.dumps(params))
+
+        by_id = {model["id"]: model for model in detection.models}
+        self.assertTrue(by_id["free/deepseek-v4.1-flash"]["free"])
+        self.assertEqual(by_id["free/deepseek-v4.1-flash"]["context"], 1048576)
+        self.assertFalse(by_id["claude-opus-5.5"]["free"])
+        self.assertNotIn("whisper-large-v3", by_id)
+
+        settings = fresh()
+        provider_id = am.register(settings, detection, key)
+        cfg = settings["providers"][provider_id]
+        self.assertEqual(provider_id, "custom-apinex")
+        self.assertEqual(cfg["type"], "openai_compat")
+        self.assertEqual(cfg["service"], "apinex")
+        self.assertEqual(cfg["base_url"], "https://api.apinex.bond/v1")
+        self.assertEqual(cfg["api_key"], key)
+        route = next(r for r in rm.get_routes(settings) if r["provider"] == provider_id and r["enabled"])
+        self.assertEqual(route["model"], "free/deepseek-v4.1-flash")
+        self.assertEqual(am.service_of(provider_id, cfg), "apinex")
+
+        from kira.hybrid_ai import CustomOpenAIProvider, provider_class
+        self.assertIs(provider_class(provider_id, cfg), CustomOpenAIProvider)
+        self.assertIs(discovery.find_discoverer(provider_id, cfg), discovery._openai_compatible)
+
+
     def test_groq_models_carry_only_real_data_and_rate_headers(self):
         det, _ = run_detect({"api.groq.com": groq_models()}, GROQ_KEY)
         by = {m["id"]: m for m in det.models}
