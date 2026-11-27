@@ -120,7 +120,7 @@ jobs:
       - name: Validate version and build metadata
         run: python scripts/build_metadata.py --check
       - name: Run news feed regression tests
-        run: python -m unittest tests.test_news_feed tests.test_news_sources
+        run: python -m unittest tests.test_news_feed tests.test_news_sources tests.test_news_post_generator
       - name: Run portable regression tests
         run: >-
           python -m unittest
@@ -193,6 +193,7 @@ jobs:
           tests.test_vision_pipeline
           tests.test_news_feed
           tests.test_news_sources
+          tests.test_news_post_generator
       - name: Check Python syntax
         run: python -m compileall -q kira scripts tests
 
