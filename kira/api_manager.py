@@ -60,7 +60,9 @@ def candidate_services(key) -> list[str]:
     """Which services this key may belong to, judged only by its public prefix, so a key is not sent to services it cannot belong to.
     A known prefix means ONE service; a key without a known prefix is checked against the two services whose keys have no prefix."""
     key = str(key or "").strip()
-    if key.startswith("sk-apx-"):
+    # APInex documents the stable key prefix as ``sk-apx…``; do not
+    # require a particular separator after it (some issued keys omit the dash).
+    if key.casefold().startswith("sk-apx"):
         return ["apinex"]
     if key.startswith("gsk_"):
         return ["groq"]
