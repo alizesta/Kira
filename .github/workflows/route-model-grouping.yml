@@ -1,0 +1,34 @@
+name: Provider Model Grouping Regression
+
+on:
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/routes.py"
+      - "tests/test_routes.py"
+      - ".github/workflows/route-model-grouping.yml"
+  push:
+    branches: [fix/provider-prefixed-model-grouping]
+    paths:
+      - "kira/routes.py"
+      - "tests/test_routes.py"
+      - ".github/workflows/route-model-grouping.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  route-model-grouping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile route model and regression tests
+        run: python -m py_compile kira/routes.py tests/test_routes.py
+      - name: Run route model regression tests
+        run: python -m unittest tests.test_routes -v
