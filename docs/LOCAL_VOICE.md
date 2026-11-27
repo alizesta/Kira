@@ -24,6 +24,8 @@ To install or repair only the voice engines in an existing environment:
 
 The first download of packages and model weights requires internet access. After the models are prepared, recognition and synthesis run on the local computer. Model weights and caches are stored in Kira's persistent data directory, not in the application's temporary folder.
 
+When local Piper TTS is enabled (the default), Kira also checks and prepares the Piper runtime and the default Mana Persian voice automatically in a background worker at startup. If speech is requested before that setup finishes, the first synthesis worker installs the missing Piper runtime and continues with the selected/default voice. The first-time package/model download requires internet access; subsequent synthesis is local. An explicitly disabled local TTS setting is respected.
+
 The ALBERT model (`abreza/persian-ezafe-albert`) downloads its quantized version to the same Hugging Face cache during the first local voice warmup. Ezafe detection is then fully offline and CPU-based. Set `KIRA_TTS_EZAFE=0` to disable this preprocessing. If the model is missing or ALBERT fails, the original text is passed to Piper unchanged.
 
 ## Engine selection and testing

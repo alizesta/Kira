@@ -268,6 +268,57 @@ def get_routes(settings):
     return derive_routes(settings)
 
 
+def group_routes_for_display(settings, *, status_by_id=None):
+    """Group identical cloud model IDs for the Route UI without merging runtime Routes.
+
+    Every returned group's routes and route_ids preserve the underlying
+    provider-specific entries, so failover, per-key quotas, health and cooldowns
+    remain independent. Local Ollama routes are deliberately never grouped with
+    cloud models that happen to use the same identifier.
+    """
+    statuses = status_by_id or {}
+    groups = []
+    grouped = {}
+
+    for route in get_routes(settings):
+        provider = str(route.get("provider") or "")
+        cfg = settings.get("providers", {}).get(provider, {})
+        model = normalize_model_id(route.get("model"))
+        is_cloud = provider_kind(provider, cfg) == "cloud"
+        display_model = model
+        # APInex prefixes free-tier catalog IDs with ``free/`` while Google
+        # exposes the same underlying model without that presentation prefix.
+        for prefix in ("free/", "models/"):
+            if display_model.casefold().startswith(prefix):
+                display_model = display_model[len(prefix):]
+                break
+        key = ("cloud", display_model.casefold()) if is_cloud and display_model else ("route", str(route.get("id")))
+
+        group = grouped.get(key)
+        if group is None:
+            group = {
+                "model": display_model,
+                "routes": [],
+                "route_ids": [],
+                "provider_ids": [],
+                "active_count": 0,
+                "kind": "cloud" if is_cloud else "local",
+            }
+            grouped[key] = group
+            groups.append(group)
+
+        group["routes"].append(route)
+        group["route_ids"].append(route["id"])
+        if provider not in group["provider_ids"]:
+            group["provider_ids"].append(provider)
+
+        state = statuses.get(route["id"], {})
+        eligible = state.get("enabled", bool(route.get("enabled", True)))
+        if eligible:
+            group["active_count"] += 1
+
+    return groups
+
 def ensure_routes(settings, *, capabilities=None):
     """Persist and repair routes, collapsing duplicate provider/model entries."""
     settings.setdefault("providers", {})

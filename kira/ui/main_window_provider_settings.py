@@ -789,37 +789,69 @@ class ProviderSettingsController(WindowFeatureController):
     # ---------- Route Manager ----------
     HEALTH_TXT = {"unknown": "— بدون تست", "healthy": "● سالم", "degraded": "◐ مشکل موقت", "down": "✕ خراب", "disabled": "⏸ خاموش‌شده"}
 
-    def _selected_route_id(self):
+    def _selected_route_ids(self):
         item = self.context.views.route_list.currentItem()
-        return item.data(Qt.UserRole) if item else None
+        if item is None:
+            return []
+        route_ids = item.data(Qt.UserRole + 1)
+        if isinstance(route_ids, (list, tuple)) and route_ids:
+            return [str(route_id) for route_id in route_ids if route_id]
+        route_id = item.data(Qt.UserRole)
+        return [str(route_id)] if route_id else []
+
+    def _selected_route_id(self):
+        route_ids = self._selected_route_ids()
+        manual = self.context.services.settings.get("manual_route_id", "")
+        return manual if manual in route_ids else (route_ids[0] if route_ids else None)
 
     @front_only
     def refresh_route_list(self):
         if not hasattr(self.context.views, "route_list"):
             return
-        keep = self._selected_route_id()
+        keep = self._selected_route_ids()
         status = {x["name"]: x for x in self.context.session.client.status()}
         manual, default = self.context.services.settings.get("manual_route_id", ""), self.context.services.settings.get("default_route_id", "")
-        providers = self.context.services.settings.get("providers", {})
+        settings = self.context.services.settings
+        providers = settings.get("providers", {})
+        groups = route_model.group_routes_for_display(settings, status_by_id=status)
         self.context.views.route_list.blockSignals(True)
         self.context.views.route_list.clear()
-        for i, r in enumerate(self.context.services.provider_application_service.get_routes(self.context.services.settings)):
-            st = status.get(r["id"], {})
-            label = self.context.services.provider_application_service.provider_label(r["provider"], providers.get(r["provider"]))
-            icon = "☁" if st.get("kind", self.context.services.provider_application_service.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
-            marks = ("★ دستی  " if r["id"] == manual else "") + ("⚑ پیش‌فرض  " if r["id"] == default else "")
-            health = self.HEALTH_TXT.get(st.get("health", "unknown"), "")
-            extra = (f" {st['last_ms']}ms" if st.get("last_ms") is not None else "") + \
-                    (f" · استراحت {st['cooldown']}s" if st.get("cooldown") else "")
-            reason = "" if st.get("enabled") or st.get("cooldown") else {"disabled": " · غیرفعال", "no_key": " · بدون کلید",
-                                                                          "provider_off": " · Provider غیرفعال"}.get(st.get("reason"), " · غیرفعال")
-            item = QListWidgetItem(f"{i + 1}.  {icon} {label} / {r['model'] or '(بدون مدل)'}   {marks}{health}{extra}{reason}")
-            item.setData(Qt.UserRole, r["id"])
-            if reason:
+        for i, group in enumerate(groups):
+            route_ids = list(group["route_ids"])
+            routes = group["routes"]
+            representative_id = manual if manual in route_ids else (default if default in route_ids else route_ids[0])
+            representative = next(route for route in routes if route["id"] == representative_id)
+            states = [status.get(route_id, {}) for route_id in route_ids]
+            st = status.get(representative_id, {})
+            labels = [self.context.services.provider_application_service.provider_label(pid, providers.get(pid))
+                      for pid in group["provider_ids"]]
+            icon = "☁" if group["kind"] == "cloud" else "⌂"
+            marks = ("★ دستی  " if manual in route_ids else "") + ("⚑ پیش‌فرض  " if default in route_ids else "")
+            health_state = next((state.get("health") for state in states if state.get("health") == "healthy"), st.get("health", "unknown"))
+            health = self.HEALTH_TXT.get(health_state, "")
+            last_ms = st.get("last_ms")
+            extra = (f" {last_ms}ms" if last_ms is not None else "") + (f" · استراحت {st['cooldown']}s" if st.get("cooldown") else "")
+            active_count = int(group["active_count"])
+            multiplicity = f" · {active_count}x" if len(route_ids) > 1 else ""
+            if active_count:
+                reason = ""
+            else:
+                reason = {"disabled": " · غیرفعال", "no_key": " · بدون کلید",
+                          "provider_off": " · Provider غیرفعال"}.get(st.get("reason"), " · غیرفعال")
+            if len(route_ids) > 1:
+                caption = f"{group['model'] or '(بدون مدل)'}{multiplicity}"
+                item_text = f"{i + 1}.  {icon} {caption}   {marks}{health}{extra}{reason}"
+            else:
+                item_text = f"{i + 1}.  {icon} {labels[0]} / {group['model'] or '(بدون مدل)'}   {marks}{health}{extra}{reason}"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, representative_id)
+            item.setData(Qt.UserRole + 1, route_ids)
+            if not active_count:
                 item.setForeground(QBrush(QColor("#8d93ab")))
             self.context.views.route_list.addItem(item)
         for i in range(self.context.views.route_list.count()):
-            if self.context.views.route_list.item(i).data(Qt.UserRole) == keep:
+            item_route_ids = self.context.views.route_list.item(i).data(Qt.UserRole + 1) or []
+            if any(route_id in item_route_ids for route_id in keep):
                 self.context.views.route_list.setCurrentRow(i)
                 break
         else:
@@ -827,29 +859,48 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.route_list.setCurrentRow(0)
         self.context.views.route_list.blockSignals(False)
         self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
-                                      ("" if self.context.services.settings.get("failover_enabled", SETTINGS_DEFAULTS["failover_enabled"]) else " · Failover خاموش است"))
+                                      ("" if settings.get("failover_enabled", SETTINGS_DEFAULTS["failover_enabled"]) else " · Failover خاموش است"))
         self.on_route_selected()
-
     def on_route_selected(self):
+        route_ids = self._selected_route_ids()
         rid = self._selected_route_id()
         route = self.context.services.provider_application_service.find_route(self.context.services.settings, rid) if rid else None
         self.context.state._loading_route = True
         try:
-            for w in (self.context.views.route_model_edit, self.context.views.route_enabled_chk, self.context.views.route_timeout, self.context.views.route_cooldown, self.context.views.route_ctx,
-                      self.context.views.route_predict, self.context.views.route_test_btn, self.context.views.route_del_btn, self.context.views.route_use_btn,
-                      self.context.views.route_bench_btn):
-                w.setEnabled(route is not None)
+            grouped_routes = [
+                self.context.services.provider_application_service.find_route(self.context.services.settings, route_id)
+                for route_id in route_ids
+            ]
+            grouped_routes = [item for item in grouped_routes if item]
+            group_size = len(grouped_routes)
+            for widget in (self.context.views.route_model_edit, self.context.views.route_enabled_chk, self.context.views.route_timeout, self.context.views.route_cooldown, self.context.views.route_ctx,
+                           self.context.views.route_predict, self.context.views.route_test_btn, self.context.views.route_del_btn, self.context.views.route_use_btn,
+                           self.context.views.route_bench_btn):
+                widget.setEnabled(route is not None)
             if not route:
                 self.context.views.route_provider_lbl.setText("-")
                 self.context.views.route_status.setText("Route‌ای انتخاب نشده.")
                 return
-            cfg = self.context.services.settings.get("providers", {}).get(route["provider"], {})
+
+            settings = self.context.services.settings
+            providers = settings.get("providers", {})
+            labels = [
+                self.context.services.provider_application_service.provider_label(item["provider"], providers.get(item["provider"]))
+                for item in grouped_routes
+            ]
+            cfg = providers.get(route["provider"], {})
             local = self.context.services.provider_application_service.provider_kind(route["provider"], cfg) == "local"
-            self.context.views.route_provider_lbl.setText(f"{self.context.services.provider_application_service.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
+            if group_size > 1:
+                self.context.views.route_provider_lbl.setText(f"{' / '.join(labels)}  (Cloud · {group_size} API routes)")
+            else:
+                self.context.views.route_provider_lbl.setText(f"{labels[0]}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
             if route["provider"] == "ollama" and self.context.services.provider_application_service.ollama_models:
                 self.context.views.route_model_edit.set_models(self.context.services.provider_application_service.ollama_models)
             self.context.views.route_model_edit.setText(route["model"])
-            self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
+            # A grouped cloud row has one shared identity but several independent
+            # provider catalogs; editing its model ID would be ambiguous.
+            self.context.views.route_model_edit.setEnabled(route is not None and group_size == 1)
+            self.context.views.route_enabled_chk.setChecked(all(bool(item.get("enabled", True)) for item in grouped_routes))
             lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
             self.context.views.route_timeout.setRange(lo, hi)
             timeout_default = route_model.DEFAULT_LOCAL_TIMEOUT if local else route_model.DEFAULT_CLOUD_TIMEOUT
@@ -860,21 +911,24 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.route_predict.setEnabled(is_ollama)
             self.context.views.route_ctx.setValue(int(route.get("num_ctx", 0)))
             self.context.views.route_predict.setValue(int(route.get("num_predict", 0)))
-            st = next((x for x in self.context.session.client.status() if x["name"] == rid), {})
+            states = {item["name"]: item for item in self.context.session.client.status()}
+            st = states.get(rid, {})
             parts = [self.HEALTH_TXT.get(st.get("health", "unknown"), "")]
+            if group_size > 1:
+                group = next((item for item in route_model.group_routes_for_display(settings, status_by_id=states)
+                              if rid in item["route_ids"]), None)
+                active_count = int(group["active_count"]) if group else 0
+                parts.append(f"{active_count}/{group_size} API Route فعال · سهمیه و Failover هر API مستقل است")
             if st.get("last_ms") is not None:
                 parts.append(f"آخرین پاسخ {st['last_ms']} ms")
             if st.get("cooldown"):
                 parts.append(f"استراحت {st['cooldown']}s")
-            note = route_model.route_note(
-                self.context.services.settings, rid,
-                capabilities=self.context.services.provider_application_service.detected_capabilities,
-            )
+            note = route_model.route_note(settings, rid, capabilities=self.context.services.provider_application_service.detected_capabilities)
             if note:
                 parts.append("خاموش‌شده خودکار: " + note)
             if st.get("last_error"):
                 parts.append("آخرین خطا: " + st["last_error"])
-            self.context.views.route_status.setText("  ·  ".join(p for p in parts if p))
+            self.context.views.route_status.setText("  ·  ".join(part for part in parts if part))
         finally:
             self.context.state._loading_route = False
 
@@ -887,8 +941,11 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
         if select:
             for i in range(self.context.views.route_list.count()):
-                if self.context.views.route_list.item(i).data(Qt.UserRole) == select:
+                item = self.context.views.route_list.item(i)
+                item_ids = item.data(Qt.UserRole + 1) or [item.data(Qt.UserRole)]
+                if select in item_ids:
                     self.context.views.route_list.setCurrentRow(i)
+                    break
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
@@ -903,37 +960,81 @@ class ProviderSettingsController(WindowFeatureController):
     def route_edit_changed(self):
         if self.context.state._loading_route:
             return
-        rid = self._selected_route_id()
-        if not rid:
+        route_ids = self._selected_route_ids()
+        if not route_ids:
+            return
+        routes_by_id = {route["id"]: route for route in self.context.services.provider_application_service.get_routes(self.context.services.settings)}
+        grouped = [routes_by_id[route_id] for route_id in route_ids if route_id in routes_by_id]
+        if not grouped:
+            return
+
+        # The group checkbox represents whether ALL provider routes are enabled.
+        # Timeout/cooldown are only propagated when the user actually edits those
+        # controls, preserving provider-specific values when toggling availability.
+        representative = next((item for item in grouped if item["id"] == self._selected_route_id()), grouped[0])
+        changes = {}
+        desired_enabled = self.context.views.route_enabled_chk.isChecked()
+        if desired_enabled != all(bool(item.get("enabled", True)) for item in grouped):
+            changes["enabled"] = desired_enabled
+        desired_timeout = self.context.views.route_timeout.value()
+        if desired_timeout != int(representative.get("timeout", route_model.DEFAULT_CLOUD_TIMEOUT)):
+            changes["timeout"] = desired_timeout
+        desired_cooldown = self.context.views.route_cooldown.value()
+        if desired_cooldown != int(representative.get("cooldown", route_model.DEFAULT_COOLDOWN)):
+            changes["cooldown"] = desired_cooldown
+        if len(grouped) == 1:
+            desired_model = self.context.views.route_model_edit.text()
+            if desired_model != str(representative.get("model") or ""):
+                changes["model"] = desired_model
+        if representative["provider"] == "ollama":
+            desired_ctx = self.context.views.route_ctx.value()
+            if desired_ctx != int(representative.get("num_ctx", 0)):
+                changes["num_ctx"] = desired_ctx
+            desired_predict = self.context.views.route_predict.value()
+            if desired_predict != int(representative.get("num_predict", 0)):
+                changes["num_predict"] = desired_predict
+        if not changes:
             return
         try:
-            self.context.services.provider_application_service.update_route(self.context.services.settings, rid, model=self.context.views.route_model_edit.text(), enabled=self.context.views.route_enabled_chk.isChecked(),
-                                     timeout=self.context.views.route_timeout.value(), cooldown=self.context.views.route_cooldown.value(),
-                                     num_ctx=self.context.views.route_ctx.value(), num_predict=self.context.views.route_predict.value())
+            for route in grouped:
+                self.context.services.provider_application_service.update_route(
+                    self.context.services.settings, route["id"], **changes
+                )
+                if "enabled" in changes or "cooldown" in changes:
+                    self.context.session.client.reset_cooldowns(route["id"])
         except ValueError as exc:
             self.context.views.route_status.setText("✕ " + str(exc))
             return
-        self.context.session.client.reset_cooldowns(rid)
         self.after_route_change()
 
     def on_routes_reordered(self):
-        """Drag & drop finished: the new visual order becomes the priority / failover order."""
+        """Move grouped visual rows while preserving every provider-specific failover Route."""
         if self.context.state._loading_route:
             return
-        ids = [self.context.views.route_list.item(i).data(Qt.UserRole) for i in range(self.context.views.route_list.count())]
+        ids = []
+        for index in range(self.context.views.route_list.count()):
+            item = self.context.views.route_list.item(index)
+            route_ids = item.data(Qt.UserRole + 1) or [item.data(Qt.UserRole)]
+            ids.extend(route_id for route_id in route_ids if route_id)
         self.context.services.provider_application_service.reorder_routes(self.context.services.settings, ids)
         self.feature_controller("runtime").save_now()
-        QTimer.singleShot(0, self.refresh_route_list)           # renumber labels after the drop has fully finished
+        QTimer.singleShot(0, self.refresh_route_list)
         QTimer.singleShot(0, lambda: None if self.context.session.busy else self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route()))
 
     def delete_selected_route(self):
-        rid = self._selected_route_id()
-        if not rid:
+        route_ids = self._selected_route_ids()
+        if not route_ids:
             return
-        if QMessageBox.question(self.window, "حذف Route", "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)") != QMessageBox.Yes:
+        if len(route_ids) > 1:
+            model = str(self.context.services.provider_application_service.find_route(self.context.services.settings, route_ids[0]).get("model") or "")
+            prompt = f"مدل «{model}» و {len(route_ids)} Route متصل به APIهای آن حذف شوند؟ (خود APIها و کلیدهایشان باقی می‌مانند.)"
+        else:
+            prompt = "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)"
+        if QMessageBox.question(self.window, "حذف Route", prompt) != QMessageBox.Yes:
             return
-        self.context.services.provider_application_service.remove_route(self.context.services.settings, rid)
-        self.context.session.client.reset_cooldowns(rid)
+        for route_id in route_ids:
+            self.context.services.provider_application_service.remove_route(self.context.services.settings, route_id)
+            self.context.session.client.reset_cooldowns(route_id)
         self.after_route_change()
 
     def on_failover_toggled(self, on):

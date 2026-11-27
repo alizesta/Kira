@@ -23,6 +23,46 @@ class RouteModelTests(unittest.TestCase):
     def setUp(self):
         self.capabilities = DetectedCapabilities()
 
+    def test_display_groups_identical_cloud_models_but_keeps_provider_routes_and_quota_slots(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        model = "gemini-3.8-flash"
+        routes.update_route(s, "groq", model=model, enabled=True)
+        routes.update_route(s, "cloudflare", model=model, enabled=True)
+        apinex = routes.add_provider(s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key")
+        apinex_route = routes.add_route(s, apinex, "free/" + model, enabled=True)
+        before = deepcopy(routes.get_routes(s))
+
+        groups = routes.group_routes_for_display(
+            s, status_by_id={
+                "groq": {"enabled": True},
+                "cloudflare": {"enabled": True},
+                apinex_route["id"]: {"enabled": False},
+            }
+        )
+        matching = [group for group in groups if group["model"].casefold() == model.casefold()]
+
+        self.assertEqual(len(matching), 1)
+        group = matching[0]
+        self.assertEqual(set(group["provider_ids"]), {"groq", "cloudflare", apinex})
+        self.assertEqual(len(group["route_ids"]), 3)
+        self.assertEqual(group["active_count"], 2)
+        self.assertEqual(group["model"], model)  # the APInex free/ prefix is presentation metadata
+        self.assertEqual(routes.get_routes(s), before)  # display grouping never merges execution routes
+
+    def test_display_grouping_keeps_same_named_local_model_separate_from_cloud(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        model = "gemini-3.8-flash"
+        routes.update_route(s, "groq", model=model, enabled=True)
+        routes.update_route(s, "ollama", model=model, enabled=True)
+
+        groups = routes.group_routes_for_display(s)
+        matching = [group for group in groups if group["model"].casefold() == model.casefold()]
+
+        self.assertEqual(len(matching), 2)
+        self.assertEqual({group["kind"] for group in matching}, {"cloud", "local"})
+        self.assertEqual(sorted(len(group["route_ids"]) for group in matching), [1, 1])
     def test_migration_keeps_order_models_keys_and_providers_untouched(self):
         s = legacy_settings()
         before = deepcopy(s["providers"])
