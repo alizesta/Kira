@@ -34,12 +34,27 @@ class SearchError(Exception):
 _FORCE = re.compile(r"^\s*/(web|search|سرچ)\s+(.+)$", re.I | re.S)
 _VERBS = re.compile(r"(سرچ|جست\s?و\s?جو|جستجو|گوگل|google|search|look up|(?<!\w)وب(?!\w))\s*(کن|بکن|کنی|بزن|کن)?", re.I)
 _TRIGGERS = re.compile(
-    r"(اینترنت|آنلاین|خبر|اخبار|امروز|الان|اکنون|اخیراً?|آخرین|جدیدترین|جدید|قیمت|نرخ|دلار|یورو|طلا|سکه|بیت\s?کوین|"
+    r"(اینترنت|آنلاین|خبر|اخبار|اخیراً?|آخرین|جدیدترین|جدید|قیمت|نرخ|دلار|یورو|طلا|سکه|بیت\s?کوین|"
     r"آب\s?و\s?هوا|هوای|نتیجه|لیگ|بازی\s+دیشب|کی\s+برد|چند\s+(است|هست|شد)|کیست|کی\s+بود|"
     r"آهنگ|اهنگ|ترانه|شعر|خواننده|آهنگساز|فیلم|سریال|نویسنده|بازیگر|کارگردان|از\s+کیه|مال\s+کیه|کی\s+(خونده|خوند|ساخته|نوشته)|"
     r"\b(news|latest|today|price|weather|score|current|who is|released?|update[sd]?|song|lyrics|singer|movie)\b|\b20(2[4-9]|3\d)\b)", re.I)
 
 _FOLLOWUP = re.compile(r"(این|اون|آن|همین|همون|قبلی|بالا|بهتر|دوباره|باز\s?هم|نه\s+بابا|نه\b|غلطه|اشتباه)", re.I)
+
+# Explicit user opt-out must override both keyword-based auto-search and tool calls.
+# Normalize first so Persian/Arabic letter variants and ZWNJ do not bypass it.
+_NO_WEB = re.compile(
+    r"(?:\b(?:سرچ|جستجو|جست\s+وجو|جست\s+و\s+جو|گوگل|وب|اینترنت|نت)\b.{0,24}\b(?:نکن|نکنید|نرو|نرید|نزن|نزنید|انجام\s+نده|انجام\s+ندید)\b|"
+    r"\b(?:نکن|نکنید|نرو|نرید|نزن|نزنید)\b.{0,24}\b(?:سرچ|جستجو|جست\s+وجو|جست\s+و\s+جو|گوگل|وب|اینترنت|نت)\b|"
+    r"\b(?:نمی\s*خوام|نمی\s*خواهم|نمی\s*خواهیم)\b.{0,32}\b(?:سرچ|جستجو|وب|اینترنت|نت)\b|"
+    r"\b(?:do\s+not|don\s+t|never)\s+(?:search|browse|look\s+up)\s+(?:the\s+)?(?:web|internet)\b)",
+    re.I,
+)
+
+
+def explicit_no_web(text: str) -> bool:
+    """True when the current user message explicitly forbids web/internet lookup."""
+    return bool(_NO_WEB.search(_norm(text)))
 
 
 def is_followup(text: str) -> bool:
@@ -88,6 +103,8 @@ def plan(text: str):
     """-> (query, forced). query is None when this message does not need the web."""
     text = (text or "").strip()
     if not text:
+        return None, False
+    if explicit_no_web(text):
         return None, False
     m = _FORCE.match(text)
     if m:

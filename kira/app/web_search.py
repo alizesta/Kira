@@ -50,6 +50,11 @@ class WebSearchApplicationService:
         return cls.MISSING_KEY_MESSAGE
 
     @staticmethod
+    def explicit_no_web(text: str) -> bool:
+        """Whether the current user message explicitly forbids internet lookup."""
+        return websearch.explicit_no_web(text)
+
+    @staticmethod
     def can_search(settings: Mapping[str, Any]) -> bool:
         return bool(str(settings.get("tavily_api_key", "")).strip() or settings.get("web_fallback", True))
 
@@ -106,10 +111,13 @@ class WebSearchApplicationService:
 
         Keep command parsing and automatic-search suppression out of the UI
         mixin. A strong local/tool plan or a dedicated web-tool plan takes
-        precedence over automatic search; an explicit /web request always
-        wins and preserves the user's literal query.
+        precedence over automatic search; an explicit /web request wins unless
+        the same current message explicitly forbids web access.
         """
         user_text = str(text or "")
+        # A direct opt-out is stronger than auto-search, /web metadata, and tool plans.
+        if websearch.explicit_no_web(user_text):
+            return None, False
         enabled = bool(
             settings.get("web_search", True)
             or user_text.lstrip().startswith("/")
