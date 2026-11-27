@@ -84,10 +84,10 @@ class NewsFeedStoreTests(unittest.TestCase):
     def test_prompt_context_reads_only_the_requested_character_feed(self):
         stamp = time.time()
         self.store.upsert_items("kira", [
-            {"title": "Kira-only game update", "summary": "A release", "url": "https://example.com/kira"}
+            {"title": "Kira-only game update", "summary": "A release", "url": "https://example.com/kira", "is_post": True}
         ], now=stamp)
         self.store.upsert_items("ren", [
-            {"title": "Ren-only market update", "summary": "A rate change", "url": "https://example.com/ren"}
+            {"title": "Ren-only market update", "summary": "A rate change", "url": "https://example.com/ren", "is_post": True}
         ], now=stamp)
         kira = build_prompt_context("kira", self.temp.name)
         ren = build_prompt_context("ren", self.temp.name)
@@ -149,6 +149,54 @@ class NewsFeedStoreTests(unittest.TestCase):
                 service._refresh_character("kira")
             self.assertEqual(search.call_count, len(CHARACTER_QUERIES["kira"]))
             self.assertIn("RSS collector: RuntimeError", service.store.status("kira")["last_error"])
+
+    def test_raw_sources_are_hidden_from_the_character_feed(self):
+        stamp = time.time()
+        self.store.upsert_items("kira", [
+            {"title": "Raw headline", "summary": "Publisher snippet", "url": "https://example.com/raw"}
+        ], now=stamp)
+        self.assertEqual(self.store.list_posts("kira"), [])
+        self.assertEqual(len(self.store.list_unprocessed_items("kira")), 1)
+
+    def test_generated_character_post_is_published_and_sources_are_consumed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            sources = [
+                {"title": "Raw leak headline", "summary": "Possible release window", "url": "https://example.com/leak", "category": "gaming_rumor", "source_label": "X @insider"},
+                {"title": "Raw reporter headline", "summary": "Independent corroboration", "url": "https://example.net/report", "category": "gaming_report", "source_label": "Reporter"},
+            ]
+            generator = lambda character, items: [{
+                "source_ids": [0, 1], "title": "کیرا: این شایعه جدی‌تر شد؟",
+                "body": "دو منبع به یک بازه اشاره کرده‌اند، اما هنوز تأیید رسمی نداریم. من فعلاً با احتیاط نگاهش می‌کنم.",
+                "confidence": "reported",
+            }]
+            service = NewsFeedService(lambda: {}, temp, post_generator=generator)
+            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \\
+                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                service._refresh_character("kira")
+            posts = service.store.list_posts("kira")
+            self.assertEqual(len(posts), 1)
+            self.assertEqual(posts[0]["title"], "کیرا: این شایعه جدی‌تر شد؟")
+            self.assertIn("سطح اطمینان: گزارش‌شده", posts[0]["summary"])
+            self.assertIn("منابع تکمیلی:", posts[0]["summary"])
+            self.assertEqual(service.store.list_unprocessed_items("kira"), [])
+            self.assertEqual(service.store.status("kira")["item_count"], 1)
+
+    def test_failed_post_generation_never_exposes_raw_source_as_a_post(self):
+        with tempfile.TemporaryDirectory() as temp:
+            sources = [{
+                "title": "Raw source title", "summary": "Unprocessed source text",
+                "url": "https://example.com/source", "source_label": "Publisher",
+            }]
+            service = NewsFeedService(
+                lambda: {}, temp,
+                post_generator=lambda *_args: (_ for _ in ()).throw(RuntimeError("model offline")),
+            )
+            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \\
+                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                service._refresh_character("kira")
+            self.assertEqual(service.store.list_posts("kira"), [])
+            self.assertEqual(len(service.store.list_unprocessed_items("kira")), 1)
+            self.assertIn("Post generation: RuntimeError", service.store.status("kira")["last_error"])
 
     def test_unknown_character_scope_is_rejected(self):
         item = {"title": "Story", "url": "https://example.com/story"}
