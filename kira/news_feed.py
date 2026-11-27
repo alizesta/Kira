@@ -458,10 +458,14 @@ class NewsFeedService:
             # enabled as a complementary discovery path; Ren intentionally keeps
             # its existing search-only behaviour until its feed strategy is reviewed.
             if character_id in ("kira", "mika"):
-                from .news_sources import collect_character_feeds
-                rss_items, rss_errors = collect_character_feeds(character_id)
-                collected.extend(rss_items)
-                errors.extend("RSS " + error for error in rss_errors)
+                try:
+                    from .news_sources import collect_character_feeds
+                    rss_items, rss_errors = collect_character_feeds(character_id)
+                    collected.extend(rss_items)
+                    errors.extend("RSS " + error for error in rss_errors)
+                except Exception as exc:  # noqa: BLE001 - RSS is optional; keep web-search fallback alive
+                    errors.append(f"RSS collector: {type(exc).__name__}")
+                    _LOG.warning("RSS collection failed for %s; continuing with web search", character_id, exc_info=True)
 
             from .webintel.engine import Context, search
             context = Context(lambda: settings, _EmptyResearchStore(), lambda: "")
