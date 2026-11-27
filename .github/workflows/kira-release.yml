@@ -108,6 +108,8 @@ jobs:
         run: python -m unittest tests.test_news_feed tests.test_news_sources tests.test_news_post_generator tests.test_release_package
         env:
           QT_QPA_PLATFORM: offscreen
+      - name: Check character news Python syntax on Windows
+        run: python -m py_compile kira/news_feed.py kira/news_sources.py kira/news_post_generator.py kira/ui/main_window_voice_settings.py kira/ui/pages/news_feed_panel.py
       - name: Run the complete Windows test suite
         run: python -m unittest discover -s tests -t . -v
         env:
@@ -129,6 +131,8 @@ jobs:
         run: python scripts/build_metadata.py --check
       - name: Run news feed regression tests
         run: python -m unittest tests.test_news_feed tests.test_news_sources tests.test_news_post_generator tests.test_release_package
+      - name: Check character news Python syntax
+        run: python -m py_compile kira/news_feed.py kira/news_sources.py kira/news_post_generator.py kira/ui/main_window_voice_settings.py kira/ui/pages/news_feed_panel.py
       - name: Run portable regression tests
         run: >-
           python -m unittest
