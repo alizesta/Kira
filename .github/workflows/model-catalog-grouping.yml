@@ -11,7 +11,7 @@ on:
       - "tests/test_model_catalog.py"
       - ".github/workflows/model-catalog-grouping.yml"
   push:
-    branches: [fix/unified-model-catalog-grouping]
+    branches: [fix/model-catalog-single-category-state]
     paths:
       - "kira/model_catalog.py"
       - "kira/ui/components/models_panel.py"
