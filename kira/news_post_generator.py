@@ -122,7 +122,9 @@ class NewsPostGenerator:
             )
         text = str(response or "").strip()
         if text.startswith("```"):
-            text = text.split("\n", 1)[-1]
+            text = text[3:].strip()
+            if text[:4].lower() == "json":
+                text = text[4:].strip()
             if text.endswith("```"):
                 text = text[:-3].strip()
         start, end = text.find("{"), text.rfind("}")
