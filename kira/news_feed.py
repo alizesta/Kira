@@ -220,9 +220,16 @@ class NewsFeedStore:
                         published_at TEXT NOT NULL DEFAULT '',
                         first_seen_at REAL NOT NULL,
                         expires_at REAL NOT NULL,
-                        region TEXT NOT NULL DEFAULT ''
+                        region TEXT NOT NULL DEFAULT '',
+                        is_post INTEGER NOT NULL DEFAULT 0,
+                        processed INTEGER NOT NULL DEFAULT 0
                     )"""
                 )
+                columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(news_items)")}
+                if "is_post" not in columns:
+                    db.execute("ALTER TABLE news_items ADD COLUMN is_post INTEGER NOT NULL DEFAULT 0")
+                if "processed" not in columns:
+                    db.execute("ALTER TABLE news_items ADD COLUMN processed INTEGER NOT NULL DEFAULT 0")
                 db.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ux_news_character_url "
                     "ON news_items(character_id, url_key)"
@@ -264,12 +271,14 @@ class NewsFeedStore:
                 published_at = ""
                 published_epoch = None
             category = _clean(item.get("category"), 48) or "general"
+            is_post = 1 if item.get("is_post") is True else 0
+            processed = 1 if is_post or item.get("processed") is True else 0
             expires_at = stamp + RETENTION_SECONDS
             if published_epoch is not None:
                 expires_at = min(expires_at, published_epoch + RETENTION_SECONDS)
             rows.append((
                 character_id, category, title, summary, _clean(item.get("source_label") or host, 100), url, url, published_at,
-                stamp, expires_at, _clean(region, 220),
+                stamp, expires_at, _clean(region, 220), is_post, processed,
             ))
         self.purge_expired(now=stamp)
         if not rows:
@@ -278,19 +287,21 @@ class NewsFeedStore:
             db.executemany(
                 """INSERT INTO news_items(
                     character_id, category, title, summary, source, url, url_key,
-                    published_at, first_seen_at, expires_at, region
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    published_at, first_seen_at, expires_at, region, is_post, processed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(character_id, url_key) DO UPDATE SET
                     category=CASE
+                        WHEN news_items.is_post=1 AND excluded.is_post=0 THEN news_items.category
                         WHEN excluded.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
                             THEN excluded.category
                         WHEN news_items.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
                             THEN news_items.category
                         ELSE excluded.category
                     END,
-                    title=excluded.title,
-                    summary=excluded.summary,
+                    title=CASE WHEN news_items.is_post=1 AND excluded.is_post=0 THEN news_items.title ELSE excluded.title END,
+                    summary=CASE WHEN news_items.is_post=1 AND excluded.is_post=0 THEN news_items.summary ELSE excluded.summary END,
                     source=CASE
+                        WHEN news_items.is_post=1 AND excluded.is_post=0 THEN news_items.source
                         WHEN excluded.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
                             THEN excluded.source
                         WHEN news_items.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
@@ -300,7 +311,9 @@ class NewsFeedStore:
                     url=excluded.url,
                     published_at=CASE WHEN excluded.published_at != '' THEN excluded.published_at ELSE news_items.published_at END,
                     expires_at=MIN(news_items.expires_at, excluded.expires_at),
-                    region=excluded.region""",
+                    region=excluded.region,
+                    is_post=MAX(news_items.is_post, excluded.is_post),
+                    processed=MAX(news_items.processed, excluded.processed)""",
                 rows,
             )
             changed = len(rows)
@@ -319,7 +332,8 @@ class NewsFeedStore:
         self.purge_expired(now=now)
         with self._connection() as db:
             rows = db.execute(
-                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
+                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region,
+                          is_post, processed
                    FROM news_items WHERE character_id = ?
                    ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
                 (character_id, max(1, min(int(limit), 50))),
@@ -333,6 +347,61 @@ class NewsFeedStore:
             reverse=True,
         )
         return items
+
+    def list_posts(self, character_id: str, *, limit: int = 20, now: float | None = None) -> list[dict]:
+        """Return only model-authored character posts; raw source records never reach the feed."""
+        if character_id not in CHARACTER_IDS:
+            return []
+        self.purge_expired(now=now)
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
+                   FROM news_items WHERE character_id = ? AND is_post = 1
+                   ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
+                (character_id, max(1, min(int(limit), 50))),
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        items.sort(
+            key=lambda item: _published_epoch(item.get("published_at"))
+            or float(item.get("first_seen_at") or 0),
+            reverse=True,
+        )
+        return items
+
+    def list_unprocessed_items(self, character_id: str, *, limit: int = 12) -> list[dict]:
+        """Return bounded source material awaiting a successful editorial pass."""
+        if character_id not in CHARACTER_IDS:
+            return []
+        self.purge_expired()
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
+                   FROM news_items WHERE character_id = ? AND is_post = 0 AND processed = 0
+                   ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
+                (character_id, max(1, min(int(limit), 30))),
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        items.sort(
+            key=lambda item: _published_epoch(item.get("published_at"))
+            or float(item.get("first_seen_at") or 0),
+            reverse=True,
+        )
+        return items
+
+    def mark_sources_processed(self, character_id: str, urls: list[str]) -> int:
+        """Mark source URLs only after the character model successfully reviewed the batch."""
+        if character_id not in CHARACTER_IDS:
+            return 0
+        keys = sorted({_canonical_url(url)[0] for url in urls or []} - {""})
+        if not keys:
+            return 0
+        placeholders = ",".join("?" for _ in keys)
+        with self._connection() as db:
+            cursor = db.execute(
+                f"UPDATE news_items SET processed = 1 WHERE character_id = ? AND url_key IN ({placeholders})",
+                (character_id, *keys),
+            )
+            return int(cursor.rowcount or 0)
 
     def record_refresh(self, character_id: str, *, item_count: int, error: str = "", now: float | None = None) -> None:
         if character_id not in CHARACTER_IDS:
@@ -368,6 +437,82 @@ class NewsFeedStore:
             return int(cursor.rowcount or 0)
 
 
+
+
+
+def _prepare_character_posts(sources: list[dict], generated: object) -> list[dict]:
+    """Bind model-authored posts to real source IDs; never accept model-invented URLs."""
+    if not isinstance(generated, list):
+        raise TypeError("news post generator must return a list")
+    confidence_labels = {
+        "confirmed": "تأییدشده",
+        "reported": "گزارش‌شده",
+        "unverified": "تأییدنشده",
+    }
+    posts, consumed = [], set()
+    for candidate in generated[:4]:
+        if not isinstance(candidate, dict):
+            continue
+        selected = []
+        raw_ids = candidate.get("source_ids")
+        if not isinstance(raw_ids, list):
+            continue
+        for raw_id in raw_ids:
+            if isinstance(raw_id, bool):
+                continue
+            try:
+                index = int(raw_id)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if index < 0 or index >= len(sources) or index in consumed:
+                continue
+            selected.append((index, sources[index]))
+        title = _clean(candidate.get("title"), 180)
+        body = _clean(candidate.get("body"), 650)
+        if not selected or not title or not body:
+            continue
+        primary = selected[0][1]
+        primary_url, _host = _canonical_url(primary.get("url"))
+        if not primary_url:
+            continue
+        confidence = confidence_labels.get(
+            _clean(candidate.get("confidence"), 24).lower(), "نامشخص"
+        )
+        source_labels = []
+        for _index, source in selected:
+            label = _clean(source.get("source"), 80)
+            if label and label not in source_labels:
+                source_labels.append(label)
+        summary = f"{body}\n\nسطح اطمینان: {confidence}"
+        extra_sources = [
+            f"{_clean(source.get('source'), 70)}: {_clean(source.get('url'), 260)}"
+            for _index, source in selected[1:4]
+            if _canonical_url(source.get("url"))[0]
+        ]
+        if extra_sources:
+            summary += "\nمنابع تکمیلی: " + " | ".join(extra_sources)
+        dated = [
+            source for _index, source in selected
+            if _published_epoch(source.get("published_at")) is not None
+        ]
+        published = max(
+            dated,
+            key=lambda source: _published_epoch(source.get("published_at")) or 0,
+        ).get("published_at", "") if dated else primary.get("published_at", "")
+        posts.append({
+            "title": title,
+            "summary": summary[:900],
+            "url": primary_url,
+            "category": _clean(primary.get("category"), 48) or "general",
+            "source_label": "، ".join(source_labels[:4]) or _clean(primary.get("source"), 100),
+            "published_at": published,
+            "is_post": True,
+            "processed": True,
+        })
+        consumed.update(index for index, _source in selected)
+    return posts
+
+
 class _EmptyResearchStore:
     """Keep automatic news searches away from a user's resumable research."""
     @staticmethod
@@ -376,11 +521,14 @@ class _EmptyResearchStore:
 
 
 class NewsFeedService:
-    def __init__(self, settings_fn, data_dir: str | Path):
+    def __init__(self, settings_fn, data_dir: str | Path, *, post_generator=None):
         if not callable(settings_fn):
             raise TypeError("settings_fn must be callable")
         self._settings_fn = settings_fn
         self.store = NewsFeedStore(data_dir)
+        self._post_generator = post_generator
+        if post_generator is not None and not callable(post_generator):
+            raise TypeError("post_generator must be callable")
         self._lock = threading.RLock()
         self._refreshing: set[str] = set()
         self._stop = threading.Event()
@@ -503,7 +651,32 @@ class NewsFeedService:
                         collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
-            count = self.store.upsert_items(character_id, collected, region=region)
+            if self._post_generator is None:
+                # Compatibility for isolated service tests and integrations that have not
+                # supplied a character model. Production composition always injects one.
+                count = self.store.upsert_items(character_id, collected, region=region)
+            else:
+                if collected:
+                    # Keep source evidence privately so failed model generations can retry;
+                    # list_posts() deliberately excludes these raw records from the UI.
+                    self.store.upsert_items(character_id, collected, region=region)
+                pending = self.store.list_unprocessed_items(character_id, limit=12)
+                count = 0
+                if pending:
+                    try:
+                        generated = self._post_generator(character_id, pending)
+                        posts = _prepare_character_posts(pending, generated)
+                        if posts:
+                            count = self.store.upsert_items(character_id, posts, region=region)
+                        self.store.mark_sources_processed(
+                            character_id, [item.get("url", "") for item in pending]
+                        )
+                    except Exception as exc:  # noqa: BLE001 - never publish raw source text as a fallback
+                        errors.append(f"Post generation: {type(exc).__name__}")
+                        _LOG.warning(
+                            "Character news post generation failed for %s; raw items remain hidden and retryable",
+                            character_id, exc_info=True,
+                        )
             self.store.record_refresh(character_id, item_count=count, error="; ".join(errors))
         except Exception as exc:  # noqa: BLE001 - feed failure must never affect chat or startup
             _LOG.exception("Character news refresh failed for %s", character_id)
@@ -622,7 +795,7 @@ def build_prompt_context(character_id: str | None, data_dir: str | Path | None =
         data_dir = DATA_DIR
     try:
         path = Path(data_dir) / "news_feed" / "news.sqlite3"
-        items = NewsFeedStore(data_dir).list_items(owner, limit=limit) if path.is_file() else []
+        items = NewsFeedStore(data_dir).list_posts(owner, limit=limit) if path.is_file() else []
         profile_settings = settings if isinstance(settings, dict) else {}
         region = profile_settings.get("news_health_region") or {}
         confirmed_region = (
