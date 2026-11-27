@@ -688,8 +688,11 @@ class NewsFeedService:
                     try:
                         # Serialize model inference across characters to avoid three
                         # simultaneous local-model loads or cloud requests at startup.
+                        existing_posts = self.store.list_posts(character_id, limit=10)
                         with self._generation_lock:
-                            generated = self._post_generator(character_id, pending)
+                            generated = self._post_generator(
+                                character_id, pending, existing_posts
+                            )
                         posts = _prepare_character_posts(pending, generated)
                         if posts:
                             count = self.store.upsert_items(character_id, posts, region=region)
