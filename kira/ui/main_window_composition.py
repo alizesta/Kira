@@ -589,8 +589,10 @@ def initialize_main_window(
 
     central = QWidget()
     central_layout = QVBoxLayout(central)
-    central_layout.setContentsMargins(10, 8, 10, 10)
+    central_layout.setContentsMargins(8, 6, 8, 8)
     central_layout.setSpacing(8)
+    from .custom_window_frame import create_custom_title_bar
+    central_layout.addWidget(create_custom_title_bar(self.host, central))
     toolbar_frame = QFrame()
     toolbar_frame.setObjectName("neonToolbar")
     toolbar = QHBoxLayout(toolbar_frame)
