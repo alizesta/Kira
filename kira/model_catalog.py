@@ -242,7 +242,7 @@ def group_model_rows(rows, settings):
             "member_keys": member_keys,
             "members": members,
             "member_count": len(members),
-            "enabled": all(bool(member.get("enabled")) for member in members),
+            "enabled": any(bool(member.get("enabled")) for member in members),
             "tabs": tabs,
             "price": price,
             "free": members[0].get("free") if len({member.get("free") for member in members}) == 1 else None,
