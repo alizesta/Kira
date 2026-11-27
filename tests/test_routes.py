@@ -50,6 +50,45 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(group["model"], model)  # the APInex free/ prefix is presentation metadata
         self.assertEqual(routes.get_routes(s), before)  # display grouping never merges execution routes
 
+    def test_display_grouping_strips_apinex_and_google_provider_prefixes(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        model = "gemenai-4-hydrogen"
+
+        apinex = routes.add_provider(
+            s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key"
+        )
+        google = routes.add_provider(
+            s, "Google", "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-key"
+        )
+        apinex_route = routes.add_route(s, apinex, "free/" + model, enabled=True)
+        google_route = routes.add_route(s, google, "goole/" + model, enabled=True)
+        before = deepcopy(routes.get_routes(s))
+
+        groups = routes.group_routes_for_display(s)
+        matching = [group for group in groups if group["model"].casefold() == model.casefold()]
+
+        self.assertEqual(len(matching), 1)
+        group = matching[0]
+        self.assertEqual(set(group["provider_ids"]), {apinex, google})
+        self.assertEqual(set(group["route_ids"]), {apinex_route["id"], google_route["id"]})
+        self.assertEqual(group["model"], model)
+        self.assertEqual(routes.get_routes(s), before)
+        self.assertEqual(apinex_route["model"], "free/" + model)
+        self.assertEqual(google_route["model"], "goole/" + model)
+
+    def test_display_grouping_keeps_unrelated_publisher_namespace(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        model = "meta-llama/llama-4-hydrogen"
+        route = routes.add_route(s, "openrouter", model, enabled=True)
+
+        groups = routes.group_routes_for_display(s)
+        matching = [group for group in groups if route["id"] in group["route_ids"]]
+
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["model"], model)
     def test_display_grouping_keeps_same_named_local_model_separate_from_cloud(self):
         s = legacy_settings()
         routes.ensure_routes(s)
