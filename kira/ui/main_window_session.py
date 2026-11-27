@@ -1,6 +1,8 @@
 """Session and presentation feature controller."""
 import logging
 
+from ..config import ROOT
+
 from .shortcuts import delete_key
 from .companion_session import session_marker
 from .components.kode_activity import apply_progress_to_view, clear_progress
@@ -172,10 +174,10 @@ class SessionController(WindowFeatureController):
         view.anchorClicked.connect(self.on_chat_link)
         view.setReadOnly(True)
         view.setFrameShape(QFrame.NoFrame)
-        # The QTextBrowser must be allowed to shrink when the composer expands;
-        # its own scroll bar then keeps the latest conversation reachable.
-        view.setMinimumHeight(0)
-        view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        # Give the message viewport usable vertical space; its scrollbar keeps the
+        # entire conversation reachable without compressing the history region.
+        view.setMinimumHeight(180)
+        view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         delete_key(view, lambda: self.feature_controller("runtime").clear_chat())     # Delete in the chat = clear it (asks first)
         return view
 
@@ -856,10 +858,17 @@ class SessionController(WindowFeatureController):
 
         while self.context.views.char_tabs_row.count():
             self.context.views.char_tabs_row.takeAt(0)
+        add_button = self._ensure_add_character_button()
+        add_button_placed = False
         for cid in order:
             button = self.context.views.char_tab_buttons.get(cid)
             if button is not None:
                 self.context.views.char_tabs_row.addWidget(button)
+            if cid == "mika":
+                self.context.views.char_tabs_row.addWidget(add_button)
+                add_button_placed = True
+        if not add_button_placed:
+            self.context.views.char_tabs_row.addWidget(add_button)
         self.context.views.char_tabs_row.addStretch(1)
         self.refresh_tab_buttons()
 
@@ -940,6 +949,26 @@ class SessionController(WindowFeatureController):
                 self.switch_session(fallback.cid)
         return True
 
+    def _ensure_add_character_button(self):
+        button = getattr(self, "_char_add_button", None)
+        if button is None:
+            parent = self.context.views.char_tabs_row.parentWidget()
+            button = QPushButton("＋ ساخت کاراکتر جدید", parent)
+            button.setObjectName("charAddButton")
+            button.setFixedSize(166, 36)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(
+                lambda checked=False: self.feature_controller("character_settings").add_character()
+            )
+            self._char_add_button = button
+        lang = self.context.services.settings.get("ui_lang", "en")
+        button.setText("＋ ساخت کاراکتر جدید" if lang == "fa" else "＋ New character")
+        button.setToolTip(
+            "ساخت یک شخصیت جدید" if lang == "fa" else "Create a new character"
+        )
+        return button
+
     def refresh_tab_buttons(self):
         profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
         for cid, button in self.context.views.char_tab_buttons.items():
@@ -1009,6 +1038,7 @@ class SessionController(WindowFeatureController):
         except Exception:                               # noqa: BLE001 - never block switching tabs
             _log.debug("Could not activate character mood runtime", exc_info=True)
         self.context.views.chat_stack.setCurrentWidget(sess.view)
+        self.feature_controller("voice_settings").set_news_character(cid)
         if old is not sess:
             self.context.views.input.setText(sess.draft)
         self.apply_chat_theme()
@@ -1041,9 +1071,16 @@ class SessionController(WindowFeatureController):
                 _log.exception("Could not persist active character selection")
 
     def apply_chat_theme(self):
-        """Apply the active character's flat avatar-coloured chat surface and accent colours."""
-        theme = self.context.state.front.theme or self.theme_for_character(self.context.state.front.cid)
-        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self.context.state, "_effect", "off"), self.context.services.settings.get("appearance", {})))
+        """Apply the active character's palette and optional character-owned background."""
+        settings = self.context.services.settings
+        session = self.context.state.front
+        theme = session.theme or self.theme_for_character(session.cid)
+        profile = self.context.services.character_service.all_profiles(settings).get(session.cid) or {}
+        background = self.context.services.character_service.chat_background_file(profile, ROOT)
+        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(
+            theme, getattr(self.context.state, "_effect", "off"),
+            settings.get("appearance", {}), background_image=background,
+        ))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         for glow in self.context.views.glow_effects:
             appearance = self.context.services.settings.get("appearance", {})

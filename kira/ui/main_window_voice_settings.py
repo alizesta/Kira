@@ -9,6 +9,7 @@ from .main_window_voice_settings_support import (
     ChatInput,
     Kode,
     DATA_DIR,
+    save_settings,
     DEFAULT_KEEP_ALIVE,
     DEFAULT_NUM_CTX,
     DEFAULT_NUM_PREDICT,
@@ -112,6 +113,29 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.companion_btn.clicked.connect(self.feature_controller("runtime").toggle_companion)
         cv.addWidget(self.chat_header)
 
+        # News starts with the chat shell, not when a user later opens Settings.
+        from .pages.news_feed_panel import NewsFeedPanel
+        from ..news_feed import NewsFeedService
+        self._news_feed_service = NewsFeedService(
+            lambda: self.context.services.settings, DATA_DIR
+        )
+        self.context.views.news_feed_panel = NewsFeedPanel(
+            self._news_feed_service, self.context.services.settings,
+            parent=self.context.views.avatar_card,
+        )
+        news_panel = self.context.views.news_feed_panel
+        news_panel.refresh_requested.connect(self.refresh_news_character)
+        news_panel.location_detection_requested.connect(self.detect_news_region)
+        news_panel.region_confirm_requested.connect(self.confirm_news_region)
+        av.insertWidget(0, news_panel, 0)
+        self._news_feed_service.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._news_feed_service.stop)
+        region = self.context.services.settings.get("news_health_region") or {}
+        if not (isinstance(region, dict) and region.get("confirmed") is True):
+            self.detect_news_region()
+
         # A per-character conversation history column. The character tabs above remain
         # independent; this list switches durable conversations within the selected character.
         lang = self.context.services.settings.get("ui_lang", "en")
@@ -123,6 +147,14 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
+        mood_row = QHBoxLayout()
+        mood_row.setContentsMargins(2, 2, 2, 4)
+        mood_row.setSpacing(6)
+        mood_row.addStretch(1)
+        mood_row.addWidget(self.context.views.mood_emotion_icon, 0, Qt.AlignCenter)
+        mood_row.addWidget(self.context.views.mood_indicator, 0, Qt.AlignCenter)
+        mood_row.addStretch(1)
+        sidebar_layout.addLayout(mood_row)
         self.context.views.new_chat_btn = QPushButton(
             "＋ چت جدید" if lang == "fa" else "＋ New chat",
             conversation_sidebar,
@@ -156,12 +188,12 @@ class VoiceSettingsController(WindowFeatureController):
 
         self.context.views.chat_stack = QStackedWidget()  # one live view per character
         # The history viewport must yield height to the composer when EXPAND is active.
-        self.context.views.chat_stack.setMinimumHeight(0)
+        self.context.views.chat_stack.setMinimumHeight(180)
         self.context.views.chat_stack.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Ignored
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         cv.addWidget(self.context.views.chat_stack, 1)
-        cv.setStretch(1, 1)
+        cv.setStretch(2, 1)
         chat_card.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
 
         self.context.views.chat_composer = ChatComposer(
@@ -180,7 +212,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         composer = self.context.views.chat_composer
         cv.addWidget(self.context.views.chat_composer)
-        cv.setStretch(2, 0)
+        cv.setStretch(3, 0)
 
         # This host must stay LTR even when QApplication is in Persian RTL mode.
         # The sidebar is inserted first, so it is physically to the left of the chat card.
@@ -191,6 +223,9 @@ class VoiceSettingsController(WindowFeatureController):
         chat_area.setDirection(QHBoxLayout.LeftToRight)
         chat_area.setContentsMargins(0, 0, 0, 0)
         chat_area.setSpacing(0)
+        chat_area_widget.setMinimumWidth(0)
+        chat_card.setMinimumWidth(0)
+        composer.setMinimumWidth(0)
         chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         chat_area.addWidget(conversation_sidebar, 0)
         chat_area.addWidget(chat_card, 1)
@@ -198,6 +233,54 @@ class VoiceSettingsController(WindowFeatureController):
         # Chat surfaces share the avatar canvas; don't wrap the composer in a glow/card effect.
         self.context.views.glow_effects = []
         self.context.views.tabs.addTab(page, "")
+
+    def set_news_character(self, character_id):
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None:
+            panel.set_character(character_id)
+
+    def refresh_news_character(self, character_id):
+        service = getattr(self, "_news_feed_service", None)
+        if service is None:
+            return
+        started = service.refresh_character_async(str(character_id or ""))
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None and started:
+            panel.show_refreshing(str(character_id or ""))
+
+    def detect_news_region(self):
+        service = getattr(self, "_news_feed_service", None)
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if service is None or panel is None:
+            return
+        panel.detect_button.setEnabled(False)
+        service.detect_region_async(
+            lambda city, country, source, error:
+                panel.location_suggestion_ready.emit(city, country, source, error)
+        )
+
+    def confirm_news_region(self, value):
+        parts = [part.strip() for part in str(value or "").split(",", 1)]
+        if len(parts) != 2 or not all(parts):
+            QMessageBox.information(
+                self.window, "موقعیت میکا",
+                "شهر و کشور را با این قالب وارد کن: Frankfurt am Main, Germany",
+            )
+            return
+        from datetime import datetime, timezone
+        city, country = parts
+        settings = self.context.services.settings
+        settings["news_health_region"] = {
+            "city": city[:100], "country": country[:100], "confirmed": True,
+            "source": "user_confirmed",
+            "confirmed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        save_settings(settings)
+        self._news_feed_service.clear_local_alerts()
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None:
+            panel.set_region_confirmed(city, country)
+        self.refresh_news_character("mika")
 
     def build_assistant_section(self):
         """Host the independent assistant settings page and bind application actions."""

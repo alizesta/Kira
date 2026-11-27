@@ -12,7 +12,7 @@ from tests import helpers
 from tests.helpers import Resp, ok_openai, ok_cloudflare, CANARY, StreamResp, sse
 
 try:
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QLayout, QSizePolicy
     from PySide6.QtCore import QCoreApplication
     HAVE_QT = True
 except Exception:                                    # pragma: no cover
@@ -164,6 +164,69 @@ class GuiTests(unittest.TestCase):
 
         self.assertGreaterEqual(self.win.route_list.minimumHeight(), 176)
         self.assertEqual(self.win.route_list.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
+
+    def test_chat_composer_stays_inside_chat_card_when_window_is_not_maximized(self):
+        from PySide6.QtWidgets import QSizePolicy
+
+        window = self.win
+        composer = window.presentation_context.views.chat_composer
+        surface = composer.input_surface
+        host = composer.input_surface_host
+
+        self.assertEqual(surface.sizePolicy().horizontalPolicy(), QSizePolicy.Expanding)
+        self.assertEqual(surface.minimumWidth(), 0)
+        self.assertEqual(host.minimumWidth(), 0)
+
+        # Exercise both a typical restored window and a wider window. The
+        # composer must follow its real parent width, not retain a desktop-sized
+        # fixed width that gets clipped by the avatar/sidebar columns.
+        for width in (900, 1120):
+            window.resize(width, 720)
+            APP.processEvents()
+            composer.layout().activate()
+            host.layout().activate()
+            APP.processEvents()
+
+            self.assertGreater(composer.width(), 0)
+            self.assertEqual(surface.width(), host.width())
+            self.assertLessEqual(surface.geometry().right(), host.rect().right())
+            self.assertLessEqual(host.geometry().right(), composer.rect().right())
+
+        # Collapsed composer is a compact single surface. The input can grow
+        # to three lines, while every action/model control stays inside it.
+        APP.processEvents()
+        self.assertGreaterEqual(surface.height(), surface.minimumSizeHint().height())
+        self.assertEqual(surface.layout().sizeConstraint(), QLayout.SetMinimumSize)
+        self.assertEqual(composer.expand_btn.sizePolicy().horizontalPolicy(), QSizePolicy.Fixed)
+        self.assertEqual(composer.route_badge.sizePolicy().verticalPolicy(), QSizePolicy.Fixed)
+        for widget in (
+            composer.input,
+            composer.expand_btn,
+            composer.route_badge,
+            composer.attach_btn,
+            composer.search_btn,
+            composer.mic_btn,
+            composer.voice_btn,
+            composer.game_mode_btn,
+            composer.send_btn,
+        ):
+            self.assertTrue(surface.isAncestorOf(widget), widget.objectName())
+            self.assertGreaterEqual(widget.geometry().left(), 0)
+            self.assertGreaterEqual(widget.geometry().top(), 0)
+            self.assertLessEqual(widget.geometry().right(), surface.width())
+            self.assertLessEqual(widget.geometry().bottom(), surface.height())
+
+        self.assertEqual(composer.input.MIN_LINES, 1)
+        self.assertEqual(composer.input.MAX_LINES, 3)
+        composer.input.set_expanded(True)
+        APP.processEvents()
+        self.assertGreater(composer.input.maximumHeight(), composer.input.minimumHeight())
+        self.assertEqual(composer.input.sizePolicy().verticalPolicy(), QSizePolicy.Expanding)
+        self.assertGreater(composer.input.height(), 120)
+        composer.input.set_expanded(False)
+        APP.processEvents()
+        self.assertGreaterEqual(surface.height(), surface.minimumSizeHint().height())
+        self.assertEqual(composer.input.sizePolicy().verticalPolicy(), QSizePolicy.Fixed)
 
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor

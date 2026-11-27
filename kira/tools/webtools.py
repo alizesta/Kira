@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 
+from .. import websearch
 from ..webintel import engine
 from ..webintel.session import CANCEL, ResearchStore, SessionScopedResearchStore
 from .registry import Tool, Param, ToolError, READ, DENIED
@@ -33,6 +34,11 @@ def _followup(ctx: engine.Context, text: str) -> bool:
 
 
 def _gate(ctx: engine.Context):
+    # Re-check the user's current message at execution time. The keyword intent
+    # regex also matches negated phrases such as "سرچ نکن"; those must never
+    # authorize a network request.
+    if websearch.explicit_no_web(ctx.user_text()):
+        raise ToolError("طبق درخواستت جست‌وجوی وب انجام نمی‌دهم.", DENIED)
     if not ctx.enabled():
         raise ToolError("تحقیق وب در تنظیمات خاموش است (web_research = false).", DENIED)
 

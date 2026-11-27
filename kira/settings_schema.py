@@ -8,7 +8,7 @@ LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = frozenset({"qwen3.5:4b"})
 STT_LANGUAGE_OPTIONS = ("fa", "en", "auto")
-SETTINGS_SCHEMA_VERSION = 8
+SETTINGS_SCHEMA_VERSION = 9
 
 DEFAULTS = {
     "settings_version": SETTINGS_SCHEMA_VERSION,
@@ -20,6 +20,9 @@ DEFAULTS = {
     "persona": "",
     "temperature": 0.7,
     "web_search": True,                  # Kira may search the web when a message needs current information
+    "news_feed_enabled": True,             # independent rolling feeds for Kira, Ren and Mika
+    "news_feed_interval_hours": 8,         # background refresh while the app is running
+    "news_health_region": {"city": "", "country": "", "confirmed": False, "source": "", "confirmed_at": ""},
     "image_search": False,               # a picture sent to Kira is also searched on the web (Gemini sees it; Tavily / DuckDuckGo use a text query made from it)
     "web_fallback": True,                # Tavily fails -> Google (Gemini) -> DuckDuckGo
     "tavily_api_key": "",                # web search engine key (https://tavily.com, free plan)
@@ -174,6 +177,7 @@ SETTING_RANGES = {
     "motion_strength": (0.0, 2.0),
     "eye_live_min_interval_seconds": (1, 60),
     "eye_live_max_frames_per_minute": (1, 60),
+    "news_feed_interval_hours": (1, 24),
     "web_research_max_searches": (1, 20),
     "web_research_max_pages": (1, 25),
     "web_research_max_seconds": (15, 300),

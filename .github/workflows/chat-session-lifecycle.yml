@@ -83,6 +83,10 @@ on:
       - "tests/test_web_search_application.py"
       - "tests/test_web_search_wiring.py"
       - "tests/test_main_window_syntax.py"
+      - "kira/news_feed.py"
+      - "kira/ui/pages/news_feed_panel.py"
+      - "tests/test_news_feed.py"
+      - "tests/test_news_feed_panel.py"
       - "tests/test_main_entrypoint.py"
       - "tests/test_app_architecture.py"
       - "kira/chat_sessions.py"
@@ -179,6 +183,7 @@ jobs:
           tests.test_chat_command_adapters
           tests.test_actions
           tests.test_main_window_syntax
+          tests.test_news_feed
           -v
       - name: Check changed Python modules
         run: >-
@@ -202,6 +207,10 @@ jobs:
           kira/services/chat_history_service.py
           kira/chat/persistence.py
           kira/ui/main_window_runtime.py
+          kira/news_feed.py
+          kira/ui/pages/news_feed_panel.py
+          tests/test_news_feed.py
+          tests/test_news_feed_panel.py
           tests/test_app_architecture.py
           tests/test_service_module.py
           tests/test_application_module_lifecycle.py

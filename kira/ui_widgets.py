@@ -6,7 +6,7 @@ import random
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout, QSizePolicy, QWIDGETSIZE_MAX
 
 
 class ChatInput(QPlainTextEdit):
@@ -17,8 +17,8 @@ class ChatInput(QPlainTextEdit):
     returnPressed = Signal()
     filesDropped = Signal(list)          # local file paths dropped or pasted as files
     imagePasted = Signal(object)         # QImage pasted from the clipboard
-    MIN_LINES = 2
-    MAX_LINES = 5
+    MIN_LINES = 1
+    MAX_LINES = 3
     EXPANDED_MAX_LINES = 16
     CHARACTER_PROMPTS = {
         "kira": {"fa": ("خب، امروز قراره چی بسازیم؟", "یه باگ سمج داری که با هم نابودش کنیم؟", "ایده‌تو بگو؛ من آماده‌ام دست‌به‌کد بشیم.", "کجای پروژه گیر کردی؟ بذار بررسیش کنیم.", "یه چیزی بگو که کنجکاوم کنه!"), "en": ("What are we building today?", "Got a stubborn bug to defeat?", "Tell me your idea — let's code.")},
@@ -120,8 +120,17 @@ class ChatInput(QPlainTextEdit):
             )
             required_lines = max(1, math.ceil(required_height / line_spacing))
             lines = min(self.MAX_LINES, max(self.MIN_LINES, required_lines))
-        # Include the input's inner padding and border so the placeholder is not clipped.
-        self.setFixedHeight(lines * line_spacing + 28)
+        # Derive the editor's constraints from the active font metrics rather than
+        # a fixed widget height. Expanded mode can consume the available layout space.
+        content_padding = round(self.fontMetrics().height() * 0.7)
+        target_height = lines * line_spacing + content_padding + self.contentsMargins().top() + self.contentsMargins().bottom()
+        self.setMinimumHeight(target_height)
+        if self._expanded:
+            self.setMaximumHeight(QWIDGETSIZE_MAX)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        else:
+            self.setMaximumHeight(target_height)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
 
 class RouteChip(QToolButton):
