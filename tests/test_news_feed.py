@@ -186,6 +186,22 @@ class NewsFeedStoreTests(unittest.TestCase):
             self.assertEqual(migrated.list_posts("kira"), [])
             self.assertEqual(len(migrated.list_unprocessed_items("kira")), 1)
 
+    def test_changed_source_content_is_queued_for_a_new_editorial_pass(self):
+        stamp = time.time()
+        item = {
+            "title": "First report", "summary": "Initial details",
+            "url": "https://example.com/update",
+        }
+        self.store.upsert_items("ren", [item], now=stamp)
+        self.store.mark_sources_processed("ren", [item["url"]])
+        self.assertEqual(self.store.list_unprocessed_items("ren"), [])
+        self.store.upsert_items("ren", [{
+            **item, "title": "Updated report", "summary": "Materially updated details",
+        }], now=stamp + 60)
+        pending = self.store.list_unprocessed_items("ren")
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["summary"], "Materially updated details")
+
     def test_raw_sources_are_hidden_from_the_character_feed(self):
         stamp = time.time()
         self.store.upsert_items("kira", [
