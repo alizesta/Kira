@@ -195,7 +195,12 @@ class ModelsPanel(QGroupBox):
         busy = any(key in self._busy for key in member_keys)
         if tab != TAB_ARCHIVED:
             switch = ToggleSwitch(row["enabled"])
-            switch.setToolTip("روشن/خاموش کردن این مدل در تمام APIهای غیرآرشیوشده")
+            enabled_count = int(row.get("enabled_count", int(bool(row["enabled"]))))
+            toggle_count = int(row.get("toggle_member_count", len(toggle_keys)))
+            switch.setToolTip(
+                f"{enabled_count}/{toggle_count} API فعال است؛ "
+                "روشن/خاموش کردن روی تمام APIهای غیرآرشیوشده اعمال می‌شود"
+            )
             switch.toggled.connect(lambda on, keys=toggle_keys: [
                 self.toggle_requested.emit(provider, model, bool(on)) for provider, model in keys
             ])
