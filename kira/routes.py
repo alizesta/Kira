@@ -286,6 +286,9 @@ def normalize_display_model_id(model, provider, cfg=None):
             part for part in re.split(r"[^a-z0-9]+", str(name or "").casefold())
             if len(part) >= 4
         )
+    # Accept the common "goole" spelling only for the Google provider namespace.
+    if "google" in provider_aliases:
+        provider_aliases.add("goole")
     catalog_aliases = {"free", "models"}
 
     # Strip stacked wrappers safely (for example: models/google/model-id).
