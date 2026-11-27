@@ -63,7 +63,7 @@ class RouteModelTests(unittest.TestCase):
             api_key="test-google-key"
         )
         apinex_route = routes.add_route(s, apinex, "free/" + model, enabled=True)
-        google_route = routes.add_route(s, google, "google/" + model, enabled=True)
+        google_route = routes.add_route(s, google, "goole/" + model, enabled=True)
         before = deepcopy(routes.get_routes(s))
 
         groups = routes.group_routes_for_display(s)
@@ -76,7 +76,7 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(group["model"], model)
         self.assertEqual(routes.get_routes(s), before)
         self.assertEqual(apinex_route["model"], "free/" + model)
-        self.assertEqual(google_route["model"], "google/" + model)
+        self.assertEqual(google_route["model"], "goole/" + model)
 
     def test_display_grouping_keeps_unrelated_publisher_namespace(self):
         s = legacy_settings()
