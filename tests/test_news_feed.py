@@ -158,8 +158,9 @@ class NewsFeedStoreTests(unittest.TestCase):
             root.mkdir()
             path = root / "news.sqlite3"
             stamp = time.time()
-            with sqlite3.connect(path) as db:
-                db.execute(
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute(
                     """CREATE TABLE news_items (
                         id INTEGER PRIMARY KEY, character_id TEXT NOT NULL,
                         category TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL,
@@ -168,7 +169,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                         expires_at REAL NOT NULL, region TEXT NOT NULL DEFAULT ''
                     )"""
                 )
-                db.execute(
+                connection.execute(
                     """INSERT INTO news_items(
                         character_id, category, title, summary, source, url, url_key,
                         published_at, first_seen_at, expires_at, region
@@ -177,6 +178,8 @@ class NewsFeedStoreTests(unittest.TestCase):
                      "https://example.com/old", "https://example.com/old", "", stamp,
                      stamp + 7 * 86400, ""),
                 )
+            finally:
+                connection.close()
             migrated = NewsFeedStore(Path(temp))
             with migrated._connection() as db:
                 columns = {
