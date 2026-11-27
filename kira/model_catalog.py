@@ -257,8 +257,13 @@ def group_model_rows(rows, settings):
 
         enabled_count = sum(1 for member in available_members if member.get("enabled"))
         toggle_member_count = len(available_members)
+        representative = next(
+            (member for member in available_members if member.get("enabled")),
+            available_members[0] if available_members else members[0],
+        )
+        order_members = available_members or members
 
-        first = dict(members[0])
+        first = dict(representative)
         first.update({
             "model": display_model,
             "provider_label": (
@@ -295,11 +300,11 @@ def group_model_rows(rows, settings):
             "status": "available" if any(
                 member.get("status") == "available" for member in available_members
             ) else members[0].get("status", "unknown"),
-            "route_id": first.get("route_id", ""),
+            "route_id": representative.get("route_id", ""),
             "reason": "؛ ".join(reasons),
             "restorable": any(member.get("restorable") for member in archived_members),
             "test": combined_test,
-            "order": min(int(member.get("order", 10 ** 6)) for member in members),
+            "order": min(int(member.get("order", 10 ** 6)) for member in order_members),
         })
         result.append(first)
     return result
