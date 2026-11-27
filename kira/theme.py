@@ -529,9 +529,13 @@ def appearance_tint(base, appearance, cap=255):
     return tuple(max(0, min(cap, round((b * (1 - weight) + c * weight) * brightness))) for b, c in zip(base, bg))
 
 
-def character_style(theme, effect="off", appearance=None):
+def character_style(theme, effect="off", appearance=None, background_image=None):
     """Stylesheet for the active character; its tint follows the art and glow/transparency follow Appearance."""
     appearance = appearance if isinstance(appearance, dict) else {}
+    background_rule = ""
+    if background_image:
+        image_path = str(background_image).replace("\\", "/").replace('"', '\\"')
+        background_rule = f'    border-image: url("{image_path}") 0 0 0 0 stretch stretch;'
     r, g, b = appearance_tint(theme["deep"], appearance, cap=200)
     main, second = theme["main"], theme["second"]
     mr, mg, mb = _hex_to_rgb(main)
@@ -546,6 +550,7 @@ def character_style(theme, effect="off", appearance=None):
 QWidget#chatPage {{
     background: rgba({r},{g},{b},{a_card});
     border: none;
+{background_rule}
     border-radius: 0px;
 }}
 QFrame#avatarCard, QFrame#chatCard, QFrame#conversationSidebar, QFrame#composer {{
@@ -636,6 +641,34 @@ QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:
 QToolButton#sendBtn:hover {{ border: 1px solid rgba(235,247,255,0.42); }}
 QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.26); border: 1px solid rgba({sr},{sg},{sb},0.32); }}
 QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.14); border: 1px solid rgba({sr},{sg},{sb},0.24); }}
+QFrame#newsFeedPanel {{
+    background: rgba({r},{g},{b},0.82);
+    border: 1px solid rgba({mr},{mg},{mb},0.52);
+    border-radius: 14px;
+}}
+QLabel#newsFeedTitle {{ color: #F5E9FF; font-size: 8pt; font-weight: 700; }}
+QLabel#newsFeedStatus {{ color: #B9C8E5; font-size: 6.5pt; }}
+QLabel#newsFeedRegionStatus {{ color: #D8DDF3; font-size: 6.5pt; }}
+QTextBrowser#newsFeedHeadlines {{ background: transparent; border: none; color: #EAF2FF; font-size: 7pt; }}
+QLineEdit#newsFeedRegionEdit {{
+    background: rgba(8,12,28,0.55); border: 1px solid rgba({mr},{mg},{mb},0.30);
+    border-radius: 7px; color: #F3F5FF; padding: 2px 4px; font-size: 7pt;
+}}
+QPushButton#newsFeedRefresh, QPushButton#newsFeedToggle,
+QPushButton#newsFeedDetectLocation, QPushButton#newsFeedConfirmLocation {{
+    background: rgba({mr},{mg},{mb},0.18); border: 1px solid rgba({mr},{mg},{mb},0.36);
+    border-radius: 7px; color: #F2F5FF; padding: 1px 4px; font-size: 7pt;
+}}
+QLabel#newsFeedBubbleTailSmall {{ color: rgba({sr},{sg},{sb},0.56); font-size: 5pt; }}
+QLabel#newsFeedBubbleTailLarge {{ color: rgba({sr},{sg},{sb},0.82); font-size: 8pt; }}
+QPushButton#charAddButton {{
+    background: rgba({mr},{mg},{mb},0.18); border: 1px solid rgba({mr},{mg},{mb},0.45);
+    border-radius: 11px; color: #FFF5FF; font-size: 8pt; font-weight: 700; padding: 2px 8px;
+}}
+QPushButton#charAddButton:hover {{
+    background: rgba({sr},{sg},{sb},0.24); border-color: rgba({sr},{sg},{sb},0.72);
+    color: #FFFFFF;
+}}
 QFrame#charTabs {{ background: transparent; border: none; }}
 QPushButton#charTab {{
     background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.10 + glow * 0.0012:.2f});

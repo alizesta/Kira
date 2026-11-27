@@ -6,6 +6,7 @@ from ..personas import (
     active_id,
     all_profiles,
     avatar_file,
+    chat_background_file,
     display_name,
     prompt_for,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "active_id",
     "all_profiles",
     "avatar_file",
+    "chat_background_file",
     "display_name",
     "prompt_for",
 ]

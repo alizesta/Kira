@@ -34,7 +34,8 @@ class NewsFeedPanel(QFrame):
         self._character_id = "kira"
         self._expanded = True
         self.setObjectName("newsFeedPanel")
-        self.setMaximumHeight(205)
+        self.setMaximumHeight(148)
+        self.setMaximumWidth(234)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
@@ -43,9 +44,12 @@ class NewsFeedPanel(QFrame):
         header = QHBoxLayout()
         self.title_label = QLabel(_CHARACTER_LABELS["kira"])
         self.title_label.setObjectName("newsFeedTitle")
+        self.title_label.setMinimumWidth(0)
         header.addWidget(self.title_label, 1)
         self.status_label = QLabel("در حال آماده‌سازی فید خبر…")
         self.status_label.setObjectName("newsFeedStatus")
+        self.status_label.setMaximumWidth(72)
+        self.status_label.setMinimumWidth(0)
         header.addWidget(self.status_label)
         self.refresh_button = QPushButton("↻")
         self.refresh_button.setObjectName("newsFeedRefresh")
@@ -68,30 +72,36 @@ class NewsFeedPanel(QFrame):
 
         self.region_row = QFrame(self.content)
         self.region_row.setObjectName("newsFeedRegionRow")
-        region_layout = QHBoxLayout(self.region_row)
+        region_layout = QVBoxLayout(self.region_row)
         region_layout.setContentsMargins(0, 0, 0, 0)
-        region_layout.setSpacing(4)
+        region_layout.setSpacing(2)
         self.region_status = QLabel()
         self.region_status.setObjectName("newsFeedRegionStatus")
         self.region_status.setWordWrap(True)
-        region_layout.addWidget(self.region_status, 1)
+        region_layout.addWidget(self.region_status)
+        region_controls = QHBoxLayout()
+        region_controls.setContentsMargins(0, 0, 0, 0)
+        region_controls.setSpacing(3)
         self.region_edit = QLineEdit()
         self.region_edit.setObjectName("newsFeedRegionEdit")
         self.region_edit.setPlaceholderText("City, Country")
-        self.region_edit.setMaximumWidth(200)
-        region_layout.addWidget(self.region_edit)
-        self.detect_button = QPushButton("تشخیص")
+        self.region_edit.setMinimumWidth(0)
+        region_controls.addWidget(self.region_edit, 1)
+        self.detect_button = QPushButton("GPS/IP")
         self.detect_button.setObjectName("newsFeedDetectLocation")
         self.detect_button.setToolTip("اول GPS دستگاه و در صورت نبود آن موقعیت تقریبی IP")
+        self.detect_button.setFixedWidth(46)
         self.detect_button.clicked.connect(self.location_detection_requested.emit)
-        region_layout.addWidget(self.detect_button)
-        self.confirm_button = QPushButton("تأیید")
+        region_controls.addWidget(self.detect_button)
+        self.confirm_button = QPushButton("✓")
         self.confirm_button.setObjectName("newsFeedConfirmLocation")
         self.confirm_button.setToolTip("ذخیرهٔ شهر و کشور برای هشدارهای محلی میکا")
+        self.confirm_button.setFixedWidth(28)
         self.confirm_button.clicked.connect(
             lambda: self.region_confirm_requested.emit(self.region_edit.text())
         )
-        region_layout.addWidget(self.confirm_button)
+        region_controls.addWidget(self.confirm_button)
+        region_layout.addLayout(region_controls)
         content_layout.addWidget(self.region_row)
 
         self.feed_browser = QTextBrowser(self.content)
@@ -100,10 +110,21 @@ class NewsFeedPanel(QFrame):
         self.feed_browser.setOpenExternalLinks(True)
         self.feed_browser.setReadOnly(True)
         self.feed_browser.setFrameShape(QFrame.NoFrame)
-        self.feed_browser.setMinimumHeight(50)
-        self.feed_browser.setMaximumHeight(128)
+        self.feed_browser.setMinimumHeight(42)
+        self.feed_browser.setMaximumHeight(66)
         content_layout.addWidget(self.feed_browser)
         outer.addWidget(self.content)
+        tail = QHBoxLayout()
+        tail.setContentsMargins(0, -5, 14, 0)
+        tail.setSpacing(2)
+        tail.addStretch(1)
+        small_dot = QLabel("●", self)
+        small_dot.setObjectName("newsFeedBubbleTailSmall")
+        large_dot = QLabel("●", self)
+        large_dot.setObjectName("newsFeedBubbleTailLarge")
+        tail.addWidget(small_dot)
+        tail.addWidget(large_dot)
+        outer.addLayout(tail)
 
         self.location_suggestion_ready.connect(self.apply_location_suggestion)
         self._load_region()
@@ -183,7 +204,7 @@ class NewsFeedPanel(QFrame):
             self.feed_browser.setHtml("<p>این شخصیت فید خبری اختصاصی ندارد.</p>")
             return
 
-        items = self._service.store.list_items(cid, limit=4)
+        items = self._service.store.list_items(cid, limit=2)
         state = self._service.store.status(cid)
         refreshing = self._service.is_refreshing(cid)
         if refreshing:
@@ -227,10 +248,10 @@ class NewsFeedPanel(QFrame):
                     float(item.get("first_seen_at") or 0), tz=timezone.utc
                 ).astimezone().strftime("%m-%d %H:%M")
             cards.append(
-                "<div style='margin:3px 0;padding:4px 7px;border-left:2px solid #8d65ff;'>"
+                "<div style='margin:2px 0;padding:2px 4px;border-left:2px solid #8d65ff;'>"
                 f"<small>{category} · {published}</small> "
                 f"<a href='{url}' style='font-weight:600;text-decoration:none'>{title}</a>"
-                f"<br><span>{summary[:260]}</span>"
+                f"<br><span>{summary[:110]}</span>"
                 f" <small>({source})</small></div>"
             )
         self.feed_browser.setHtml(
