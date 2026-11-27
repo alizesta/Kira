@@ -44,7 +44,7 @@ class BubbleTests(unittest.TestCase):
         self.assertEqual(dashboard_chat.clock_text("2026-11-27T20:18:00"), "8:18 PM")
         self.assertEqual(dashboard_chat.clock_text(""), "")
 
-    def test_installed_message_html_skips_the_time_while_history_is_painted(self):
+    def test_installed_message_html_keeps_persisted_time_while_history_is_painted(self):
         from kira.ui import main_window_session as session_module
 
         calls = []
