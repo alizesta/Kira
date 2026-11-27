@@ -29,13 +29,13 @@ FEED_SOURCES = (
     FeedSource("kira", "gaming_rumor", "Reddit GamingLeaksAndRumours", "https://www.reddit.com/r/GamingLeaksAndRumours/.rss"),
     FeedSource("kira", "gaming_community", "Reddit Games", "https://www.reddit.com/r/Games/.rss"),
     FeedSource("kira", "gaming_community", "Reddit PCGaming", "https://www.reddit.com/r/pcgaming/.rss"),
-    FeedSource("kira", "gaming_social", "X @Wario64", "https://fxtwitter.com/Wario64/feed.xml"),
-    FeedSource("kira", "gaming_rumor", "X @billbil_kun", "https://fxtwitter.com/billbil_kun/feed.xml"),
-    FeedSource("kira", "gaming_report", "X @PlaystationSize", "https://fxtwitter.com/PlaystationSize/feed.xml"),
-    FeedSource("kira", "gaming_report", "X @tomwarren", "https://fxtwitter.com/tomwarren/feed.xml"),
-    FeedSource("kira", "gaming_report", "X @jasonschreier", "https://fxtwitter.com/jasonschreier/feed.xml"),
-    FeedSource("kira", "gaming_rumor", "X @Shpeshal_Nick", "https://fxtwitter.com/Shpeshal_Nick/feed.xml"),
-    FeedSource("kira", "gaming_rumor", "X @AestheticGamer1", "https://fxtwitter.com/AestheticGamer1/feed.xml"),
+    FeedSource("kira", "gaming_social", "X @Wario64", "https://fxtwitter.com/Wario64/feed.xml?count=6"),
+    FeedSource("kira", "gaming_rumor", "X @billbil_kun", "https://fxtwitter.com/billbil_kun/feed.xml?count=6"),
+    FeedSource("kira", "gaming_report", "X @PlaystationSize", "https://fxtwitter.com/PlaystationSize/feed.xml?count=6"),
+    FeedSource("kira", "gaming_report", "X @tomwarren", "https://fxtwitter.com/tomwarren/feed.xml?count=6"),
+    FeedSource("kira", "gaming_report", "X @jasonschreier", "https://fxtwitter.com/jasonschreier/feed.xml?count=6"),
+    FeedSource("kira", "gaming_rumor", "X @Shpeshal_Nick", "https://fxtwitter.com/Shpeshal_Nick/feed.xml?count=6"),
+    FeedSource("kira", "gaming_rumor", "X @AestheticGamer1", "https://fxtwitter.com/AestheticGamer1/feed.xml?count=6"),
 
     # Iranian publishers. Their general feeds are filtered locally so Mika only
     # receives health, medicine, nutrition, public-health and wellness stories.
