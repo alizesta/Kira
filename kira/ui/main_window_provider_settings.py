@@ -900,7 +900,7 @@ class ProviderSettingsController(WindowFeatureController):
             # A grouped cloud row has one shared identity but several independent
             # provider catalogs; editing its model ID would be ambiguous.
             self.context.views.route_model_edit.setEnabled(route is not None and group_size == 1)
-            self.context.views.route_enabled_chk.setChecked(any(bool(item.get("enabled", True)) for item in grouped_routes))
+            self.context.views.route_enabled_chk.setChecked(all(bool(item.get("enabled", True)) for item in grouped_routes))
             lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
             self.context.views.route_timeout.setRange(lo, hi)
             timeout_default = route_model.DEFAULT_LOCAL_TIMEOUT if local else route_model.DEFAULT_CLOUD_TIMEOUT
@@ -967,22 +967,41 @@ class ProviderSettingsController(WindowFeatureController):
         grouped = [routes_by_id[route_id] for route_id in route_ids if route_id in routes_by_id]
         if not grouped:
             return
+
+        # The group checkbox represents whether ALL provider routes are enabled.
+        # Timeout/cooldown are only propagated when the user actually edits those
+        # controls, preserving provider-specific values when toggling availability.
+        representative = next((item for item in grouped if item["id"] == self._selected_route_id()), grouped[0])
+        changes = {}
+        desired_enabled = self.context.views.route_enabled_chk.isChecked()
+        if desired_enabled != all(bool(item.get("enabled", True)) for item in grouped):
+            changes["enabled"] = desired_enabled
+        desired_timeout = self.context.views.route_timeout.value()
+        if desired_timeout != int(representative.get("timeout", route_model.DEFAULT_CLOUD_TIMEOUT)):
+            changes["timeout"] = desired_timeout
+        desired_cooldown = self.context.views.route_cooldown.value()
+        if desired_cooldown != int(representative.get("cooldown", route_model.DEFAULT_COOLDOWN)):
+            changes["cooldown"] = desired_cooldown
+        if len(grouped) == 1:
+            desired_model = self.context.views.route_model_edit.text()
+            if desired_model != str(representative.get("model") or ""):
+                changes["model"] = desired_model
+        if representative["provider"] == "ollama":
+            desired_ctx = self.context.views.route_ctx.value()
+            if desired_ctx != int(representative.get("num_ctx", 0)):
+                changes["num_ctx"] = desired_ctx
+            desired_predict = self.context.views.route_predict.value()
+            if desired_predict != int(representative.get("num_predict", 0)):
+                changes["num_predict"] = desired_predict
+        if not changes:
+            return
         try:
             for route in grouped:
-                changes = {
-                    "enabled": self.context.views.route_enabled_chk.isChecked(),
-                    "timeout": self.context.views.route_timeout.value(),
-                    "cooldown": self.context.views.route_cooldown.value(),
-                }
-                if len(grouped) == 1:
-                    changes["model"] = self.context.views.route_model_edit.text()
-                if route["provider"] == "ollama":
-                    changes["num_ctx"] = self.context.views.route_ctx.value()
-                    changes["num_predict"] = self.context.views.route_predict.value()
                 self.context.services.provider_application_service.update_route(
                     self.context.services.settings, route["id"], **changes
                 )
-                self.context.session.client.reset_cooldowns(route["id"])
+                if "enabled" in changes or "cooldown" in changes:
+                    self.context.session.client.reset_cooldowns(route["id"])
         except ValueError as exc:
             self.context.views.route_status.setText("✕ " + str(exc))
             return
