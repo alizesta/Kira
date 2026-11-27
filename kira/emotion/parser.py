@@ -10,7 +10,7 @@ from .. import body as _body
 
 # [user:down] - the model's reading of the USER's state (optional second line); removed from the visible text everywhere.
 USER_STATE_TAGS = ("down", "stressed", "hostile", "frustrated", "praise", "flirt", "thanks", "excited", "joke", "apology",
-                   "goodbye", "jealous")
+                   "goodbye", "jealous", "bored", "achievement", "hurt", "gaming")
 _USER_TAG = re.compile(r"\[\s*user\s*[:=]\s*([A-Za-z_+&/, ]{1,60}?)\s*\]", re.I)
 _USER_OPEN = re.compile(r"\[\s*u(?:s(?:e(?:r)?)?)?\s*(?:[:=][^\[\]\n]{0,60})?$", re.I)        # "[us" / "[user:do" still being typed
 

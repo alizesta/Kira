@@ -88,3 +88,15 @@ class MoodTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelationshipNotDoubleCountedTests(unittest.TestCase):
+    def test_model_signal_does_not_count_the_message_twice(self):
+        with tempfile.TemporaryDirectory() as folder:
+            rt = EmotionalRuntime(path=Path(folder) / "s.json", clock=lambda: 1000.0)
+            rt.on_user_message("سلام", [], now=1000)
+            before = rt.snapshot(1000)["relationship"]["familiarity"]
+            rt.on_model_signals(["hostile"], now=1000)
+            after = rt.snapshot(1000)["relationship"]
+            self.assertEqual(after["familiarity"], before)
+            self.assertGreater(after["tension"], 0)           # but the signal itself still counts

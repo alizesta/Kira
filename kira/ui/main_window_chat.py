@@ -172,6 +172,11 @@ class ChatController(WindowFeatureController):
             if self.context.state._closing or self.context.state.cur is not session or session.busy:
                 return
             with self.feature_controller("session")._as(session):
+                try:                                              # she could not make out the screen: a small, honest "confused"
+                    self.context.adapters.director.event("vision_unclear")
+                    self.context.services.mood_service.on_event("vision_unclear", "eye", character_id=session.cid)
+                except Exception:  # noqa: BLE001 - feeling is a bonus; the retry must still happen
+                    pass
                 self.feature_controller("session").add_chat(
                     "system", "🔍 متن برای مدل ریز بود؛ یک بار دیگر با رزولوشن بالاتر (۱۲۸۰×۷۲۰) می‌فرستم."
                 )

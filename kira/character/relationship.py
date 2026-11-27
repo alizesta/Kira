@@ -73,7 +73,7 @@ class RelationshipEngine:
         relationship.update(rel)
         return relationship
 
-    def on_user_signals(self, relationship, signals, config=None):
+    def on_user_signals(self, relationship, signals, config=None, *, count_message=True):
         rel = self.normalize(relationship)
         rules = self.deltas(config)
         signals = set(str(signal) for signal in (signals or ()))
@@ -86,7 +86,8 @@ class RelationshipEngine:
         if "hostile" in signals:
             rel["tension"] = clamp(rel["tension"] + float(rules["hostile_tension"]))
             rel["comfort"] = clamp(rel["comfort"] + float(rules["hostile_comfort"]))
-        rel["familiarity"] = clamp(rel["familiarity"] + float(rules["familiarity_per_message"]))
+        if count_message:                                   # a model-read signal belongs to a message that was already counted
+            rel["familiarity"] = clamp(rel["familiarity"] + float(rules["familiarity_per_message"]))
         relationship.clear()
         relationship.update(rel)
         return relationship

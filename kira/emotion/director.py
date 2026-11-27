@@ -41,14 +41,14 @@ class EmotionDirector:
         return (" OUTPUT FORMAT (needed by the avatar animation, never shown to the user): begin every reply with one "
                 "emotion tag alone on the first line, written [emotion:intensity], for example [smug:70]. "
                 "intensity is 0-100 and says how strongly Kira feels it in this reply. "
-                "Two emotions may be combined with + , for example [shy+affectionate:55]. "
+                "Up to three emotions may be combined with + , for example [shy+affectionate:55] (the face shows the two strongest, all of them shape your mood). "
                 "Allowed emotions: " + ", ".join(ids) + ". "
                 "Pick what Kira actually feels in this reply, not just the topic. "
                 "Write the real reply on the following line; the tag alone is not a reply. "
                 "Usually 2 to 5 sentences unless the user asks for short or long. "
                 "No emoji or markdown in replies that will be spoken. "
                 "OPTIONAL, only when the user's last message clearly shows one of these states, even through slang, sarcasm or indirect "
-                "wording - down, stressed, hostile, frustrated, praise, flirt, thanks, excited, joke, apology, goodbye, jealous - add "
+                "wording - down, stressed, hostile, frustrated, praise, flirt, thanks, excited, joke, apology, goodbye, jealous, bored, achievement (he won/finished something), hurt (upset with you), gaming (about to play) - add "
                 "ONE extra line right after the emotion tag, written [user:state]. Omit it when unsure; never mention it.")
 
     # ---------- replies ----------

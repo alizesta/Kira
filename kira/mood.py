@@ -97,6 +97,10 @@ USER_BEHAVIOR_IMPULSES = {
     "apology": {"affectionate": 18, "sulking": -18, "stubborn": -10},
     "goodbye": {"quiet": 10, "clingy": 8, "affectionate": 12},
     "jealous": {"sulking": 22, "clingy": 16, "stubborn": 10},
+    "bored": {"playful": 18, "energetic": 14},
+    "achievement": {"cheerful": 16, "playful": 8},
+    "hurt": {"gentle": 18, "quiet": 12},
+    "gaming": {"energetic": 16, "playful": 12},
 }
 USER_BEHAVIOR_COOL = {
     "down": ("teasing", "sarcastic", "playful"),
@@ -104,6 +108,7 @@ USER_BEHAVIOR_COOL = {
     "hostile": ("cheerful", "playful", "flirty"),
     "frustrated": ("sarcastic",),
     "apology": ("sulking", "stubborn"),
+    "hurt": ("teasing", "sarcastic", "playful"),
 }
 REPLY_BEHAVIOR = {
     "happy": {"cheerful": 12}, "sad": {"quiet": 10}, "angry": {"stubborn": 8},
@@ -154,12 +159,31 @@ USER_STATES = {
                     r"(?:بهتر|قشنگ|خوشگل|ناز).{0,30}(?:chatgpt|جمینای|gemini|alexa|siri|دختر\s*دیگه)"),
                 "He mentioned someone/something that could make her jealous: playful jealousy, demands attention, nothing nasty.",
                 {"jealous": 32, "annoyed": 8}, ()),
+    "bored": (_RX(r"حوصله\s*(?:ام|م)\s*سر\s*(?:رفت|رفته|می\s*ره|میره)", r"حوصلم\s*سر", r"کسل\s*(?:ام|م|کننده)", r"خسته\s*کننده",
+                  r"\bi'?m\s+(?:so\s+)?bored\b", r"\bso\s+boring\b"),
+              "He is bored. Liven things up: suggest something fun (a game, a topic, a challenge); playful and a little energetic.",
+              {"playful": 22, "curious": 16, "excited": 10}, ()),
+    "achievement": (_RX(r"تمومش\s*کردم", r"بالاخره\s*(?:تمومش|تموم\s*شد|شد|بردم|پیروز|موفق)", r"موفق\s*شدم", r"پیروز\s*شدم",
+                        r"رکورد(?:م|\s*زدم|\s*شکستم)", r"باس\s*(?:رو|را)\s*(?:زدم|کشتم)",
+                        r"\bi\s+(?:just\s+)?(?:finally\s+)?(?:won|beat\s+(?:it|the)|finished|did\s+it|made\s+it)\b",
+                        r"\bnew\s+(?:high\s*score|record)\b"),
+                    "He achieved something (won, finished, beat a boss). Celebrate it genuinely and ask how it went; do not undercut it.",
+                    {"proud": 24, "happy": 14, "excited": 12}, ()),
+    "hurt": (_RX(r"ازت\s*(?:ناراحت|دلخور|دلگیر|عصبانی)", r"دلخور\s*(?:ام|م)", r"دلم\s*ازت\s*(?:گرفت|شکست|گرفته)",
+                 r"منو\s*(?:نمی\s*فهمی|درک\s*نمی\s*کنی)", r"\bi'?m\s+(?:upset|hurt|disappointed)\s+(?:with|by|in)\s+you\b", r"\byou\s+hurt\s+me\b"),
+             "He is upset or hurt BY HER. Take it seriously: no jokes, no defensiveness; name what she did, apologise if she was wrong, ask what hurt.",
+             {"guilty": 24, "sad": 10, "affectionate": 10}, ("playful", "teasing", "arrogant", "smug", "laughing")),
+    "gaming": (_RX(r"(?:می\s*خوام|میخوام|بریم|بیا|بیایم|داریم|دارم)\s+(?:\S+\s+){0,2}(?:بازی|گیم)\s*(?:کنم|کنیم|بزنم|بزنیم|شروع)",
+                   r"بازی\s*(?:رو|را)?\s*(?:شروع|اجرا)\s*(?:کردم|کنم|کنیم)", r"\blet'?s\s+(?:play|game)\b", r"\b(?:gonna|going\s+to|about\s+to)\s+play\b"),
+               "He is about to play. She is hyped and ready to be his partner: short and energetic; ask what the game is.",
+               {"excited": 20, "playful": 14, "curious": 10}, ()),
 }
 # which user states change how she must DELIVER (kept even in short task-mode blocks)
-SERIOUS = ("down", "stressed", "hostile")
+SERIOUS = ("down", "stressed", "hostile", "hurt")
 AVATAR = {"down": ("affectionate", 40), "stressed": ("protective", 38), "hostile": ("annoyed", 38), "frustrated": ("protective", 35), "praise": ("shy", 38),
           "flirt": ("flirty", 40), "thanks": ("happy", 30), "excited": ("excited", 45), "joke": ("laughing", 40), "apology": ("affectionate", 30),
-          "goodbye": ("affectionate", 30), "jealous": ("jealous", 40)}
+          "goodbye": ("affectionate", 30), "jealous": ("jealous", 40), "bored": ("playful", 36), "achievement": ("proud", 45),
+          "hurt": ("guilty", 40), "gaming": ("excited", 42)}
 
 _lock = threading.Lock()
 
@@ -487,8 +511,8 @@ def on_reply(emotions, intensity=None, now=None, text=""):
         elapsed = now - state["updated"] if state["updated"] else 0
         scores = _faded(state["scores"], elapsed)
         behavior_scores = _faded_behaviors(state["behavior_scores"], elapsed)
-        for i, emo in enumerate(emotions[:2]):
-            scores[emo] = max(scores.get(emo, 0.0), level * (0.85 if i == 0 else 0.6))
+        for i, emo in enumerate(emotions[:3]):
+            scores[emo] = max(scores.get(emo, 0.0), level * (0.85, 0.6, 0.42)[i])
             for behavior, amount in REPLY_BEHAVIOR.get(emo, {}).items():
                 _bump(behavior_scores, behavior, amount * (level / 60.0))
         energy = max(0.0, _energy_at(state, now) - ENERGY_REPLY_COST)

@@ -422,3 +422,11 @@ Character specialization and generated portraits. The implementation is complete
 - The critical import-crash fix was followed by the 1.2.3 ToolAgent safety/discovery update below, which completes the shortcut policy, streamed denial buffering and info_text validation/compact catalog items.
 - Version metadata: `1.2.2`, build stamp `2026-11-24 12:07` Asia/Tehran, developer `ChatGPT`.
 - Validation: corrected regex compilation was checked with Python's `re` module. Full package import, repository test and Windows/PySide6 runtime have not been executed in this environment.
+
+## Emotion expansion (2026-11-27 04:50 Iran time)
+- New user states: bored, achievement, hurt, gaming (mood.py regexes, runtime USER_EFFECTS, parser tags, director hint).
+- 14 formerly trigger-less emotions now reachable locally: side effects of praise/flirt/thanks, FEEDBACK_EMOTIONS, absence ladder (45m bored, 6h lonely/affectionate, 24h nostalgic). `disgusted` stays model-tag only.
+- Up to 3 blended emotions in on_reply (runtime + legacy); avatar still shows 2.
+- New event vision_unclear fired when the detail retry fails.
+- Fix: model-read signals no longer double-count familiarity.
+- Tests: tests/test_emotion_expansion.py. Known pre-existing failures: test_emotion_director streamed tag, test_emotional_runtime topic query, test_vision_pipeline OCR.

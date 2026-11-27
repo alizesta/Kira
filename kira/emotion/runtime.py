@@ -61,7 +61,26 @@ USER_EFFECTS = {
     "apology": ({"relieved": 8, "affectionate": 10}, {"gentle": 12, "sulking": -14}, {"stubborn": -10}),
     "goodbye": ({"sad": 5, "affectionate": 10}, {"quiet": 8}, {}),
     "jealous": ({"jealous": 20, "annoyed": 6}, {"sulking": 16, "clingy": 10}, {}),
+    "bored": ({"playful": 16, "curious": 12, "excited": 8}, {"playful": 16, "energetic": 14}, {"sulking": -6}),
+    "achievement": ({"proud": 22, "happy": 14, "excited": 10}, {"cheerful": 14, "playful": 8}, {}),
+    "hurt": ({"guilty": 20, "disappointed": 6, "sad": 8, "affectionate": 10}, {"gentle": 16, "quiet": 10},
+             {"teasing": -20, "sarcastic": -16, "playful": -12}),
+    "gaming": ({"excited": 18, "playful": 12, "curious": 8, "hopeful": 10}, {"energetic": 14, "playful": 12}, {}),
 }
+# Extra, smaller side effects that give the otherwise trigger-less emotions a deterministic local cause.
+USER_EFFECTS["praise"][0].update({"smug": 8, "embarrassed": 6, "arrogant": 4})
+USER_EFFECTS["flirt"][0].update({"embarrassed": 8, "tsundere": 6})
+USER_EFFECTS["thanks"][0].update({"content": 8})
+# explicit style feedback ("good joke", "stop joking", "that's wrong") also changes how she FEELS right away
+FEEDBACK_EMOTIONS = {
+    "disliked_teasing": {"guilty": 12, "disappointed": 6}, "liked_teasing": {"smug": 14, "teasing": 10},
+    "liked_support": {"content": 14, "affectionate": 6}, "disliked_formality": {"playful": 8, "embarrassed": 6},
+    "liked_curiosity": {"curious": 12, "hopeful": 6}, "accuracy_correction": {"embarrassed": 14, "guilty": 8},
+}
+# absence ladder: waiting a while / a long absence / a very long absence
+WAIT_EMOTIONS = {"bored": 6}
+LONG_AWAY_EMOTIONS = {"affectionate": 12, "lonely": 5}
+VERY_LONG_AWAY_EMOTIONS = {"nostalgic": 10}
 
 REPLY_BEHAVIORS = {
     "happy": {"cheerful": 8}, "sad": {"quiet": 8, "gentle": 10},
@@ -366,11 +385,14 @@ class EmotionalRuntime:
             return self.snapshot(now)
         with self._lock:
             self._advance(now)
+            for emotion, amount in FEEDBACK_EMOTIONS.get(str(category), {}).items():
+                self._bump("emotions", emotion, amount)
             record = self._state["feedback_evidence"].setdefault(
                 str(category), {"count": 0, "applied": 0, "last_at": 0.0}
             )
             last_at = float(record.get("last_at", 0.0) or 0.0)
             if last_at and now - last_at < TRAIT_FEEDBACK_COOLDOWN_S:
+                self._save()
                 return self.snapshot(now)
             record["count"] = int(record.get("count", 0)) + 1
             record["last_at"] = now
@@ -489,10 +511,16 @@ class EmotionalRuntime:
                     self._memory("interaction", text, 16 if signal in ("down", "stressed") else 9, now, signal=signal)
             gap = now - float(self._state.get("last_interaction") or now)
             if gap >= float(self.config.get("away_after_s", 6 * 3600)):
-                self._bump("emotions", "affectionate", 12)
-                self._bump("emotions", "lonely", 5)
+                for emotion, amount in LONG_AWAY_EMOTIONS.items():
+                    self._bump("emotions", emotion, amount)
                 self._bump("behaviors", "clingy", 5)
+                if gap >= float(self.config.get("very_long_away_s", 24 * 3600)):
+                    for emotion, amount in VERY_LONG_AWAY_EMOTIONS.items():
+                        self._bump("emotions", emotion, amount)
                 self._event("reunion_after_absence", now, round(gap / 3600, 1))
+            elif gap >= float(self.config.get("wait_after_s", 45 * 60)):
+                for emotion, amount in WAIT_EMOTIONS.items():
+                    self._bump("emotions", emotion, amount)
             self._state["last_interaction"] = now
             self._state["last_user_signals"] = signals
             self._event("user_message", now, ",".join(signals))
@@ -523,20 +551,20 @@ class EmotionalRuntime:
             self._state["last_user_signals"] = list(seen | set(new))
             self._event("model_user_signal", now, ",".join(new))
             self.relationship_engine.on_user_signals(
-                self._state["relationship"], new, self.config.get("relationship_deltas", {})
+                self._state["relationship"], new, self.config.get("relationship_deltas", {}), count_message=False
             )
             self._save()
         return self.snapshot(now)
 
     def on_reply(self, emotions=(), intensity=None, now=None, text=""):
         now = self.clock() if now is None else float(now)
-        valid = [str(e) for e in (emotions or []) if str(e) in EMOTIONS and str(e) != "neutral"][:2]
+        valid = [str(e) for e in (emotions or []) if str(e) in EMOTIONS and str(e) != "neutral"][:3]
         level = _clamp(35 if intensity is None else intensity)
         with self._lock:
             self._advance(now)
             self._state["energy"] = _clamp(self._state["energy"] - float(self.config.get("reply_energy_cost", 0.35)))
             for index, emotion in enumerate(valid):
-                self._state["emotions"][emotion] = max(self._state["emotions"].get(emotion, 0), level * (0.88 if index == 0 else 0.58))
+                self._state["emotions"][emotion] = max(self._state["emotions"].get(emotion, 0), level * (0.88, 0.58, 0.40)[index])
                 for behavior, amount in REPLY_BEHAVIORS.get(emotion, {}).items():
                     self._bump("behaviors", behavior, amount * level / 60.0)
             self._event("kira_reply", now, "+".join(valid))

@@ -191,6 +191,19 @@
       "runtime_behaviors": {
         "energetic": 8
       }
+    },
+    "vision_unclear": {
+      "emotion": "confused",
+      "intensity": 35,
+      "duration": 3,
+      "pulse": "nod",
+      "runtime_emotions": {
+        "confused": 14,
+        "curious": 6
+      },
+      "runtime_behaviors": {
+        "focused": 8
+      }
     }
   }
 }
