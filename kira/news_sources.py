@@ -47,6 +47,8 @@ FEED_SOURCES = (
     FeedSource("mika", "iran_health", "تسنیم", "https://www.tasnimnews.ir/fa/rss/feed/0/0/8/1/TopStories", True),
     FeedSource("mika", "iran_health", "باشگاه خبرنگاران جوان", "https://www.yjc.ir/fa/rss/allnews", True),
     FeedSource("mika", "iran_health", "خبرآنلاین", "https://www.khabaronline.ir/rss", True),
+    FeedSource("mika", "iran_health", "تابناک", "https://www.tabnak.ir/fa/rss/allnews", True),
+    FeedSource("mika", "iran_health", "عصر ایران", "https://www.asriran.com/fa/rss/allnews", True),
 )
 
 _HEALTH_TERMS = re.compile(
