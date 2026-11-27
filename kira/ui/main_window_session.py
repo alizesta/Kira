@@ -1401,12 +1401,12 @@ class SessionController(WindowFeatureController):
         self.context.state._chat_action_texts[key] = str(text)
         if kind == "user":
             self.context.state._chat_action_texts["__last_user"] = str(text)
-        actions = [("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی")]
+        actions = [("copy", "copy", "⧉", "#C4A6FF", "#241744", "#8B6DE0", "کپی")]
         if kind == "assistant":      # Kira's replies are regenerated, never edited
-            actions.append(("regenerate", "regenerate", "↻", "#E0C8FF", "#30214F", "#B18AFF", "تولید دوباره"))
-            actions.append(("speak", "speaker", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+            actions.append(("regenerate", "regenerate", "↻", "#C4A6FF", "#241744", "#8B6DE0", "تولید دوباره"))
+            actions.append(("speak", "speaker", "♫", "#D8C8FF", "#30214F", "#A78BFA", "خواندن"))
         else:
-            actions.append(("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"))
+            actions.append(("edit", "pencil", "✎", "#C4A6FF", "#241744", "#8B6DE0", "ویرایش"))
 
         view = getattr(self.context.session, "view", None)
         cells = []

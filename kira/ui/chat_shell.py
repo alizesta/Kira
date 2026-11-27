@@ -431,6 +431,9 @@ def _build_layout(context, controller, parts, lang) -> None:
     if chat_card is None:
         return
     rtl = Qt.LeftToRight
+    area_layout.setDirection(QBoxLayout.Direction.LeftToRight)
+    page.setLayoutDirection(Qt.LeftToRight)
+    sidebar.setLayoutDirection(Qt.LeftToRight)
     area_layout.removeWidget(sidebar)
     area_layout.removeWidget(chat_card)
 
@@ -506,6 +509,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     if tabs_frame is not None:
         layout.addWidget(_label("افراد سریع" if fa else "Quick People", "dashSection"))
         tabs_frame.setMinimumWidth(0)
+        tabs_frame.setLayoutDirection(Qt.LeftToRight)
         if tabs_row is not None:
             tabs_row.setDirection(QBoxLayout.Direction.TopToBottom)     # one character per row, like the reference
         layout.addWidget(tabs_frame)
