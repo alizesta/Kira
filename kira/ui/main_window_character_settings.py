@@ -414,7 +414,7 @@ class CharacterSettingsController(WindowFeatureController):
             QMessageBox.critical(
                 self.window,
                 "Language change failed",
-                f"Could not save the interface language setting:\\n{exc}",
+                f"Could not save the interface language setting:\n{exc}",
             )
             return
 
