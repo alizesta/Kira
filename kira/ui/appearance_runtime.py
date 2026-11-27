@@ -1,6 +1,8 @@
 """Window-level appearance and character-art effects, independent of Settings pages."""
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QToolButton, QWidget
 
@@ -94,6 +96,11 @@ class AppearanceRuntime:
                 "system",
                 "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.",
             )
+        try:
+            from .chat_shell import apply_chat_shell
+            apply_chat_shell(self.context)                      # once per chat page; later calls only report True
+        except Exception:                                       # noqa: BLE001 - a skin problem must never break the app
+            logging.getLogger("kira.ui").exception("Chat shell could not be applied")
         if save:
             save_settings(settings)
 
