@@ -129,6 +129,10 @@ class VoiceSettingsController(WindowFeatureController):
             profile = self.context.services.character_service.all_profiles(
                 self.context.services.settings
             ).get(character_id) or {}
+            traits = dict(profile.get("traits") or {})
+            saved_traits = self.context.services.settings.get("character_traits") or {}
+            if isinstance(saved_traits, dict) and isinstance(saved_traits.get(character_id), dict):
+                traits.update(saved_traits[character_id])
             return {
                 "description": profile.get("description", ""),
                 "prompt": profile.get("prompt", ""),
@@ -136,6 +140,7 @@ class VoiceSettingsController(WindowFeatureController):
                     profile.get("specialty_prompt", "")
                     if character_id in ("ren", "mika") else ""
                 ),
+                "traits": traits,
             }
 
         self._news_feed_service = NewsFeedService(
