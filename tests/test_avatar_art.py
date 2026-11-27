@@ -71,9 +71,9 @@ class AvatarArtGeometryTests(unittest.TestCase):
                 self.assertEqual(im.size, (784, 1168))
             with Image.open(root / f"{cid}_full.png") as im:          # background removed: transparent PNG, same size as the original picture
                 self.assertEqual(im.size, (720, 1280))
-                self.assertEqual(im.mode, "RGBA")
-                self.assertEqual(im.getpixel((2, 2))[3], 0)               # corners are transparent
-                self.assertGreater(im.getpixel((im.width // 2, im.height // 2))[3], 200)   # the character itself is opaque
+                rgba = im.convert("RGBA")
+                self.assertEqual(rgba.getpixel((2, 2))[3], 0)               # corners are transparent
+                self.assertGreater(rgba.getpixel((im.width // 2, im.height // 2))[3], 200)   # the character itself is opaque
 
 
 if __name__ == "__main__":

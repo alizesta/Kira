@@ -120,13 +120,14 @@ class VoiceSettingsController(WindowFeatureController):
             lambda: self.context.services.settings, DATA_DIR
         )
         self.context.views.news_feed_panel = NewsFeedPanel(
-            self._news_feed_service, self.context.services.settings, parent=chat_card
+            self._news_feed_service, self.context.services.settings,
+            parent=self.context.views.avatar_card,
         )
         news_panel = self.context.views.news_feed_panel
         news_panel.refresh_requested.connect(self.refresh_news_character)
         news_panel.location_detection_requested.connect(self.detect_news_region)
         news_panel.region_confirm_requested.connect(self.confirm_news_region)
-        cv.addWidget(news_panel, 0)
+        av.insertWidget(0, news_panel, 0)
         self._news_feed_service.start()
         app = QApplication.instance()
         if app is not None:
@@ -146,6 +147,14 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
+        mood_row = QHBoxLayout()
+        mood_row.setContentsMargins(2, 2, 2, 4)
+        mood_row.setSpacing(6)
+        mood_row.addStretch(1)
+        mood_row.addWidget(self.context.views.mood_emotion_icon, 0, Qt.AlignCenter)
+        mood_row.addWidget(self.context.views.mood_indicator, 0, Qt.AlignCenter)
+        mood_row.addStretch(1)
+        sidebar_layout.addLayout(mood_row)
         self.context.views.new_chat_btn = QPushButton(
             "＋ چت جدید" if lang == "fa" else "＋ New chat",
             conversation_sidebar,
@@ -179,9 +188,9 @@ class VoiceSettingsController(WindowFeatureController):
 
         self.context.views.chat_stack = QStackedWidget()  # one live view per character
         # The history viewport must yield height to the composer when EXPAND is active.
-        self.context.views.chat_stack.setMinimumHeight(0)
+        self.context.views.chat_stack.setMinimumHeight(180)
         self.context.views.chat_stack.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Ignored
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         cv.addWidget(self.context.views.chat_stack, 1)
         cv.setStretch(2, 1)

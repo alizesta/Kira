@@ -30,6 +30,9 @@ class CharacterProfileService:
     def avatar_file(self, profile: dict, root: str | Path) -> Path | None:
         return characters.avatar_file(profile, root)
 
+    def chat_background_file(self, profile: dict, root: str | Path) -> Path | None:
+        return characters.chat_background_file(profile, root)
+
     def is_builtin(self, character_id: str) -> bool:
         return str(character_id or "") in characters.CHARACTERS
 
