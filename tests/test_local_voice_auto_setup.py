@@ -2,6 +2,7 @@
 import unittest
 from unittest import mock
 
+from tests import helpers  # noqa: F401 - isolate Kira's persistent paths before importing engines
 from kira import local_voice
 
 
