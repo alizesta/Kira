@@ -200,7 +200,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 {"title": "Raw leak headline", "summary": "Possible release window", "url": "https://example.com/leak", "category": "gaming_rumor", "source_label": "X @insider"},
                 {"title": "Raw reporter headline", "summary": "Independent corroboration", "url": "https://example.net/report", "category": "gaming_report", "source_label": "Reporter"},
             ]
-            generator = lambda character, items: [{
+            generator = lambda character, items, previous: [{
                 "source_ids": [0, 1], "title": "کیرا: این شایعه جدی‌تر شد؟",
                 "body": "دو منبع به یک بازه اشاره کرده‌اند، اما هنوز تأیید رسمی نداریم. من فعلاً با احتیاط نگاهش می‌کنم.",
                 "confidence": "reported",
