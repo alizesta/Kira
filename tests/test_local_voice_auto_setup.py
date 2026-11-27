@@ -7,8 +7,14 @@ from kira import local_voice
 
 
 class PiperAutomaticSetupTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_tts_error = local_voice._tts_error
+
+    def tearDown(self):
+        local_voice._tts_error = self.previous_tts_error
+
     def test_runtime_is_installed_when_missing(self):
-        with mock.patch.object(local_voice, "tts_ready", side_effect=[False, False, True]) as ready, mock.patch.object(local_voice, "_install_voice_package") as install:
+        with mock.patch.object(local_voice, "tts_ready", side_effect=[False, False, True]), mock.patch.object(local_voice, "_install_voice_package") as install:
             self.assertTrue(local_voice.ensure_piper_runtime())
         install.assert_called_once_with("piper-tts>=1.3.0,<2", None)
 
