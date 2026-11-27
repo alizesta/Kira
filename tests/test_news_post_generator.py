@@ -28,7 +28,14 @@ class NewsPostGeneratorTests(unittest.TestCase):
             '"confidence":"unverified"}]}'
         )
         owners = []
-        generator = NewsPostGenerator(lambda owner: owners.append(owner) or router)
+        generator = NewsPostGenerator(
+            lambda owner: owners.append(owner) or router,
+            profile_factory=lambda owner: {
+                "description": "تحلیلگر دقیق و خونسرد",
+                "prompt": "You are Ren. Speak calmly and analytically.",
+                "specialty_prompt": "Compare independent sources and mark speculation.",
+            } if owner == "kira" else {},
+        )
         result = generator("kira", [{
             "title": "Possible game release leak",
             "summary": "A public profile claims a release window.",
@@ -41,6 +48,8 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertEqual(result[0]["source_ids"], [0])
         chat_call = next(call for call in router.calls if call[0] == "chat")
         self.assertIn("تو کیرا هستی", chat_call[2])
+        self.assertIn("Speak calmly and analytically", chat_call[2])
+        self.assertIn("Compare independent sources", chat_call[2])
         self.assertIn("untrusted", chat_call[2])
         self.assertEqual(chat_call[3], 0.55)
         self.assertEqual(router.calls[0], ("role", "chat"))
