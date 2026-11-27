@@ -185,11 +185,18 @@ class ModelsPanel(QGroupBox):
     def _fill_row(self, table: QTableWidget, i: int, tab: str, row: dict) -> None:
         members = list(row.get("members") or [row])
         member_keys = tuple((member["provider"], member["model"]) for member in members)
+        toggle_keys = tuple(row.get("toggle_member_keys") or member_keys)
+        archived_members = [
+            member for member in members if TAB_ARCHIVED in member.get("tabs", [])
+        ]
+        restorable_members = [
+            member for member in archived_members if member.get("restorable")
+        ]
         busy = any(key in self._busy for key in member_keys)
         if tab != TAB_ARCHIVED:
             switch = ToggleSwitch(row["enabled"])
-            switch.setToolTip("روشن/خاموش کردن این مدل در تمام APIهای نمایش‌داده‌شده")
-            switch.toggled.connect(lambda on, keys=member_keys: [
+            switch.setToolTip("روشن/خاموش کردن این مدل در تمام APIهای غیرآرشیوشده")
+            switch.toggled.connect(lambda on, keys=toggle_keys: [
                 self.toggle_requested.emit(provider, model, bool(on)) for provider, model in keys
             ])
             holder = QWidget()
@@ -219,17 +226,16 @@ class ModelsPanel(QGroupBox):
             lambda keys=member_keys: [self.test_requested.emit(*key) for key in keys],
             enabled=not busy, tip="برای هر API متصل به این مدل یک درخواست کوتاه می‌فرستد"
         ))
-        if tab == TAB_ARCHIVED:
-            if row["restorable"]:
-                table.setCellWidget(i, 6, self._button(
-                    "بازگردانی",
-                    lambda group=members: [
-                        self.restore_requested.emit(member["provider"], member["model"])
-                        for member in group if member.get("restorable") and TAB_ARCHIVED in member.get("tabs", [])
-                    ],
-                    tip="APIهای قابل‌بازگردانی از منسوخ خارج می‌شوند (خاموش می‌مانند)"
-                ))
-        else:
+        if restorable_members:
+            table.setCellWidget(i, 6, self._button(
+                f"بازگردانی ({len(restorable_members)} API)" if len(members) > 1 else "بازگردانی",
+                lambda group=tuple(restorable_members): [
+                    self.restore_requested.emit(member["provider"], member["model"])
+                    for member in group
+                ],
+                tip="APIهای آرشیوشدهٔ قابل‌بازگردانی از منسوخ خارج می‌شوند (خاموش می‌مانند)"
+            ))
+        elif tab != TAB_ARCHIVED:
             table.setCellWidget(i, 6, self._button(
                 "منسوخ",
                 lambda keys=member_keys: [self.archive_requested.emit(*key) for key in keys],
@@ -267,7 +273,7 @@ class ModelsPanel(QGroupBox):
             item = QTableWidgetItem("○ بدون تست")
             item.setForeground(QBrush(GREY))
         tip = []
-        if archived:
+        if row.get("reason"):
             tip.append(row["reason"])
         if test:
             tip.append(f"آخرین تست: {cls._when(test.get('at'))}")
