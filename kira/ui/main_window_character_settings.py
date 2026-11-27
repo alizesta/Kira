@@ -394,6 +394,32 @@ class CharacterSettingsController(WindowFeatureController):
         self.context.services.settings["ui_design_guidance_enabled"] = bool(enabled)
         save_settings(self.context.services.settings)
 
+    def _change_ui_language(self, language):
+        """Persist an explicit interface-language choice and apply it immediately."""
+        settings = self.context.services.settings
+        previous = str(settings.get("ui_lang", "en"))
+        selected = "fa" if str(language).lower() == "fa" else "en"
+        if selected == previous:
+            return
+
+        settings["ui_lang"] = selected
+        try:
+            save_settings(settings)
+        except Exception as exc:
+            settings["ui_lang"] = previous
+            combo = self.context.views.preferences_page.ui_lang
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, combo.findData(previous)))
+            combo.blockSignals(False)
+            QMessageBox.critical(
+                self.window,
+                "Language change failed",
+                f"Could not save the interface language setting:\\n{exc}",
+            )
+            return
+
+        self.feature_controller("session").retranslate()
+
     def build_general_tab(self):
         """Compose preferences and help pages; the preferences widget owns its controls."""
         self.context.views.preferences_page = PreferencesPage(
@@ -411,6 +437,7 @@ class CharacterSettingsController(WindowFeatureController):
 
         self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
         self.context.views.preferences_page.ui_design_guidance_changed.connect(self._save_ui_design_guidance)
+        self.context.views.preferences_page.ui_language_changed.connect(self._change_ui_language)
         self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
         self.context.views.preferences_page.restore_history_requested.connect(self.feature_controller("runtime").restore_cleared_chat)
         self.context.views.preferences_page.open_memory_requested.connect(self.feature_controller("runtime").open_memory_dialog)
