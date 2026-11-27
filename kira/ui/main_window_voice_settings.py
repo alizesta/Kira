@@ -116,8 +116,19 @@ class VoiceSettingsController(WindowFeatureController):
         # News starts with the chat shell, not when a user later opens Settings.
         from .pages.news_feed_panel import NewsFeedPanel
         from ..news_feed import NewsFeedService
+        from ..news_post_generator import NewsPostGenerator
+
+        def news_router_factory(_character_id):
+            # Each character gets an isolated router with the same configured chat
+            # routes used by ordinary conversations; generation runs in the feed worker.
+            return self.context.services.provider_application_service.create_router(
+                self.context.services.settings
+            )
+
         self._news_feed_service = NewsFeedService(
-            lambda: self.context.services.settings, DATA_DIR
+            lambda: self.context.services.settings,
+            DATA_DIR,
+            post_generator=NewsPostGenerator(news_router_factory),
         )
         self.context.views.news_feed_panel = NewsFeedPanel(
             self._news_feed_service, self.context.services.settings,
