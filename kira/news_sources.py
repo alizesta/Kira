@@ -40,13 +40,13 @@ FEED_SOURCES = (
     # Iranian publishers. Their general feeds are filtered locally so Mika only
     # receives health, medicine, nutrition, public-health and wellness stories.
     FeedSource("mika", "iran_health", "سلامت نیوز", "https://www.salamatnews.com/rss.xml", True),
-    FeedSource("mika", "iran_health", "بهداشت نیوز", "https://behdasht.news/feed/", True),
-    FeedSource("mika", "iran_health", "وبدا", "https://webda.ir/feed/", True),
+    FeedSource("mika", "iran_health", "بهداشت نیوز", "https://behdasht.news/rss-fa.xml", True),
     FeedSource("mika", "iran_health", "ایسنا", "https://www.isna.ir/rss", True),
     FeedSource("mika", "iran_health", "مهر", "https://www.mehrnews.com/rss", True),
-    FeedSource("mika", "iran_health", "تسنیم", "https://www.tasnimnews.ir/fa/rss/feed/0/0/8/1/TopStories", True),
+    FeedSource("mika", "iran_health", "تسنیم", "https://www.tasnimnews.com/fa/rss/feed/0/0/8/1/TopStories", True),
     FeedSource("mika", "iran_health", "باشگاه خبرنگاران جوان", "https://www.yjc.ir/fa/rss/allnews", True),
     FeedSource("mika", "iran_health", "خبرآنلاین", "https://www.khabaronline.ir/rss", True),
+    FeedSource("mika", "iran_health", "ایرنا", "https://www.irna.ir/rss", True),
     FeedSource("mika", "iran_health", "تابناک", "https://www.tabnak.ir/fa/rss/allnews", True),
     FeedSource("mika", "iran_health", "عصر ایران", "https://www.asriran.com/fa/rss/allnews", True),
 )
