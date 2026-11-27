@@ -115,7 +115,9 @@ def parse_feed(xml_data: bytes | str, source: FeedSource, *, limit: int = 20) ->
     raw = xml_data.encode("utf-8") if isinstance(xml_data, str) else bytes(xml_data or b"")
     if not raw or len(raw) > 1_000_000:
         return []
-    upper = raw[:4096].upper()
+    # Scan the entire bounded document and ignore UTF-16/32 NUL bytes so a
+    # padded prolog or alternate XML encoding cannot hide a DTD declaration.
+    upper = raw.replace(b"\\x00", b"").upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         return []
     try:
