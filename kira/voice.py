@@ -259,13 +259,21 @@ class Speaker(QObject):
             return
         try:
             from . import local_voice
-            selected_tts = self.settings.get("local_voice_tts_model", "")
-            if local_voice.tts_ready(selected_tts):
-                threading.Thread(
-                    target=lambda: local_voice.warmup_tts(selected_tts),
-                    daemon=True,
-                    name="kira-tts-warmup",
-                ).start()
+            selected_tts = str(self.settings.get("local_voice_tts_model") or "").strip()
+
+            def prepare_local_tts():
+                # First-run setup (Piper package + default Mana voice) is intentionally
+                # performed off the Qt thread. ensure_tts_ready stores diagnostics on failure.
+                try:
+                    local_voice.ensure_tts_ready(selected_tts)
+                except Exception:
+                    pass
+
+            threading.Thread(
+                target=prepare_local_tts,
+                daemon=True,
+                name="kira-tts-setup",
+            ).start()
         except Exception:
             pass
 
@@ -538,8 +546,13 @@ class Speaker(QObject):
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
             raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
-        if not local_voice.tts_ready(model_path):
-            raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
+        # The first response may arrive before the delayed background setup finishes.
+        # Install only the runtime here; default voice download/load remains inside Piper's
+        # synthesis worker, while an explicitly selected missing custom voice is reported.
+        if not local_voice.tts_ready():
+            local_voice.ensure_piper_runtime()
+        if model_path and not local_voice.tts_ready(model_path):
+            raise RuntimeError("مدل Piper انتخاب‌شده آماده نیست؛ فایل ONNX و فایل تنظیمات JSON آن را بررسی کن یا مدل پیش‌فرض را انتخاب کن.")
 
         spoken_text = expand_persian_numbers(local_voice.normalize_persian_tts_text(text))
         if not spoken_text:
