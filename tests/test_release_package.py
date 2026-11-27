@@ -71,6 +71,10 @@ class ReleasePackageTests(unittest.TestCase):
 
     def test_allowlist_accepts_reviewed_files_and_rejects_unknown_paths(self):
         self.assertTrue(release_manifest.is_release_path_allowed("kira/vision_pipeline.py"))
+        self.assertTrue(release_manifest.is_release_path_allowed("kira/news_feed.py"))
+        self.assertTrue(release_manifest.is_release_path_allowed("kira/news_sources.py"))
+        self.assertTrue(release_manifest.is_release_path_allowed("kira/news_post_generator.py"))
+        self.assertTrue(release_manifest.is_release_path_allowed("kira/ui/pages/news_feed_panel.py"))
         self.assertTrue(release_manifest.is_release_path_allowed("scripts/setup_local_voice.py"))
         self.assertTrue(release_manifest.is_release_path_allowed("emotion_library/emotions.json"))
         for name in (
