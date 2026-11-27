@@ -51,6 +51,8 @@ QLabel#todayChip { background: #150c2e; border: 1px solid #2a1a52; border-radius
 QToolButton#headerIcon { background: transparent; border: none; color: #cbbcff; font-size: 16px; padding: 4px; }
 QFrame#dashTyping { background: #120a26; border: 1px solid #2a1a52; border-radius: 14px; margin: 4px 14px; }
 QLabel#dashTypingText { color: #b9a3f5; font-size: 13px; }
+QPushButton#dashSettings { background: transparent; border: 1px solid #2a1b55; border-radius: 12px; color: #c4b5fd; text-align: left; padding: 0 14px; }
+QPushButton#dashSettings:hover { background: #170d33; }
 QPushButton#navItem { font-size: 15px; font-weight: 400; }
 QLabel#dashGreeting { font-size: 28px; }
 QFrame#statCard { min-height: 112px; }

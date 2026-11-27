@@ -45,6 +45,8 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 3rd pass, display only): red dot on the bell, playlist waveform, rain-cloud icon in Today's Vibe, "Kira ✦ / Always here for you" caption above Call/Voice/Surprise.
 
+* Done (Claude 2, 4th pass): Kira's picture `assets/dashboard/kira_portrait.jpg` is the chat portrait (right card, name painted over it) and her round avatar in profile / Quick People / chat bubbles; other characters keep their own avatar (`_sync_portrait`). Hamburger bar is hidden on the chat page only (still shown on other pages); a pinned "Settings" button at the bottom of the left column opens the same `views.nav_menu`. The "Kira's Mood" wave is live (`_Sparkline`, `wave_shape`): anger/excitement = tall waves, worry/shyness = small and dense waves, calm/sad = slow gentle wave; it follows `mood_service.current()` emotion + intensity (no real audio analysis yet; hook a voice-level feed into `set_mood` if wanted).
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the

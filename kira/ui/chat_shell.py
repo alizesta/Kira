@@ -19,8 +19,10 @@ import logging
 import re
 from datetime import datetime
 
-from PySide6.QtCore import QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+import math
+
+from PySide6.QtCore import QPoint, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QSizePolicy,
     QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -30,6 +32,7 @@ from ..config import ROOT
 from ..ui_icons import make_icon
 
 _LOG = logging.getLogger("kira.ui")
+KIRA_PORTRAIT = ROOT / "assets" / "dashboard" / "kira_portrait.jpg"
 LEFT_WIDTH = 250
 _STAMP = re.compile(r"\d{4}-\d{2}-\d{2} (\d{2}:\d{2})")
 _ICONS = {"chat", "mic", "settings", "user"}      # names make_icon() knows; the other navigation glyphs are plain text
@@ -132,23 +135,108 @@ class _Ring(QWidget):
         painter.drawText(self.rect(), Qt.AlignCenter, f"{self._percent}%")
 
 
+_INTENSE = {"angry", "frustrated", "annoyed", "excited", "jealous", "laughing", "surprised", "tsundere", "disgusted", "arrogant"}
+_ANXIOUS = {"fearful", "shy", "embarrassed", "confused", "guilty", "lonely", "protective", "thinking"}
+_SLOW = {"sad", "bored", "disappointed", "nostalgic", "calm", "content", "relieved", "neutral", "grateful"}
+
+
+def wave_shape(emotion: str, intensity: int) -> tuple[float, float, float]:
+    """(amplitude 0-1, waves across the card, speed) for Kira's tone: anger = big waves, worry = small, dense ones."""
+    strength = max(0.0, min(1.0, intensity / 100.0))
+    emotion = (emotion or "neutral").lower()
+    if emotion in _INTENSE:
+        return 0.55 + 0.45 * strength, 3.0 + 2.0 * strength, 0.22 + 0.2 * strength
+    if emotion in _ANXIOUS:
+        return 0.18 + 0.2 * strength, 7.0 + 5.0 * strength, 0.2 + 0.15 * strength
+    if emotion in _SLOW:
+        return 0.2 + 0.2 * strength, 1.4 + 0.6 * strength, 0.05 + 0.04 * strength
+    return 0.35 + 0.25 * strength, 2.2 + 1.2 * strength, 0.1 + 0.08 * strength
+
+
 class _Sparkline(QWidget):
-    """The soft wave of the "Kira's Mood" card (decorative)."""
+    """The living wave of the "Kira's Mood" card: it follows the tone of Kira's current emotion."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedSize(90, 34)
+        self.setMinimumSize(90, 34)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setFixedHeight(40)
+        self._shape = wave_shape("calm", 40)
+        self._amp = self._shape[0]
+        self._freq = self._shape[1]
+        self._phase = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(40)
+        self._timer.timeout.connect(self._tick)
+
+    def set_mood(self, emotion: str, intensity: int = 40) -> None:
+        self._shape = wave_shape(emotion, intensity)
+
+    def showEvent(self, event) -> None:                    # noqa: N802 - Qt API
+        self._timer.start()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:                    # noqa: N802 - Qt API
+        self._timer.stop()
+        super().hideEvent(event)
+
+    def _tick(self) -> None:
+        amp, freq, speed = self._shape
+        self._amp += (amp - self._amp) * 0.08               # glide between moods instead of jumping
+        self._freq += (freq - self._freq) * 0.08
+        self._phase += speed
+        self.update()
 
     def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         path = QPainterPath()
-        path.moveTo(0, h * 0.6)
-        path.cubicTo(w * 0.25, h * 0.05, w * 0.45, h * 0.95, w * 0.6, h * 0.5)
-        path.cubicTo(w * 0.75, h * 0.15, w * 0.9, h * 0.4, w, h * 0.45)
+        for x in range(0, w + 1, 2):
+            t = x / max(1, w)
+            envelope = math.sin(math.pi * t) ** 0.6          # calm at both ends like a pulse line
+            y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 3) * envelope
+            y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * self._amp * 3 * envelope
+            path.moveTo(x, y) if x == 0 else path.lineTo(x, y)
         painter.setPen(QPen(QColor("#8b5cf6"), 2))
         painter.drawPath(path)
+
+
+class _Portrait(QWidget):
+    """Kira's picture with her name over the bottom, like the right card of the reference."""
+
+    def __init__(self, path, caption: str, subtitle: str, parent=None) -> None:
+        super().__init__(parent)
+        self._pixmap = QPixmap(str(path))
+        self._caption, self._subtitle = caption, subtitle
+        self.setMinimumSize(150, 190)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()), 18, 18)
+        painter.setClipPath(clip)
+        if not self._pixmap.isNull():
+            scaled = self._pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            painter.drawPixmap((self.width() - scaled.width()) // 2, 0, scaled)   # keep the face, crop the bottom
+        fade = QLinearGradient(0, self.height() * 0.6, 0, self.height())
+        fade.setColorAt(0, QColor(10, 6, 24, 0))
+        fade.setColorAt(1, QColor(10, 6, 24, 215))
+        painter.fillRect(self.rect(), fade)
+        painter.setPen(QColor("#ffffff"))
+        font = painter.font()
+        font.setPixelSize(26)
+        font.setWeight(font.Weight.DemiBold)
+        painter.setFont(font)
+        painter.drawText(16, self.height() - 38, self._caption)
+        font.setPixelSize(13)
+        font.setWeight(font.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(QColor("#c4b5fd"))
+        painter.drawText(16, self.height() - 16, self._subtitle)
 
 
 def greeting_text(lang: str, hour: int) -> str:
@@ -185,7 +273,21 @@ def _character_pixmap(context, character_id, size):
     try:
         service = context.services.character_service
         profile = service.all_profiles(context.services.settings).get(character_id) or {}
-        source = QPixmap(str(service.avatar_file(profile, ROOT)))
+        picture = service.avatar_file(profile, ROOT)
+        if picture is None and character_id == "kira" and KIRA_PORTRAIT.is_file():
+            picture = KIRA_PORTRAIT                           # Kira's own picture: face crop
+            source = QPixmap(str(picture)).scaledToWidth(size, Qt.SmoothTransformation)
+            result = QPixmap(size, size)
+            result.fill(Qt.transparent)
+            painter = QPainter(result)
+            painter.setRenderHint(QPainter.Antialiasing)
+            clip = QPainterPath()
+            clip.addEllipse(0, 0, size, size)
+            painter.setClipPath(clip)
+            painter.drawPixmap(0, -int(size * 0.12), source)
+            painter.end()
+            return result
+        source = QPixmap(str(picture))
         if source.isNull():
             return None
         source = source.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
@@ -282,6 +384,7 @@ def apply_chat_shell(context) -> bool:
         ("character pictures", lambda: _wrap_tabs(context, controller)),
         ("conversation rows", lambda: _wrap_rows(controller, conversation_list)),
         ("mood card", lambda: _wrap_mood(context, controller, parts)),
+        ("top bar", lambda: _hide_bar_on_chat(context)),
     )
     for name, step in steps:
         try:
@@ -335,7 +438,7 @@ def _build_layout(context, controller, parts, lang) -> None:
     area_layout.addWidget(center, 1)
 
 
-def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang) -> QScrollArea:
+def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang) -> QWidget:
     fa = lang == "fa"
     scroll = QScrollArea()
     scroll.setObjectName("dashLeftScroll")
@@ -350,7 +453,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     column.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
     layout = QVBoxLayout(column)
     layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(10)
+    layout.setSpacing(6)
 
     layout.addWidget(_label("KIRA ✦", "dashBrand"))
     layout.addWidget(_label("همراه هوشمند تو" if fa else "Your AI Companion", "dashBrandSub"))
@@ -364,11 +467,58 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
         layout.addWidget(tabs_frame)
     sidebar.setMinimumWidth(0)
     sidebar.setMaximumWidth(16777215)
-    sidebar.setMinimumHeight(60)
+    sidebar.setMinimumHeight(70)
     sidebar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)   # its inner rows must not widen the column
     layout.addWidget(sidebar, 1)
     scroll.setWidget(column)
-    return scroll
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    scroll.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; }")   # scrolls by wheel, takes no room
+    holder = QWidget()
+    holder.setObjectName("dashLeftHolder")
+    holder.setFixedWidth(LEFT_WIDTH + 5)
+    holder.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
+    holder_layout = QVBoxLayout(holder)
+    holder_layout.setContentsMargins(0, 0, 0, 8)
+    holder_layout.setSpacing(6)
+    holder_layout.addWidget(scroll, 1)
+    gear_row = QHBoxLayout()
+    gear_row.setContentsMargins(8, 0, 8, 0)
+    gear_row.addWidget(_settings_button(context, lang))
+    holder_layout.addLayout(gear_row)
+    return holder
+
+
+def _settings_button(context, lang) -> QPushButton:
+    """Bottom-left gear: opens the same menu the hamburger bar used to hold."""
+    button = QPushButton(("⚙  تنظیمات" if lang == "fa" else "⚙  Settings"))
+    button.setObjectName("dashSettings")
+    button.setCursor(Qt.PointingHandCursor)
+    button.setFocusPolicy(Qt.NoFocus)
+    button.setFixedHeight(40)
+
+    def open_menu() -> None:
+        menu = getattr(context.views, "nav_menu", None)
+        if menu is not None:
+            menu.exec(button.mapToGlobal(QPoint(0, -menu.sizeHint().height())))
+
+    button.clicked.connect(lambda checked=False: open_menu())
+    return button
+
+
+def _hide_bar_on_chat(context) -> None:
+    """The hamburger bar is only shown on the other pages; on the chat page the gear replaces it."""
+    views = context.views
+    menu_button, tabs = getattr(views, "menu_btn", None), getattr(views, "tabs", None)
+    bar = menu_button.parentWidget() if menu_button is not None else None
+    if bar is None or tabs is None:
+        return
+    chat_index = list(views.tab_keys).index("tab_chat")
+
+    def sync(index=None) -> None:
+        bar.setVisible(tabs.currentIndex() != chat_index)
+
+    tabs.currentChanged.connect(sync)
+    sync()
 
 
 def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
@@ -393,7 +543,7 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
         button.setCheckable(True)
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
-        button.setFixedHeight(46)
+        button.setFixedHeight(40)
         if glyph in _ICONS:
             button.setIcon(make_icon(glyph, normal="#cbbcff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
             button.setIconSize(QSize(20, 20))
@@ -512,7 +662,8 @@ def _build_stats(context, parts, lang) -> QWidget:
     parts["mood_sub"] = _label("آسوده" if fa else "Relaxed", "statSub")
     texts.addWidget(parts["mood_title"])
     texts.addWidget(parts["mood_sub"])
-    body.addWidget(_Sparkline())
+    parts["sparkline"] = _Sparkline()
+    body.addWidget(parts["sparkline"])
     row.addWidget(mood, 1)
 
     vibe, texts, body = _stat_card("☆", "حال‌وهوای امروز" if fa else "Today's Vibe", True)
@@ -531,10 +682,11 @@ def _build_right(avatar_card, context, lang) -> None:
     if layout is None:
         return
     avatar_card.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
-    caption = _label("Kira ✦", "dashName")
-    caption.setStyleSheet("font-size: 26px; font-weight: 600; padding-left: 12px;")
-    layout.addWidget(caption)
-    layout.addWidget(_label("همیشه اینجام برات" if fa else "Always here for you", "dashGreetingSub"))
+    if KIRA_PORTRAIT.is_file():
+        portrait = _Portrait(KIRA_PORTRAIT, "Kira ✦", "همیشه اینجام برات" if fa else "Always here for you", avatar_card)
+        layout.insertWidget(0, portrait, 1)
+        avatar_card.kira_portrait = portrait
+        _sync_portrait(context)
     actions = _frame("dashActions")
     actions_row = QHBoxLayout(actions)
     actions_row.setContentsMargins(8, 8, 8, 8)
@@ -571,6 +723,19 @@ def _build_right(avatar_card, context, lang) -> None:
     heart.setAlignment(Qt.AlignRight)
     quote_layout.addWidget(heart)
     layout.addWidget(quote)
+
+
+def _sync_portrait(context) -> None:
+    """Kira shows her picture; the other characters keep their own full-body avatar."""
+    views = context.views
+    portrait = getattr(getattr(views, "avatar_card", None), "kira_portrait", None)
+    avatar = getattr(views, "avatar", None)
+    if portrait is None or avatar is None:
+        return
+    cid = str(getattr(getattr(context.state, "cur", None), "cid", "") or "kira")
+    own = cid == "kira"
+    portrait.setVisible(own)
+    avatar.setVisible(not own)
 
 
 def _avatar_on_the_right(page, avatar_card, lang) -> None:
@@ -623,6 +788,7 @@ def _wrap_tabs(context, controller) -> None:
         result = original(*args, **kwargs)
         try:
             _picture_tabs(context)
+            _sync_portrait(context)
         except Exception:                                  # noqa: BLE001 - pictures are optional
             _LOG.exception("Could not set the character pictures")
         return result
@@ -672,6 +838,9 @@ def _refresh_mood(context, parts) -> None:
     state = context.services.mood_service.current(character_id=cid)
     title.setText(str(state.get("emotion", "neutral") or "neutral").capitalize())
     sub.setText(str(state.get("behavior", "balanced") or "balanced").capitalize())
+    wave = parts.get("sparkline")
+    if wave is not None:
+        wave.set_mood(str(state.get("emotion", "neutral")), int(state.get("intensity", 40) or 0))
 
 
 def _wrap_mood(context, controller, parts) -> None:
