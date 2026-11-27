@@ -95,9 +95,11 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(am.candidate_services(MISTRAL_KEY), ["mistral", "cloudflare"])
         self.assertEqual(am.candidate_services("sk-or-v1-" + "x" * 32), ["openrouter"])
         self.assertEqual(am.candidate_services("AQ." + "x" * 50), ["google"])
+        self.assertEqual(am.candidate_services("sk-apx" + "x" * 40), ["apinex"])
+        self.assertEqual(am.candidate_services("SK-APX_" + "x" * 40), ["apinex"])
 
     def test_apinex_key_discovers_catalog_and_registers_chat_provider(self):
-        key = "sk-apx-" + "a" * 40
+        key = "sk-apx" + "a" * 40  # accepted APInex prefix without a separator
         catalog = R(200, {"data": [
             {"id": "free/deepseek-v4.1-flash", "context_length": 1048576,
              "pricing": {"prompt": "0", "completion": "0"}},
