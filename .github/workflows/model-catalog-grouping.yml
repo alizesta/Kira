@@ -32,6 +32,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install HTTP runtime dependency
+        run: python -m pip install "requests>=2.31,<3"
       - name: Compile changed modules and tests
         run: python -m py_compile kira/model_catalog.py kira/routes.py kira/ui/components/models_panel.py tests/test_model_catalog.py tests/test_routes.py
       - name: Run model catalog regression tests
