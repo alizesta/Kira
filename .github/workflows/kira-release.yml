@@ -26,6 +26,10 @@ on:
       - "tests/test_release.py"
       - "tests/test_release_package.py"
       - "tests/test_vision_pipeline.py"
+      - "tests/test_news_feed.py"
+      - "tests/test_news_sources.py"
+      - "tests/test_news_post_generator.py"
+      - "scripts/release-allowlist.json"
       - "tests/test_actions.py"
       - "tests/test_vision_routing.py"
       - "tests/test_characters.py"
@@ -120,7 +124,7 @@ jobs:
       - name: Validate version and build metadata
         run: python scripts/build_metadata.py --check
       - name: Run news feed regression tests
-        run: python -m unittest tests.test_news_feed tests.test_news_sources tests.test_news_post_generator
+        run: python -m unittest tests.test_news_feed tests.test_news_sources tests.test_news_post_generator tests.test_release_package
       - name: Run portable regression tests
         run: >-
           python -m unittest
