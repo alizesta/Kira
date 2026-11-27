@@ -111,8 +111,8 @@ class ChatPersistence:
     def recent_messages(self, limit=12, character_id=None, conversation_id=None):
         return self._repository.recent_messages(limit, character_id, conversation_id)
 
-    def recent_message_records(self, limit=2000, character_id=None):
-        return self._invoke(self._repository.recent_message_records, limit, character_id)
+    def recent_message_records(self, limit=2000, character_id=None, conversation_id=None):
+        return self._invoke(self._repository.recent_message_records, limit, character_id, conversation_id)
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         return self._invoke(self._repository.get_messages, limit, character_id, conversation_id, after_id)
