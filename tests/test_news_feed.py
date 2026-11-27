@@ -170,7 +170,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 "confidence": "reported",
             }]
             service = NewsFeedService(lambda: {}, temp, post_generator=generator)
-            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \\
+            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
                  patch("kira.webintel.engine.search", return_value={"results": []}):
                 service._refresh_character("kira")
             posts = service.store.list_posts("kira")
@@ -191,7 +191,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 lambda: {}, temp,
                 post_generator=lambda *_args: (_ for _ in ()).throw(RuntimeError("model offline")),
             )
-            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \\
+            with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
                  patch("kira.webintel.engine.search", return_value={"results": []}):
                 service._refresh_character("kira")
             self.assertEqual(service.store.list_posts("kira"), [])
