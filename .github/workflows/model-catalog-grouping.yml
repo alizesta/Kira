@@ -1,0 +1,36 @@
+name: Model Catalog Grouping Regression
+
+on:
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/model_catalog.py"
+      - "kira/ui/components/models_panel.py"
+      - "tests/test_model_catalog.py"
+      - ".github/workflows/model-catalog-grouping.yml"
+  push:
+    branches: [fix/unified-model-catalog-grouping]
+    paths:
+      - "kira/model_catalog.py"
+      - "kira/ui/components/models_panel.py"
+      - "tests/test_model_catalog.py"
+      - ".github/workflows/model-catalog-grouping.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  model-catalog-grouping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile changed modules and tests
+        run: python -m py_compile kira/model_catalog.py kira/routes.py kira/ui/components/models_panel.py tests/test_model_catalog.py
+      - name: Run model catalog regression tests
+        run: python -m unittest tests.test_model_catalog -v
