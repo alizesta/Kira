@@ -255,6 +255,9 @@ def group_model_rows(rows, settings):
                 ),
             }
 
+        enabled_count = sum(1 for member in available_members if member.get("enabled"))
+        toggle_member_count = len(available_members)
+
         first = dict(members[0])
         first.update({
             "model": display_model,
@@ -267,7 +270,9 @@ def group_model_rows(rows, settings):
             "member_keys": member_keys,
             "members": members,
             "member_count": len(members),
-            "enabled": any(bool(member.get("enabled")) for member in available_members),
+            "enabled": enabled_count > 0,
+            "enabled_count": enabled_count,
+            "toggle_member_count": toggle_member_count,
             "tabs": tabs,
             "category_tab": category_tab,
             "price": price,
