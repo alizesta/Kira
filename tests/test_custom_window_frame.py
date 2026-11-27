@@ -53,6 +53,10 @@ class CustomWindowFrameTests(unittest.TestCase):
         self.assertTrue(window.windowFlags() & Qt.WindowType.FramelessWindowHint)
         self.assertEqual(title_bar.objectName(), "kiraCustomTitleBar")
         self.assertEqual(title_bar.height(), 40)
+        self.assertEqual(
+            title_bar.layout().direction(),
+            QHBoxLayout.Direction.LeftToRight,
+        )
 
         buttons = {button.toolTip(): button for button in title_bar.findChildren(QToolButton)}
         self.assertEqual(set(buttons), {"Minimize", "Maximize", "Close"})
