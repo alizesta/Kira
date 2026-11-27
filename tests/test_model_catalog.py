@@ -128,6 +128,8 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(active_group["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
         self.assertTrue(active_group["enabled"])
         google_route = next(route for route in routes.get_routes(s) if route["provider"] == google)
+        self.assertEqual(active_group["provider"], google)
+        self.assertEqual(active_group["route_id"], google_route["id"])
         self.assertTrue(google_route["enabled"])
         self.assertFalse(any(route["provider"] == apinex and route["enabled"] for route in routes.get_routes(s)))
 
