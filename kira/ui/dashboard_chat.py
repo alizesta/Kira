@@ -18,6 +18,7 @@ INSTANCE only.
 """
 from __future__ import annotations
 
+import re
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -103,8 +104,16 @@ def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", ava
     """User and assistant bubbles of the reference design. The tables are transparent: _BubbleUnderlay paints the rounded shapes."""
     body = chat_render.rich_body_html(text, TEXT, ui_dir) if str(text or "").strip() else ""
     ticks = f' <span style="color:{TICKS};">✓✓</span>' if (kind == "user" and stamp) else ""
-    meta = (f'<p align="right" style="margin:3px 0 0 0;color:{META};font-size:8pt;">{stamp}{ticks}</p>' if stamp else "")
-    cell = f"{extra_html}{body}{meta}{footer_html or ''}"
+    stamp_html = f'<span style="color:{META};font-size:8pt;">{stamp}{ticks}</span>' if stamp else ""
+    # one row under the text: the time on the left, the action icons completely on the right
+    if footer_html or stamp_html:
+        cells = re.search(r"<tr>(.*)</tr>", footer_html or "", re.S)
+        icons = cells.group(1) if cells else ""
+        meta = (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin-top:6px;"><tr>'
+                f'<td align="left" valign="middle">{stamp_html}</td><td width="100%"></td>{icons}</tr></table>')
+    else:
+        meta = ""
+    cell = f"{extra_html}{body}{meta}"
     spacer = '<p style="margin:0;font-size:3pt;">&nbsp;</p>'
     if kind == "user":
         return (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin:7px 0;"><tr><td align="right">'
@@ -125,7 +134,7 @@ def _bubble_tables(frame):
         yield from _bubble_tables(child)
 
 
-BUBBLE_PAD_X, BUBBLE_PAD_Y = 14, 9
+BUBBLE_PAD_X, BUBBLE_PAD_TOP, BUBBLE_PAD_BOTTOM = 16, 14, 10
 
 
 def _content_rect(document, layout, table):
@@ -167,10 +176,13 @@ class _BubbleUnderlay(QObject):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(QPen(QColor(BUBBLE_BORDER), 1))
         for table in _bubble_tables(view.document().rootFrame()):
+            frame = layout.frameBoundingRect(table)
             rect = _content_rect(view.document(), layout, table)
             if rect is None:
-                rect = layout.frameBoundingRect(table)
-            rect = rect.adjusted(-BUBBLE_PAD_X, -BUBBLE_PAD_Y, BUBBLE_PAD_X, BUBBLE_PAD_Y).translated(dx, dy)
+                rect = frame
+            else:                                            # block rects are as wide as the line box; the table knows the real width
+                rect = QRectF(rect.left(), rect.top(), frame.width() - 2 * table.format().cellPadding(), rect.height())
+            rect = rect.adjusted(-BUBBLE_PAD_X, -BUBBLE_PAD_TOP, BUBBLE_PAD_X, BUBBLE_PAD_BOTTOM).translated(dx, dy)
             if not rect.intersects(visible):
                 continue
             painter.setBrush(QColor(USER_BUBBLE if round(table.format().cellPadding()) == USER_PAD else ASSISTANT_BUBBLE))

@@ -53,6 +53,8 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 7th pass): bubbles are painted around the real text blocks (`_content_rect`, pad 14x9) so text sits inside; bottom-left Settings button removed (the nav Settings item is the main one; the hamburger bar still appears on the other pages); mood emoji + energy bolt moved into the Kira's Mood card without frames; "Your desktop assistant" tagline hidden; the characters' news feed panel (`views.news_feed_panel`) now lives in the Journal page: Journal swaps the chat card for the panel, any other nav item swaps back. The panel's own look is still the compact one (text small) - restyle it for the wide page if wanted.
 
+* Done (Claude 2, 8th pass): bubble = text-block top/height + the table's real width (block rects are line-box wide, so they cannot give the width); more top padding; time on the left and the action icons on the right in ONE table row (`bubble_html` pulls the icon cells out of `chat_actions_html`); the Kira/Online profile card is no longer in the left column - the conversation list (New chat + Conversations) sits right under the nav, Quick People below it.
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the

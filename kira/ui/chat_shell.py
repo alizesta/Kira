@@ -474,18 +474,18 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     layout.addWidget(_label("KIRA ✦", "dashBrand"))
     layout.addWidget(_label("همراه هوشمند تو" if fa else "Your AI Companion", "dashBrandSub"))
     layout.addLayout(_build_nav(context, controller, parts, lang))
-    layout.addWidget(_build_profile(context, parts, lang))
+    parts["profile"] = _build_profile(context, parts, lang)     # the Kira/Online card is no longer shown; the conversation list takes its place
+    sidebar.setMinimumWidth(0)
+    sidebar.setMaximumWidth(16777215)
+    sidebar.setMinimumHeight(150)
+    sidebar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)   # its inner rows must not widen the column
+    layout.addWidget(sidebar, 1)
     if tabs_frame is not None:
         layout.addWidget(_label("افراد سریع" if fa else "Quick People", "dashSection"))
         tabs_frame.setMinimumWidth(0)
         if tabs_row is not None:
             tabs_row.setDirection(QBoxLayout.Direction.TopToBottom)     # one character per row, like the reference
         layout.addWidget(tabs_frame)
-    sidebar.setMinimumWidth(0)
-    sidebar.setMaximumWidth(16777215)
-    sidebar.setMinimumHeight(70)
-    sidebar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)   # its inner rows must not widen the column
-    layout.addWidget(sidebar, 1)
     scroll.setWidget(column)
     scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
     scroll.verticalScrollBar().setStyleSheet("QScrollBar:vertical { width: 0px; }")   # scrolls by wheel, takes no room
