@@ -77,7 +77,8 @@ class SessionController(WindowFeatureController):
 
     def retranslate(self):
         lang = self.context.services.settings.get("ui_lang", "en")
-        QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+        # Locale changes text direction, never application-wide widget geometry.
+        QApplication.setLayoutDirection(Qt.LeftToRight)
         new_chat_button = getattr(self.context.views, "new_chat_btn", None)
         if new_chat_button is not None:
             new_chat_button.setText("چت جدید" if lang == "fa" else "New chat")
@@ -365,7 +366,7 @@ class SessionController(WindowFeatureController):
                 open_button.setMinimumWidth(0)
                 open_button.setFixedHeight(32)
                 open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                open_button.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+                open_button.setLayoutDirection(Qt.LeftToRight)
                 open_button.setCursor(Qt.PointingHandCursor)
                 open_button.setToolTip(date_tooltip)
                 open_button.clicked.connect(
@@ -399,7 +400,7 @@ class SessionController(WindowFeatureController):
                 )
 
                 menu = QMenu(more_button)
-                menu.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+                menu.setLayoutDirection(Qt.LeftToRight)
                 rename_action = menu.addAction("تغییر نام" if lang == "fa" else "Rename")
                 share_action = menu.addAction(
                     "اشتراک‌گذاری (کپی متن)" if lang == "fa" else "Share (copy text)"

@@ -30,6 +30,7 @@ class BubbleTests(unittest.TestCase):
         html = dashboard_chat.bubble_html("user", "Hey Kira", "ltr", stamp="8:18 PM")
         self.assertIn('align="right"', html)
         self.assertIn("✓✓", html)
+        self.assertIn("#c4b5fd", html)
 
     def test_message_without_a_time_shows_no_time_and_no_tick(self):
         html = dashboard_chat.bubble_html("user", "old message", "ltr", stamp="")
@@ -124,7 +125,7 @@ class ComposerTests(unittest.TestCase):
 
 
 class HeaderTests(unittest.TestCase):
-    def test_header_gets_the_today_chip_and_display_icons(self):
+    def test_header_gets_the_today_chip_and_search_filter_icons(self):
         header = QFrame()
         layout = QHBoxLayout(header)
         title = QLabel("Project Kira", header)

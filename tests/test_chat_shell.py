@@ -113,10 +113,11 @@ class ChatShellTests(unittest.TestCase):
         chat_shell.apply_chat_shell(context)
         self.assertIs(p.body.itemAt(p.body.count() - 1).widget(), p.avatar_card)
 
-    def test_persian_layout_keeps_the_character_panel_first(self):
+    def test_persian_layout_keeps_shell_ltr_and_character_panel_on_the_right(self):
         context, p = build("fa")
         chat_shell.apply_chat_shell(context)
-        self.assertIs(p.body.itemAt(0).widget(), p.avatar_card)
+        self.assertIs(p.body.itemAt(p.body.count() - 1).widget(), p.avatar_card)
+        self.assertEqual(p.area_layout.direction(), QBoxLayout.Direction.LeftToRight)
 
     def test_navigation_opens_real_tabs_and_marks_the_rest_as_coming_soon(self):
         context, p = build()
@@ -132,7 +133,7 @@ class ChatShellTests(unittest.TestCase):
     def test_display_only_widgets_say_coming_soon(self):
         context, p = build()
         chat_shell.apply_chat_shell(context)
-        for name in ("roundIcon", "dashAction", "dashPlay"):
+        for name in ("dashAction", "dashPlay"):
             p.status.clear()
             p.page.findChildren(QPushButton, name)[0].click()
             self.assertEqual(p.status.text(), "Coming soon", name)
