@@ -56,7 +56,7 @@ class NewsPostGenerator:
         profile = profile if isinstance(profile, dict) else {}
         profile_style = "\n".join(
             f"{key}: {str(profile.get(key) or '').strip()[:5000]}"
-            for key in ("description", "prompt", "specialty_prompt")
+            for key in ("description", "prompt", "specialty_prompt", "traits")
             if str(profile.get(key) or "").strip()
         )
         system_prompt = (
