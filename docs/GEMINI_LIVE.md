@@ -22,6 +22,17 @@ Selecting **Local** as the primary voice engine is also available in Voice setti
 
 The Google key is read from the existing Connections settings; Voice does not store a separate key.
 
+## Supported Live models
+
+The Voice model selector exposes these current Google Live API model IDs:
+
+- `gemini-3.8-live` — default and Google's recommended model for new production work.
+- `gemini-3.8-live-extended-thinking` — deeper reasoning variant.
+- `gemini-3.1-flash-live-preview` — legacy preview audio-to-audio option; Kira omits proactive-audio configuration because this model does not support it. Google recommends 3.8 for new production workloads.
+- `gemini-2.5-flash-native-audio-preview-12-2025` — native-audio alternative with a different speech style. Google's current earliest shutdown date is March 31, 2027, so plan to migrate to 3.8 before then.
+
+Gemini 1.5 is retired. The old `gemini-2.0-flash-live-001` Live endpoint shut down on December 9, 2025; neither old generation is offered as a selectable model. See Google's [Live API model guide](https://ai.google.dev/gemini-api/docs/live-api) and [model deprecation schedule](https://ai.google.dev/gemini-api/docs/deprecations).
+
 ## Main-page status
 
 - **Connecting · Gemini Live:** a session is being established.
