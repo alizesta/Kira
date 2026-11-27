@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 _LOG = logging.getLogger(__name__)
 RETENTION_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_REFRESH_HOURS = 4
+MAX_ITEMS_PER_CHARACTER = 180
 CHARACTER_IDS = ("kira", "ren", "mika")
 
 CHARACTER_QUERIES = {
@@ -294,9 +295,9 @@ class NewsFeedStore:
             db.execute(
                 """DELETE FROM news_items WHERE character_id = ? AND id NOT IN (
                     SELECT id FROM news_items WHERE character_id = ?
-                    ORDER BY first_seen_at DESC, id DESC LIMIT 100
+                    ORDER BY first_seen_at DESC, id DESC LIMIT ?
                 )""",
-                (character_id, character_id),
+                (character_id, character_id, MAX_ITEMS_PER_CHARACTER),
             )
             return int(changed)
 
