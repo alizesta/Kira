@@ -120,7 +120,7 @@ def _archive_reason(settings, provider, model, meta, route, *, capabilities: Det
 
 
 def model_rows(settings, *, capabilities: DetectedCapabilities):
-    """Every chat model of every registered API as a flat list of dicts (see module doc for the tab rules)."""
+    """Every chat model of every registered API, grouped by shared cloud model identity for display."""
     api_manager.ensure_registry(settings, capabilities)
     routes = route_model.get_routes(settings)
     order = {(r["provider"], r["model"]): i for i, r in enumerate(routes)}
@@ -170,8 +170,104 @@ def model_rows(settings, *, capabilities: DetectedCapabilities):
         })
         known.add((pid, mid))
 
-    rows.sort(key=lambda r: (r["provider_label"].casefold(), r["model"].casefold()))
+    rows = group_model_rows(rows, settings)
+    rows.sort(key=lambda r: (r["model"].casefold(), r["provider_label"].casefold()))
     return rows
+
+
+def group_model_rows(rows, settings):
+    """Collapse identical cloud models across APIs for display, retaining provider-specific members.
+
+    Each member continues to own its original provider/model ID, Route, quota and test/archive state.
+    Only the row identity and display name are normalized; local models remain isolated.
+    """
+    grouped = {}
+    for row in rows:
+        provider = str(row.get("provider") or "")
+        cfg = (settings.get("providers") or {}).get(provider, {})
+        is_cloud = route_model.provider_kind(provider, cfg) == "cloud"
+        display_model = (
+            route_model.normalize_display_model_id(row.get("model"), provider, cfg)
+            if is_cloud else str(row.get("model") or "")
+        )
+        if is_cloud and display_model:
+            key = ("cloud", display_model.casefold())
+        else:
+            key = ("provider", provider, str(row.get("model") or "").casefold())
+        grouped.setdefault(key, []).append((row, display_model))
+
+    result = []
+    for members_with_names in grouped.values():
+        members = [dict(item[0]) for item in members_with_names]
+        display_model = members_with_names[0][1]
+        provider_ids = list(dict.fromkeys(member["provider"] for member in members))
+        provider_labels = list(dict.fromkeys(member["provider_label"] for member in members))
+        member_keys = tuple((member["provider"], member["model"]) for member in members)
+
+        tabs = [tab for tab in TABS if any(tab in member["tabs"] for member in members)]
+        prices = {member["price"] for member in members}
+        price = next(iter(prices)) if len(prices) == 1 else "unknown"
+        price_details = "؛ ".join(
+            f'{member["provider_label"]}: {member["price"]}'
+            for member in members
+        )
+        reasons = [
+            f'{member["provider_label"]}: {member["reason"]}'
+            for member in members if member.get("reason")
+        ]
+
+        tested = [member["test"] for member in members if member.get("test")]
+        if len(members) == 1:
+            combined_test = members[0].get("test")
+        elif not tested:
+            combined_test = None
+        else:
+            times = [int(item["ms"]) for item in tested if item.get("ms") is not None]
+            complete = len(tested) == len(members)
+            combined_test = {
+                "ok": all(bool(item.get("ok")) for item in tested) if complete else None,
+                "ms": round(sum(times) / len(times)) if times else None,
+                "at": max(int(item.get("at") or 0) for item in tested),
+                "message": (
+                    f'{len(tested)}/{len(members)} API تست شده؛ '
+                    f'{sum(1 for item in tested if item.get("ok"))} موفق، '
+                    f'{sum(1 for item in tested if not item.get("ok"))} ناموفق'
+                ),
+            }
+
+        first = dict(members[0])
+        first.update({
+            "model": display_model,
+            "provider_label": (
+                (" + ".join(provider_labels) + f" · {len(members)} API")
+                if len(members) > 1 else provider_labels[0]
+            ),
+            "provider_ids": provider_ids,
+            "provider_labels": provider_labels,
+            "member_keys": member_keys,
+            "members": members,
+            "member_count": len(members),
+            "enabled": any(bool(member.get("enabled")) for member in members),
+            "tabs": tabs,
+            "price": price,
+            "free": members[0].get("free") if len({member.get("free") for member in members}) == 1 else None,
+            "price_tooltip": (
+                "وضعیت هزینه در APIها: " + price_details
+                if len(prices) > 1 else price_details
+            ),
+            "status": "available" if any(member.get("status") == "available" for member in members)
+                      else members[0].get("status", "unknown"),
+            "route_id": first.get("route_id", ""),
+            "reason": "؛ ".join(reasons),
+            "restorable": any(
+                member.get("restorable") and TAB_ARCHIVED in member.get("tabs", [])
+                for member in members
+            ),
+            "test": combined_test,
+            "order": min(int(member.get("order", 10 ** 6)) for member in members),
+        })
+        result.append(first)
+    return result
 
 
 def rows_for_tab(rows, tab):

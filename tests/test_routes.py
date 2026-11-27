@@ -78,6 +78,16 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(apinex_route["model"], "free/" + model)
         self.assertEqual(google_route["model"], "goole/" + model)
 
+    def test_provider_namespace_matching_does_not_strip_every_label_word(self):
+        cfg = {"label": "Google AI Studio"}
+        self.assertEqual(
+            routes.normalize_display_model_id("goole/model-x", "custom-google-ai-studio", cfg),
+            "model-x",
+        )
+        self.assertEqual(
+            routes.normalize_display_model_id("studio/model-x", "custom-google-ai-studio", cfg),
+            "studio/model-x",
+        )
     def test_display_grouping_keeps_unrelated_publisher_namespace(self):
         s = legacy_settings()
         routes.ensure_routes(s)
