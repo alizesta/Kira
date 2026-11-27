@@ -70,7 +70,7 @@ Kira Code is the task-oriented coding agent available from the normal Kira chat.
 
 ## Interface language
 
-The first-run interface language is **English**. To use Persian, open the General/Preferences settings, choose **فارسی** in the Interface language field, and save the settings. The layout switches to right-to-left for Persian.
+The first-run interface language is **English**. To use Persian, open General/Preferences and choose **فارسی** in the Interface language field. The choice is saved immediately, and the layout switches to right-to-left.
 
 This preference affects the application interface only. Speech-recognition language, spoken voice, model language, and the language of conversation content are separate settings or model behaviors. A previously saved Persian preference is preserved when the application is updated.
 
