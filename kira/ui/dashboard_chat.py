@@ -1,15 +1,20 @@
-"""Chat surfaces of the dashboard skin: message bubbles, the "Today" chip, header icons, the composer pill and the portrait card.
+"""Chat surfaces of the dashboard skin: message bubbles, the "Today" chip, header icons, the composer pill, the typing box and the portrait card.
 
 Companion of chat_shell (which builds the three columns). Same rules: widgets that already exist are moved, never recreated;
 every step is independent and logged on failure; controller methods that would overwrite the skin are wrapped on the controller
 INSTANCE only.
 
 * Bubbles: the session module's `message_html` is replaced by a version that draws the reference bubbles (avatar next to the
-  assistant, time under the text, double tick under the user's). Messages restored from history carry no time, because their real
-  time is unknown here.
+  assistant, time under the text, double tick under the user's). Qt rich text cannot round a table, so the bubble tables are
+  transparent and a painter behind the text (_BubbleUnderlay, an event filter on the chat viewport) draws the rounded shapes; the
+  table's cellpadding (11 = user, 12 = assistant) tells it which bubble it is looking at. Messages restored from history carry no
+  time, because their real time is unknown here.
 * Composer: one pill [✦][input][emoji][attach][stop][send]. The old toolbar (route chip, search, Eye Mode, microphone, voice,
   expand editor) is moved into a tray that the ✦ button opens, so no feature is lost.
+* Typing box: "<name> is typing..." above the composer while the front chat is thinking.
 * Portrait: assets/dashboard/<character id>_portrait.png. A character without that file keeps the animated avatar.
+* News panel: the compact news panel is hidden on this page (the reference has none); the News page in Settings is unchanged.
+* Column widths follow the window like the reference (left 16.6 %, right 25.7 %).
 """
 from __future__ import annotations
 
@@ -17,9 +22,9 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QUrl, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QToolButton, QWidget
+from PySide6.QtCore import QEvent, QObject, QRectF, QTimer, QUrl, Qt
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QTextDocument, QTextTable
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QToolButton, QWidget
 
 from .. import chat_render
 from ..config import ROOT
@@ -27,10 +32,14 @@ from ..config import ROOT
 _LOG = logging.getLogger("kira.ui")
 AVATAR_URL = "kira-avatar://self"
 USER_BUBBLE, ASSISTANT_BUBBLE, BUBBLE_BORDER = "#1f1445", "#171034", "#2b1b57"
+USER_PAD, ASSISTANT_PAD = 11, 12                       # cellpadding of the bubble tables: how the underlay tells them apart
+BUBBLE_RADIUS = 16
 TEXT, META, TICKS = "#f1ecff", "#8f7bc0", "#8b5cf6"
+AVATAR_SIZE = 52
+LEFT_RATIO, RIGHT_RATIO = 0.166, 0.257                 # column widths of the reference (255 and 395 of 1536 px)
 
 STYLE = """
-QFrame#chatInputSurface { background: #120a26; border: 1px solid #3b2380; border-radius: 26px; }
+QFrame#chatInputSurface { background: #120a26; border: 1px solid #3b2380; border-radius: 26px; min-height: 62px; }
 QWidget#composerTray { background: transparent; }
 QToolButton#sparkBtn { background: #1a1038; border: 2px solid #5b2fd6; border-radius: 22px; color: #c4a6ff; font-size: 18px;
     min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px; }
@@ -40,6 +49,12 @@ QToolButton#sendBtn { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0
     border-radius: 22px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; }
 QLabel#todayChip { background: #150c2e; border: 1px solid #2a1a52; border-radius: 12px; color: #cbbcff; padding: 4px 16px; }
 QToolButton#headerIcon { background: transparent; border: none; color: #cbbcff; font-size: 16px; padding: 4px; }
+QFrame#dashTyping { background: #120a26; border: 1px solid #2a1a52; border-radius: 14px; margin: 4px 14px; }
+QLabel#dashTypingText { color: #b9a3f5; font-size: 13px; }
+QPushButton#navItem { min-height: 48px; font-size: 15px; }
+QLabel#dashGreeting { font-size: 28px; }
+QFrame#statCard { min-height: 112px; }
+QLabel#statValue { font-size: 17px; }
 """
 
 
@@ -69,6 +84,13 @@ def _session_controller(context):
         return None
 
 
+def _character_name(context, fallback="Kira") -> str:
+    try:
+        return str(context.services.character_service.display_name(context.services.settings))
+    except Exception:                                        # noqa: BLE001
+        return fallback
+
+
 # ---------------------------------------------------------------- bubbles
 
 def clock_text(moment: datetime) -> str:
@@ -76,19 +98,67 @@ def clock_text(moment: datetime) -> str:
 
 
 def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", avatar_url="") -> str:
-    """User and assistant bubbles of the reference design (Qt rich text: no rounded corners are possible here)."""
+    """User and assistant bubbles of the reference design. The tables are transparent: _BubbleUnderlay paints the rounded shapes."""
     body = chat_render.rich_body_html(text, TEXT, ui_dir) if str(text or "").strip() else ""
     ticks = f' <span style="color:{TICKS};">✓✓</span>' if (kind == "user" and stamp) else ""
     meta = (f'<p align="right" style="margin:3px 0 0 0;color:{META};font-size:8pt;">{stamp}{ticks}</p>' if stamp else "")
     cell = f"{extra_html}{body}{meta}{footer_html or ''}"
     spacer = '<p style="margin:0;font-size:3pt;">&nbsp;</p>'
     if kind == "user":
-        return (f'<table align="right" width="72%" cellspacing="0" cellpadding="10" bgcolor="{USER_BUBBLE}" '
-                f'style="margin:7px 4px;border:1px solid {BUBBLE_BORDER};"><tr><td>{cell}</td></tr></table>{spacer}')
-    avatar = (f'<td width="52" valign="top"><img src="{avatar_url}" width="40" height="40"></td>' if avatar_url else "")
+        return (f'<table align="right" width="72%" cellspacing="0" cellpadding="{USER_PAD}" style="margin:7px 4px;">'
+                f'<tr><td>{cell}</td></tr></table>{spacer}')
+    avatar = (f'<td width="{AVATAR_SIZE + 10}" valign="top"><img src="{avatar_url}" width="{AVATAR_SIZE}" height="{AVATAR_SIZE}"></td>'
+              if avatar_url else "")
     return (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin:7px 0;"><tr>{avatar}'
-            f'<td valign="top"><table width="78%" cellspacing="0" cellpadding="10" bgcolor="{ASSISTANT_BUBBLE}" '
-            f'style="border:1px solid {BUBBLE_BORDER};"><tr><td>{cell}</td></tr></table></td></tr></table>{spacer}')
+            f'<td valign="top"><table width="78%" cellspacing="0" cellpadding="{ASSISTANT_PAD}">'
+            f'<tr><td>{cell}</td></tr></table></td></tr></table>{spacer}')
+
+
+def _bubble_tables(frame):
+    """Every bubble table of a QTextDocument frame tree (nested ones too)."""
+    for child in frame.childFrames():
+        if isinstance(child, QTextTable) and round(child.format().cellPadding()) in (USER_PAD, ASSISTANT_PAD):
+            yield child
+        yield from _bubble_tables(child)
+
+
+class _BubbleUnderlay(QObject):
+    """Paints the rounded bubble shapes behind the text of one chat view (QTextBrowser), on every repaint."""
+
+    def __init__(self, view) -> None:
+        super().__init__(view.viewport())
+        self._view = view
+        view.viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event):                       # noqa: N802 - Qt API
+        if event.type() == QEvent.Paint and obj is self._view.viewport():
+            try:
+                self._paint()
+            except Exception:                                # noqa: BLE001 - without the underlay the text is still readable
+                _LOG.debug("Could not paint the bubble shapes", exc_info=True)
+        return False
+
+    def _paint(self) -> None:
+        view = self._view
+        viewport = view.viewport()
+        layout = view.document().documentLayout()
+        dx, dy = -view.horizontalScrollBar().value(), -view.verticalScrollBar().value()
+        visible = QRectF(viewport.rect())
+        painter = QPainter(viewport)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(BUBBLE_BORDER), 1))
+        for table in _bubble_tables(view.document().rootFrame()):
+            rect = layout.frameBoundingRect(table).translated(dx, dy)
+            if not rect.intersects(visible):
+                continue
+            painter.setBrush(QColor(USER_BUBBLE if round(table.format().cellPadding()) == USER_PAD else ASSISTANT_BUBBLE))
+            painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), BUBBLE_RADIUS, BUBBLE_RADIUS)
+        painter.end()
+
+
+def _install_underlay(view) -> None:
+    if getattr(view, "_kira_underlay", None) is None:
+        view._kira_underlay = _BubbleUnderlay(view)
 
 
 def _install_bubbles(controller) -> None:
@@ -113,17 +183,18 @@ def _avatar_for_view(context, session) -> None:
     view = getattr(session, "view", None)
     if view is None:
         return
-    pixmap = character_pixmap(context, session.cid, 80)
+    pixmap = character_pixmap(context, session.cid, 2 * AVATAR_SIZE)
     if pixmap is None:                                       # no picture: a purple disc, so the <img> is never broken
-        pixmap = QPixmap(80, 80)
+        pixmap = QPixmap(2 * AVATAR_SIZE, 2 * AVATAR_SIZE)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(QColor("#3b2380"))
         painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, 80, 80)
+        painter.drawEllipse(0, 0, pixmap.width(), pixmap.height())
         painter.end()
     view.document().addResource(QTextDocument.ImageResource, QUrl(AVATAR_URL), pixmap)
+    _install_underlay(view)
 
 
 def _wrap_session_views(context, controller) -> None:
@@ -240,6 +311,100 @@ def _build_composer(context, lang) -> None:
     layout.addWidget(tray)
 
 
+# ---------------------------------------------------------------- typing box
+
+class _Typing(QFrame):
+    """Three pulsing dots and "<name> is typing..." above the composer."""
+
+    def __init__(self, text: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("dashTyping")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 6, 12, 6)
+        row.setSpacing(8)
+        self._dots = QLabel(self)
+        self._text = QLabel(text, self)
+        self._text.setObjectName("dashTypingText")
+        row.addWidget(self._dots)
+        row.addWidget(self._text)
+        row.addStretch(1)
+        self._phase = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(380)
+        self._timer.timeout.connect(self._tick)
+        self.hide()
+
+    def _tick(self) -> None:
+        self._phase = (self._phase + 1) % 3
+        self._dots.setText(" ".join(
+            f'<span style="color:{"#a855f7" if i == self._phase else "#4b2bb8"};">●</span>' for i in range(3)))
+
+    def set_active(self, active: bool) -> None:
+        if active:
+            if not self._timer.isActive():
+                self._phase = -1
+                self._tick()
+                self._timer.start()
+            self.show()
+        else:
+            self._timer.stop()
+            self.hide()
+
+
+def _build_typing(context, lang, parts) -> None:
+    composer = getattr(context.views, "chat_composer", None)
+    host = composer.parentWidget() if composer is not None else None
+    layout = host.layout() if host is not None else None
+    if layout is None:
+        return
+    name = _character_name(context)
+    typing = _Typing(f"{name} در حال نوشتن است…" if lang == "fa" else f"{name} is typing…", host)
+    layout.insertWidget(layout.indexOf(composer), typing)
+    parts["typing"] = typing
+
+
+def _wrap_status(context, controller, parts) -> None:
+    original = getattr(controller, "set_status", None)
+    typing = parts.get("typing")
+    if not callable(original) or typing is None:
+        return
+
+    def status(key, **kwargs):
+        result = original(key, **kwargs)
+        state = getattr(context, "state", None)
+        if getattr(state, "cur", None) is getattr(state, "front", None):      # same rule as @front_only
+            typing.set_active(key == "st_thinking")
+        return result
+
+    controller.set_status = status
+
+
+# ---------------------------------------------------------------- news panel
+
+class _HideGuard(QObject):
+    """Keeps one widget hidden even when its owner calls show() again."""
+
+    def __init__(self, widget) -> None:
+        super().__init__(widget)
+        self._widget = widget
+        widget.installEventFilter(self)
+
+    def eventFilter(self, obj, event):                       # noqa: N802 - Qt API
+        if obj is self._widget and event.type() == QEvent.Show:
+            QTimer.singleShot(0, self._widget.hide)
+        return False
+
+
+def _hide_news(context) -> None:
+    card = getattr(context.views, "avatar_card", None)
+    if card is None:
+        return
+    for child in card.children():
+        if isinstance(child, QWidget) and "news" in type(child).__name__.lower():
+            child.hide()
+            _HideGuard(child)
+
+
 # ---------------------------------------------------------------- portrait
 
 class _Portrait(QFrame):
@@ -290,11 +455,7 @@ def _sync_portrait(context, portrait) -> None:
     state = getattr(context, "state", None)
     session = getattr(state, "front", None) or getattr(state, "cur", None)
     cid = str(getattr(session, "cid", "") or "kira")
-    try:
-        name = str(context.services.character_service.display_name(context.services.settings))
-    except Exception:                                        # noqa: BLE001
-        name = cid.capitalize()
-    has_picture = portrait.show_character(cid, name)
+    has_picture = portrait.show_character(cid, _character_name(context, cid.capitalize()))
     portrait.setVisible(has_picture)
     avatar = getattr(context.views, "avatar", None)
     if avatar is not None:
@@ -310,6 +471,39 @@ def _build_portrait(context, parts) -> None:
     layout.insertWidget(0, portrait)
     parts["portrait"] = portrait
     _sync_portrait(context, portrait)
+
+
+# ---------------------------------------------------------------- column widths
+
+def _fit_columns(context) -> None:
+    """The reference's proportions: left column 16.6 % and right column 25.7 % of the window (never below a usable size)."""
+    width = int(context.host.width())
+    if width < 640:                                          # the session controller hides the character panel below this
+        return
+    card = getattr(context.views, "avatar_card", None)
+    if card is not None and not card.isHidden():
+        card.setFixedWidth(max(280, min(440, round(width * RIGHT_RATIO))))
+    page = getattr(context.views, "chat_page", None)
+    left = page.findChild(QScrollArea, "dashLeftScroll") if page is not None else None
+    if left is not None:
+        left.setFixedWidth(max(220, min(280, round(width * LEFT_RATIO))))
+
+
+def _wrap_resize(context, controller) -> None:
+    original = getattr(controller, "resizeEvent", None)
+    if not callable(original):
+        return
+
+    def resized(event):
+        result = original(event)                             # sets the old 200-300 px width; the reference proportions follow
+        try:
+            _fit_columns(context)
+        except Exception:                                    # noqa: BLE001 - keep the old widths when this fails
+            _LOG.debug("Could not fit the dashboard columns", exc_info=True)
+        return result
+
+    controller.resizeEvent = resized
+    _fit_columns(context)
 
 
 # ---------------------------------------------------------------- entry point
@@ -347,9 +541,13 @@ def apply_dashboard_chat(context) -> bool:
         ("composer", lambda: _build_composer(context, lang)),
         ("header", lambda: _build_header(context, lang)),
         ("portrait", lambda: _build_portrait(context, parts)),
+        ("news panel", lambda: _hide_news(context)),
+        ("typing box", lambda: _build_typing(context, lang, parts)),
+        ("typing follows status", lambda: _wrap_status(context, controller, parts)),
         ("bubbles", lambda: _install_bubbles(controller)),
-        ("avatar pictures", lambda: _wrap_session_views(context, controller)),
+        ("avatar pictures and bubble shapes", lambda: _wrap_session_views(context, controller)),
         ("date chip", lambda: _wrap_date_chip(context, controller, lang)),
+        ("column widths", lambda: _wrap_resize(context, controller)),
         ("style survives theme changes", lambda: _wrap_theme(context, controller, page, parts)),
     )
     for name, step in steps:
