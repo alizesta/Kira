@@ -127,6 +127,8 @@ class TabRuleTests(unittest.TestCase):
         active_group = next(row for row in catalog_rows(s) if row["model"] == model)
         self.assertEqual(active_group["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
         self.assertTrue(active_group["enabled"])
+        self.assertEqual(active_group["enabled_count"], 1)
+        self.assertEqual(active_group["toggle_member_count"], 1)
         google_route = next(route for route in routes.get_routes(s) if route["provider"] == google)
         self.assertEqual(active_group["provider"], google)
         self.assertEqual(active_group["route_id"], google_route["id"])
@@ -181,6 +183,8 @@ class TabRuleTests(unittest.TestCase):
         first_route_id = api_manager.set_model_enabled(s, first_provider, first_model, True, capabilities=CAPABILITIES)
         partially_enabled = next(row for row in catalog_rows(s) if row["model"] == model)
         self.assertTrue(partially_enabled["enabled"])
+        self.assertEqual(partially_enabled["enabled_count"], 1)
+        self.assertEqual(partially_enabled["toggle_member_count"], 2)
         self.assertIn(mc.TAB_ACTIVE, partially_enabled["tabs"])
 
         route_ids = [first_route_id]
