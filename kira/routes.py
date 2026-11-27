@@ -268,6 +268,36 @@ def get_routes(settings):
     return derive_routes(settings)
 
 
+def normalize_display_model_id(model, provider, cfg=None):
+    """Remove catalog/provider namespaces from a model ID for display matching only.
+
+    A leading segment is removable when it is a known catalog wrapper (free/ or
+    models/), or when it identifies this route's provider. Publisher namespaces
+    such as meta-llama/ and openai/ are retained unless they match the provider.
+    """
+    display_model = normalize_model_id(model)
+    provider_names = (provider, provider_label(provider, cfg))
+    provider_aliases = set()
+    for name in provider_names:
+        normalized = re.sub(r"[^a-z0-9]+", "", str(name or "").casefold())
+        if normalized:
+            provider_aliases.add(normalized)
+        provider_aliases.update(
+            part for part in re.split(r"[^a-z0-9]+", str(name or "").casefold())
+            if len(part) >= 4
+        )
+    catalog_aliases = {"free", "models"}
+
+    # Strip stacked wrappers safely (for example: models/google/model-id).
+    while "/" in display_model:
+        prefix, remainder = display_model.split("/", 1)
+        normalized_prefix = re.sub(r"[^a-z0-9]+", "", prefix.casefold())
+        if normalized_prefix not in catalog_aliases and normalized_prefix not in provider_aliases:
+            break
+        display_model = remainder
+    return display_model
+
+
 def group_routes_for_display(settings, *, status_by_id=None):
     """Group identical cloud model IDs for the Route UI without merging runtime Routes.
 
@@ -285,13 +315,7 @@ def group_routes_for_display(settings, *, status_by_id=None):
         cfg = settings.get("providers", {}).get(provider, {})
         model = normalize_model_id(route.get("model"))
         is_cloud = provider_kind(provider, cfg) == "cloud"
-        display_model = model
-        # APInex prefixes free-tier catalog IDs with ``free/`` while Google
-        # exposes the same underlying model without that presentation prefix.
-        for prefix in ("free/", "models/"):
-            if display_model.casefold().startswith(prefix):
-                display_model = display_model[len(prefix):]
-                break
+        display_model = normalize_display_model_id(model, provider, cfg)
         key = ("cloud", display_model.casefold()) if is_cloud and display_model else ("route", str(route.get("id")))
 
         group = grouped.get(key)
@@ -318,7 +342,6 @@ def group_routes_for_display(settings, *, status_by_id=None):
             group["active_count"] += 1
 
     return groups
-
 def ensure_routes(settings, *, capabilities=None):
     """Persist and repair routes, collapsing duplicate provider/model entries."""
     settings.setdefault("providers", {})
