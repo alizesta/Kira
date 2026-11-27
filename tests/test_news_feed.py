@@ -178,6 +178,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                      "https://example.com/old", "https://example.com/old", "", stamp,
                      stamp + 7 * 86400, ""),
                 )
+                connection.commit()
             finally:
                 connection.close()
             migrated = NewsFeedStore(Path(temp))
