@@ -28,14 +28,14 @@ has been run yet (the repository is private to Claude 1's tools, so only code wa
 Real: Chat/Settings navigation, Quick People (switches character), conversations, Kira's Mood card (mood service), greeting by time of
 day, composer (send, attach, stop), every old toolbar control (moved into the tray that the ✦ button opens).
 Display-only ("Coming soon" in the status line): Home, Voice Call, Memories, Gallery, Journal, the three header round icons, Our Bond
-(Level 12, 72 %), Today's Vibe, Call/Voice/Surprise, playlist, quote, profile heart, the 🔍 and ⚙ icons in the chat header, the emoji
-button.
+(Level 12, 72 %), Today's Vibe, Call/Voice/Surprise, playlist, quote, profile heart, the search and sliders icons in the chat header,
+the emoji button.
 
 ## Portrait pictures
 
 Put one picture per character at `assets/dashboard/<character id>_portrait.png` (for example `kira_portrait.png`, `ren_portrait.png`,
 `mika_portrait.png`). A character with a picture shows the portrait card (name over the lower edge); one without keeps the animated
-avatar. The user will supply Kira's picture; place it there.
+avatar. Kira's own picture is `assets/dashboard/kira_portrait.jpg` (chat_shell); see the 4th pass below.
 
 ## Not done yet (updated 2026-11-27 Claude 2, after rendering the real window offscreen)
 
@@ -57,7 +57,19 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 9th pass): New chat button hidden; lightning-bolt energy widget hidden; Kira's mood face (all `emotion_*` SVGs, converted to a cat head with ears at load time in `ui_icons._cat_face`) now stands before the "Kira's Mood" title, static emoji removed; composer's left square button shows the neon Eye icon (it still opens the tools tray); send button has a neon plane icon and a light-violet border (a QGraphicsDropShadowEffect was tried and crashes because appearance_runtime replaces graphics effects).
 
+* Done (Claude 1, 10th pass, after reading Claude 2's passes 1-9 and the current files; nothing was run): no emoji or text glyph is used as an icon any more except the Quick People character badges. New neon SVGs in `assets/icons`: `star`, `cloud_rain`, `play`, `chevron_right`, `sliders`, `waveform`, `sparkle`, `cat` (same ISC/Lucide style, `currentColor`, rendered by `ui_icons.make_icon`). `chat_shell`: brand = cat logo + KIRA + sparkle; stat cards use `_icon_label` (heart, star, chevron arrows, rain cloud); Call/Voice/Surprise buttons carry phone/waveform/gift icons; the playlist button carries the play icon; greeting and quote hearts are neon heart icons (`_icon_label`). `dashboard_chat`: chat header search + sliders are neon icons. Conflict fixed: `dashboard_chat._sync_portrait` used to call `avatar.setVisible(True)` whenever the PNG portrait was missing, which re-showed the animated avatar next to Kira's JPG portrait on every theme apply; it now leaves the avatar alone when `avatar_card.kira_portrait` exists. The background image the user sent Claude 1 is the same picture as `kira_chat_background.jpg` (already wired, nothing to add).
+
+## Still different from the reference (checked by reading the code; not rendered)
+
+* Font: the reference uses a rounded geometric sans (Poppins/Nunito look); the app uses the system font. Needs a font file in `assets/` + `QFontDatabase.addApplicationFont` (the user must supply a licensed/OFL font file).
+* Cards are opaque (`#120a26`); in the reference they are translucent glass over the background picture (try `rgba(18,10,38,0.7)`; check it against `chat_background` painting).
+* Quick People badges are emoji (🔥 🌸 ✦); the reference has a blue flame and a pink flower drawn as icons.
+* Nothing has been compared pixel by pixel (sizes, paddings, font sizes): render the real window offscreen at 1536x1024 and compare with the image.
+* The "is typing" box and the bubble corners have still not been seen in a render.
+* Press/hover animations and the glow around the active nav item are not in the reference-level detail yet.
+
 ## Test checklist for the final pass
 
-Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the
-old bubble HTML (the replaced `message_html` persists in the process once the skin is applied).
+Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order), the
+old bubble HTML (the replaced `message_html` persists in the process once the skin is applied), the old brand text "KIRA ✦" (now an icon
+row with the label "KIRA"), and nav button texts.
