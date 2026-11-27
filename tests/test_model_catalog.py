@@ -115,14 +115,14 @@ class TabRuleTests(unittest.TestCase):
 
         group = next(row for row in catalog_rows(s) if row["model"] == model)
         first_provider, first_model = group["member_keys"][0]
-        first_route_id = api_manager.set_model_enabled(s, first_provider, first_model, True)
+        first_route_id = api_manager.set_model_enabled(s, first_provider, first_model, True, capabilities=CAPABILITIES)
         partially_enabled = next(row for row in catalog_rows(s) if row["model"] == model)
         self.assertTrue(partially_enabled["enabled"])
         self.assertIn(mc.TAB_ACTIVE, partially_enabled["tabs"])
 
         route_ids = [first_route_id]
         for provider, model_id in group["member_keys"][1:]:
-            route_ids.append(api_manager.set_model_enabled(s, provider, model_id, True))
+            route_ids.append(api_manager.set_model_enabled(s, provider, model_id, True, capabilities=CAPABILITIES))
 
         self.assertEqual(len(set(route_ids)), 2)
         matching_routes = [route for route in routes.get_routes(s) if route["id"] in route_ids]
