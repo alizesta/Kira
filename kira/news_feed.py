@@ -529,6 +529,8 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
             "processed": True,
         })
         consumed.update(index for index, _source in selected)
+    if generated and not posts:
+        raise ValueError("The character model did not map any post to the supplied source records")
     return posts
 
 
