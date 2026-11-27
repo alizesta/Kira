@@ -217,7 +217,9 @@ def group_model_rows(rows, settings):
         ]
 
         tested = [member["test"] for member in members if member.get("test")]
-        if not tested:
+        if len(members) == 1:
+            combined_test = members[0].get("test")
+        elif not tested:
             combined_test = None
         else:
             times = [int(item["ms"]) for item in tested if item.get("ms") is not None]
