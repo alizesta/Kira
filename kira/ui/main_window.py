@@ -1,7 +1,7 @@
 """Thin Qt host with lazy, feature-scoped controller construction."""
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QTimer, Signal, Qt
 from PySide6.QtWidgets import QMainWindow
 
 INPUT_HINT_INTERVAL_MS = 25000
@@ -14,6 +14,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         from .feature_controller_registry import FeatureControllerRegistry
         from .window_presentation_context import WindowPresentationContext
 
