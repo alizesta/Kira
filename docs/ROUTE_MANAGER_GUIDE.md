@@ -8,6 +8,8 @@ Open it from the ☰ menu → **Route**.
 - **Route:** one model on one Provider. Each Route has its own settings and priority.
 - **Priority is list order.** The upper Route is tried first. If it fails, failover moves to the next one.
 
+- **Grouped cloud model:** Route displays the same cloud Model ID from multiple Providers as one row. The `3x` suffix means three provider-specific Routes are enabled and eligible. These Routes remain separate internally, preserving each API key's quota, timeout, health and failover behavior. Local Ollama models are not merged with cloud models.
+
 ## Common tasks
 
 | Goal | Action |
