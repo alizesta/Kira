@@ -22,6 +22,7 @@ from datetime import datetime
 from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QSizePolicy,
     QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -169,6 +170,16 @@ def _frame(name, parent=None) -> QFrame:
     return frame
 
 
+_BADGES = {"kira": "✦", "ren": "🔥", "mika": "🌸"}
+
+
+def _is_fa(context) -> bool:
+    try:
+        return context.services.settings.get("ui_lang", "en") == "fa"
+    except Exception:                                      # noqa: BLE001
+        return False
+
+
 def _character_pixmap(context, character_id, size):
     """Round avatar picture of one character, or None when it has no readable picture."""
     try:
@@ -299,6 +310,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
     scroll.setFixedWidth(LEFT_WIDTH)
     scroll.viewport().setAutoFillBackground(False)
     column = QWidget()
@@ -321,6 +333,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     sidebar.setMinimumWidth(0)
     sidebar.setMaximumWidth(16777215)
     sidebar.setMinimumHeight(60)
+    sidebar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)   # its inner rows must not widen the column
     layout.addWidget(sidebar, 1)
     scroll.setWidget(column)
     return scroll
@@ -543,12 +556,15 @@ def _wrap_theme(controller, page, style) -> None:
 
 def _picture_tabs(context) -> None:
     for character_id, button in dict(getattr(context.views, "char_tab_buttons", {}) or {}).items():
+        if "\n" not in button.text():
+            badge = _BADGES.get(character_id, "")
+            button.setText(f"{button.text().strip()}{' ' + badge if badge else ''}\n● {'آنلاین' if _is_fa(context) else 'Online'}")
         if not button.icon().isNull():
             continue
-        pixmap = _character_pixmap(context, character_id, 36)
+        pixmap = _character_pixmap(context, character_id, 48)
         if pixmap is not None:
             button.setIcon(QIcon(pixmap))
-            button.setIconSize(QSize(36, 36))
+            button.setIconSize(QSize(48, 48))
 
 
 def _wrap_tabs(context, controller) -> None:

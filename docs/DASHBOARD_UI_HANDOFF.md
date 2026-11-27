@@ -40,7 +40,8 @@ avatar. The user will supply Kira's picture; place it there.
 ## Not done yet (updated 2026-11-27 Claude 2, after rendering the real window offscreen)
 
 * Steps 1-4 of the user's order (rounded bubbles, typing box, news panel hidden, column proportions) were written by Claude 1 in 7c72d69; Claude 2 rendered them (tests/window_factory needs `vision_runtime_provider` + `desktop_context_application_service` stubs) and fixed: nav buttons were 66 px (QSS min-height + padding add up; now fixed 46), duplicate "Today" chip removed (header chip only), bubbles shrink to their text, profile quote wraps, left column fits 1024 px.
-* Still different from the reference: left column is clipped on the right by its scrollbar; Quick People rows have no Online dot / flame / flower and tiny avatars; extra person icon in the chat header; the OS-style top bar (hamburger) above the page; Kira's picture (waiting for the user).
+* Done (Claude 2, 2nd pass): left column no longer clipped (conversation sidebar ignores its min width, no scrollbar), Quick People rows show picture 48 px + badge (Ren flame, Mika flower, Kira star) + "Online".
+* Still different: the extra header button is the real "Show character on desktop" action (kept); the OS-style top bar with the hamburger above the page; Kira's picture (waiting for the user, `assets/dashboard/kira_portrait.png`); bubble corners / typing box not seen in a render yet (no messages in the offscreen window).
 
 ## Test checklist for the final pass
 
