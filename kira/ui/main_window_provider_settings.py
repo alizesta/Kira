@@ -789,37 +789,69 @@ class ProviderSettingsController(WindowFeatureController):
     # ---------- Route Manager ----------
     HEALTH_TXT = {"unknown": "— بدون تست", "healthy": "● سالم", "degraded": "◐ مشکل موقت", "down": "✕ خراب", "disabled": "⏸ خاموش‌شده"}
 
-    def _selected_route_id(self):
+    def _selected_route_ids(self):
         item = self.context.views.route_list.currentItem()
-        return item.data(Qt.UserRole) if item else None
+        if item is None:
+            return []
+        route_ids = item.data(Qt.UserRole + 1)
+        if isinstance(route_ids, (list, tuple)) and route_ids:
+            return [str(route_id) for route_id in route_ids if route_id]
+        route_id = item.data(Qt.UserRole)
+        return [str(route_id)] if route_id else []
+
+    def _selected_route_id(self):
+        route_ids = self._selected_route_ids()
+        manual = self.context.services.settings.get("manual_route_id", "")
+        return manual if manual in route_ids else (route_ids[0] if route_ids else None)
 
     @front_only
     def refresh_route_list(self):
         if not hasattr(self.context.views, "route_list"):
             return
-        keep = self._selected_route_id()
+        keep = self._selected_route_ids()
         status = {x["name"]: x for x in self.context.session.client.status()}
         manual, default = self.context.services.settings.get("manual_route_id", ""), self.context.services.settings.get("default_route_id", "")
-        providers = self.context.services.settings.get("providers", {})
+        settings = self.context.services.settings
+        providers = settings.get("providers", {})
+        groups = route_model.group_routes_for_display(settings, status_by_id=status)
         self.context.views.route_list.blockSignals(True)
         self.context.views.route_list.clear()
-        for i, r in enumerate(self.context.services.provider_application_service.get_routes(self.context.services.settings)):
-            st = status.get(r["id"], {})
-            label = self.context.services.provider_application_service.provider_label(r["provider"], providers.get(r["provider"]))
-            icon = "☁" if st.get("kind", self.context.services.provider_application_service.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
-            marks = ("★ دستی  " if r["id"] == manual else "") + ("⚑ پیش‌فرض  " if r["id"] == default else "")
-            health = self.HEALTH_TXT.get(st.get("health", "unknown"), "")
-            extra = (f" {st['last_ms']}ms" if st.get("last_ms") is not None else "") + \
-                    (f" · استراحت {st['cooldown']}s" if st.get("cooldown") else "")
-            reason = "" if st.get("enabled") or st.get("cooldown") else {"disabled": " · غیرفعال", "no_key": " · بدون کلید",
-                                                                          "provider_off": " · Provider غیرفعال"}.get(st.get("reason"), " · غیرفعال")
-            item = QListWidgetItem(f"{i + 1}.  {icon} {label} / {r['model'] or '(بدون مدل)'}   {marks}{health}{extra}{reason}")
-            item.setData(Qt.UserRole, r["id"])
-            if reason:
+        for i, group in enumerate(groups):
+            route_ids = list(group["route_ids"])
+            routes = group["routes"]
+            representative_id = manual if manual in route_ids else (default if default in route_ids else route_ids[0])
+            representative = next(route for route in routes if route["id"] == representative_id)
+            states = [status.get(route_id, {}) for route_id in route_ids]
+            st = status.get(representative_id, {})
+            labels = [self.context.services.provider_application_service.provider_label(pid, providers.get(pid))
+                      for pid in group["provider_ids"]]
+            icon = "☁" if group["kind"] == "cloud" else "⌂"
+            marks = ("★ دستی  " if manual in route_ids else "") + ("⚑ پیش‌فرض  " if default in route_ids else "")
+            health_state = next((state.get("health") for state in states if state.get("health") == "healthy"), st.get("health", "unknown"))
+            health = self.HEALTH_TXT.get(health_state, "")
+            last_ms = st.get("last_ms")
+            extra = (f" {last_ms}ms" if last_ms is not None else "") + (f" · استراحت {st['cooldown']}s" if st.get("cooldown") else "")
+            active_count = int(group["active_count"])
+            multiplicity = f" · {active_count}x" if len(route_ids) > 1 else ""
+            if active_count:
+                reason = ""
+            else:
+                reason = {"disabled": " · غیرفعال", "no_key": " · بدون کلید",
+                          "provider_off": " · Provider غیرفعال"}.get(st.get("reason"), " · غیرفعال")
+            if len(route_ids) > 1:
+                caption = f"{group['model'] or '(بدون مدل)'}{multiplicity}"
+                item_text = f"{i + 1}.  {icon} {caption}   {marks}{health}{extra}{reason}"
+            else:
+                item_text = f"{i + 1}.  {icon} {labels[0]} / {group['model'] or '(بدون مدل)'}   {marks}{health}{extra}{reason}"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, representative_id)
+            item.setData(Qt.UserRole + 1, route_ids)
+            if not active_count:
                 item.setForeground(QBrush(QColor("#8d93ab")))
             self.context.views.route_list.addItem(item)
         for i in range(self.context.views.route_list.count()):
-            if self.context.views.route_list.item(i).data(Qt.UserRole) == keep:
+            item_route_ids = self.context.views.route_list.item(i).data(Qt.UserRole + 1) or []
+            if any(route_id in item_route_ids for route_id in keep):
                 self.context.views.route_list.setCurrentRow(i)
                 break
         else:
@@ -827,9 +859,8 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.route_list.setCurrentRow(0)
         self.context.views.route_list.blockSignals(False)
         self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
-                                      ("" if self.context.services.settings.get("failover_enabled", SETTINGS_DEFAULTS["failover_enabled"]) else " · Failover خاموش است"))
+                                      ("" if settings.get("failover_enabled", SETTINGS_DEFAULTS["failover_enabled"]) else " · Failover خاموش است"))
         self.on_route_selected()
-
     def on_route_selected(self):
         rid = self._selected_route_id()
         route = self.context.services.provider_application_service.find_route(self.context.services.settings, rid) if rid else None
