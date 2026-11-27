@@ -178,9 +178,10 @@ class NewsFeedStoreTests(unittest.TestCase):
                      stamp + 7 * 86400, ""),
                 )
             migrated = NewsFeedStore(Path(temp))
-            columns = {
-                row["name"] for row in migrated._connect().execute("PRAGMA table_info(news_items)")
-            }
+            with migrated._connection() as db:
+                columns = {
+                    row["name"] for row in db.execute("PRAGMA table_info(news_items)")
+                }
             self.assertTrue({"is_post", "processed"} <= columns)
             self.assertEqual(migrated.list_posts("kira"), [])
             self.assertEqual(len(migrated.list_unprocessed_items("kira")), 1)
