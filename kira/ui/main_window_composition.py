@@ -588,9 +588,12 @@ def initialize_main_window(
     )
 
     central = QWidget()
+    central.setObjectName("kiraWindowSurface")
     central_layout = QVBoxLayout(central)
-    central_layout.setContentsMargins(8, 6, 8, 8)
-    central_layout.setSpacing(8)
+    # A frameless window has no native frame to cover layout gutters. Keep the
+    # custom surface edge-to-edge so no grey parent/background strips remain.
+    central_layout.setContentsMargins(0, 0, 0, 0)
+    central_layout.setSpacing(0)
     from .custom_window_frame import create_custom_title_bar
     central_layout.addWidget(create_custom_title_bar(self.host, central))
     toolbar_frame = QFrame()
