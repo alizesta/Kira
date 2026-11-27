@@ -159,7 +159,7 @@ class NewsFeedPanel(QFrame):
         if self._character_id not in CHARACTER_IDS:
             return
         self.refresh_button.setEnabled(False)
-        self.status_label.setText("در حال دریافت…")
+        self.status_label.setText("در حال بررسی و نوشتن پست…")
         self.refresh_requested.emit(self._character_id)
 
     def show_refreshing(self, character_id: str):
@@ -217,11 +217,14 @@ class NewsFeedPanel(QFrame):
                     float(state["refreshed_at"]), tz=timezone.utc
                 ).astimezone().strftime("%H:%M")
                 text = f"{len(items)} پست · بررسی {checked}"
-                if state.get("last_error"):
+                error = str(state.get("last_error") or "")
+                if "Post generation" in error:
+                    text += " · تولید با مدل ناموفق بود"
+                elif error:
                     text += " · برخی منابع در دسترس نبودند"
                 self.status_label.setText(text)
             elif state.get("last_error"):
-                self.status_label.setText("دریافت خبر ناموفق بود · دوباره تلاش کن")
+                self.status_label.setText("تولید پست خبری ناموفق بود · دوباره تلاش کن")
             else:
                 self.status_label.setText("فید در حال آماده‌شدن است")
 
