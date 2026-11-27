@@ -214,7 +214,8 @@ class TypingAndBubbleRenderTests(unittest.TestCase):
             view.document(), view.document().documentLayout(), tables[0]
         ))
         self.assertIsNotNone(view._kira_underlay)
-        view._kira_underlay._paint()
+        view.repaint()
+        _APP.processEvents()
         view.close()
 
 
