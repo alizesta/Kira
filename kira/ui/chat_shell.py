@@ -9,6 +9,9 @@ signal and view reference keeps working) plus new widgets. Elements that have no
 Vibe, playlist, quote, Home/Voice Call/Memories/Gallery/Journal, Call/Voice/Surprise, the header icons) are display-only: a click
 shows "coming soon" in the status line. Kira's Mood is real: it follows the mood service.
 
+Every icon is a neon SVG from assets/icons rendered by ui_icons.make_icon (same bloom everywhere); no emoji or text glyph is used
+as an icon any more, except the character badges of Quick People.
+
 Each step is independent; a missing widget skips that step and an error is logged and leaves that part of the old layout alone.
 Two controller methods overwrite what the skin sets, so they are wrapped on the controller INSTANCE (the class is untouched):
 apply_chat_theme (replaces the page stylesheet), refresh_conversation_list / refresh_tab_buttons (rebuild rows and button text).
@@ -66,6 +69,7 @@ QLabel#dashName { color: #f4f0ff; font-size: 15px; font-weight: 600; }
 QLabel#dashOnline { color: #46e08a; font-size: 11px; }
 QLabel#dashQuoteText { color: #d9ccff; font-size: 13px; }
 QLabel#dashHeart { color: #a855f7; font-size: 16px; }
+QLabel#dashIcon { background: transparent; border: none; }
 QPushButton#charTab { background: transparent; border: none; border-radius: 12px; padding: 6px 10px; color: #e9e3ff;
     text-align: %ALIGN%; font-size: 14px; min-height: 40px; }
 QPushButton#charTab:hover { background: #170d33; }
@@ -256,6 +260,16 @@ def _frame(name, parent=None) -> QFrame:
     frame = QFrame(parent)
     frame.setObjectName(name)
     return frame
+
+
+def _icon_label(icon_name: str, size: int, colour: str = "#b9a2ff") -> QLabel:
+    """A neon SVG icon (assets/icons/<icon_name>.svg, same bloom as every button icon) as a plain label."""
+    label = QLabel()
+    label.setObjectName("dashIcon")
+    label.setFixedSize(size + 4, size + 4)
+    label.setAlignment(Qt.AlignCenter)
+    label.setPixmap(make_icon(icon_name, normal=colour).pixmap(size, size))
+    return label
 
 
 _BADGES = {"kira": "✦", "ren": "🔥", "mika": "🌸"}
@@ -471,7 +485,13 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     layout.setContentsMargins(8, 8, 8, 8)
     layout.setSpacing(6)
 
-    layout.addWidget(_label("KIRA ✦", "dashBrand"))
+    brand = QHBoxLayout()                                  # cat-face logo, KIRA, sparkle: like the reference
+    brand.setSpacing(8)
+    brand.addWidget(_icon_label("cat", 34, "#c4a6ff"))
+    brand.addWidget(_label("KIRA", "dashBrand"))
+    brand.addWidget(_icon_label("sparkle", 18, "#c4a6ff"), 0, Qt.AlignTop)
+    brand.addStretch(1)
+    layout.addLayout(brand)
     layout.addWidget(_label("همراه هوشمند تو" if fa else "Your AI Companion", "dashBrandSub"))
     layout.addLayout(_build_nav(context, controller, parts, lang))
     parts["profile"] = _build_profile(context, parts, lang)     # the Kira/Online card is no longer shown; the conversation list takes its place
@@ -598,7 +618,7 @@ def _build_profile(context, parts, lang) -> QFrame:
     if pixmap is not None:
         picture.setPixmap(pixmap)
     else:
-        picture.setText("✦")
+        picture.setPixmap(make_icon("sparkle", normal="#c4a6ff").pixmap(26, 26))
         picture.setAlignment(Qt.AlignCenter)
     names = QVBoxLayout()
     try:
@@ -615,9 +635,7 @@ def _build_profile(context, parts, lang) -> QFrame:
                    else "“I'm always here, for whatever you need.”", "dashQuoteText")
     quote.setWordWrap(True)
     outer.addWidget(quote)
-    heart = _label("♡", "dashHeart")
-    heart.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-    outer.addWidget(heart)
+    outer.addWidget(_icon_label("heart", 20, "#a855f7"), 0, Qt.AlignRight)
     return card
 
 
@@ -628,7 +646,12 @@ def _build_greeting(context, lang) -> QWidget:
     row.setContentsMargins(4, 0, 4, 0)
     texts = QVBoxLayout()
     texts.setSpacing(2)
-    texts.addWidget(_label(greeting_text(lang, datetime.now().hour) + " ♡", "dashGreeting"))
+    title_row = QHBoxLayout()                              # greeting text followed by the neon heart of the reference
+    title_row.setSpacing(8)
+    title_row.addWidget(_label(greeting_text(lang, datetime.now().hour), "dashGreeting"))
+    title_row.addWidget(_icon_label("heart", 24, "#a855f7"))
+    title_row.addStretch(1)
+    texts.addLayout(title_row)
     texts.addWidget(_label("امیدوارم روزت مهربان بوده باشه." if fa else "Hope your day was kind to you.", "dashGreetingSub"))
     row.addLayout(texts, 1)
     for glyph in ("♫", "☾", "🔔"):
@@ -647,17 +670,21 @@ def _build_greeting(context, lang) -> QWidget:
     return box
 
 
-def _stat_card(title_glyph, title, with_arrow) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
+def _stat_card(title_icon, title, with_arrow) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
+    """A stat card: a neon icon (name of assets/icons/<name>.svg, or "" for none), the title and an optional arrow."""
     card = _frame("statCard")
     card.setMinimumHeight(96)
     outer = QVBoxLayout(card)
     outer.setContentsMargins(12, 10, 12, 10)
     outer.setSpacing(4)
     head = QHBoxLayout()
-    head.addWidget(_label(f"{title_glyph}  {title}" if title_glyph else title, "statTitle"))
+    head.setSpacing(6)
+    if title_icon:
+        head.addWidget(_icon_label(title_icon, 18))
+    head.addWidget(_label(title, "statTitle"))
     head.addStretch(1)
     if with_arrow:
-        head.addWidget(_label("›", "statSub"))
+        head.addWidget(_icon_label("chevron_right", 14, "#8f7bc0"))
     outer.addLayout(head)
     body = QHBoxLayout()
     texts = QVBoxLayout()
@@ -678,7 +705,7 @@ def _build_stats(context, parts, lang) -> QWidget:
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(10)
 
-    bond, texts, body = _stat_card("♡", "پیوند ما" if fa else "Our Bond", False)
+    bond, texts, body = _stat_card("heart", "پیوند ما" if fa else "Our Bond", False)
     texts.addWidget(_label("سطح ۱۲" if fa else "Level 12", "statValue"))
     texts.addWidget(_label("متصل" if fa else "Connected", "statSub"))
     body.addWidget(_Ring(72))
@@ -702,12 +729,10 @@ def _build_stats(context, parts, lang) -> QWidget:
     body.addWidget(parts["sparkline"])
     row.addWidget(mood, 1)
 
-    vibe, texts, body = _stat_card("☆", "حال‌وهوای امروز" if fa else "Today's Vibe", True)
+    vibe, texts, body = _stat_card("star", "حال‌وهوای امروز" if fa else "Today's Vibe", True)
     texts.addWidget(_label("شب بارونی،" if fa else "Rainy night,", "statValue"))
     texts.addWidget(_label("مناسب حرف‌های عمیق." if fa else "perfect for deep talks.", "statSub"))
-    cloud = _label("🌧", "dashHeart")
-    cloud.setStyleSheet("font-size: 34px; color: #a78bfa;")
-    body.addWidget(cloud)
+    body.addWidget(_icon_label("cloud_rain", 38, "#a78bfa"))
     row.addWidget(vibe, 1)
     return box
 
@@ -727,8 +752,11 @@ def _build_right(avatar_card, context, lang) -> None:
     actions_row = QHBoxLayout(actions)
     actions_row.setContentsMargins(8, 8, 8, 8)
     actions_row.setSpacing(6)
-    for glyph, english, persian in (("☎", "Call", "تماس"), ("♪", "Voice", "صدا"), ("🎁", "Surprise", "سورپرایز")):
-        actions_row.addWidget(_display_button(context, lang, f"{glyph} {persian if fa else english}", "dashAction", actions))
+    for icon, english, persian in (("phone", "Call", "تماس"), ("waveform", "Voice", "صدا"), ("gift", "Surprise", "سورپرایز")):
+        button = _display_button(context, lang, persian if fa else english, "dashAction", actions)
+        button.setIcon(make_icon(icon, normal="#b18aff", hover="#ffffff"))
+        button.setIconSize(QSize(20, 20))
+        actions_row.addWidget(button)
     layout.addWidget(actions)
 
     playlist = _frame("dashPlaylist")
@@ -744,7 +772,10 @@ def _build_right(avatar_card, context, lang) -> None:
     texts.addWidget(_Waveform())
     row.addWidget(cover)
     row.addLayout(texts, 1)
-    row.addWidget(_display_button(context, lang, "▶", "dashPlay", playlist))
+    play = _display_button(context, lang, "", "dashPlay", playlist)
+    play.setIcon(make_icon("play", normal="#ffffff", hover="#ffffff"))
+    play.setIconSize(QSize(14, 14))
+    row.addWidget(play)
     layout.addWidget(playlist)
 
     quote = _frame("dashQuote")
@@ -755,9 +786,7 @@ def _build_right(avatar_card, context, lang) -> None:
                   else "You don't have to be perfect to be important to me.", "dashQuoteText")
     text.setWordWrap(True)
     quote_layout.addWidget(text)
-    heart = _label("♡", "dashHeart")
-    heart.setAlignment(Qt.AlignRight)
-    quote_layout.addWidget(heart)
+    quote_layout.addWidget(_icon_label("heart", 20, "#a855f7"), 0, Qt.AlignRight)
     layout.addWidget(quote)
 
 
