@@ -64,6 +64,67 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(row["price"], "free")
         self.assertEqual(row["tabs"], [mc.TAB_FREE])
 
+    def test_identical_models_from_apinex_and_google_share_one_catalog_row(self):
+        s = helpers.fresh_settings()
+        apinex = routes.add_provider(
+            s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key-123456"
+        )
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-key-123456"
+        )
+        CAPABILITIES.clear()
+        api_manager.ensure_registry(s, CAPABILITIES)
+        model = "gemenai-4-hydrogen"
+        api_manager.apply_models(
+            s, apinex, [{"id": "free/" + model, "free": True, "text": "Yes"}],
+            capabilities=CAPABILITIES
+        )
+        api_manager.apply_models(
+            s, google, [{"id": "goole/" + model, "free": False, "text": "Yes"}],
+            capabilities=CAPABILITIES
+        )
+
+        rows = catalog_rows(s)
+        matching = [row for row in rows if row["model"].casefold() == model.casefold()]
+        self.assertEqual(len(matching), 1)
+        group = matching[0]
+        self.assertEqual(set(group["provider_ids"]), {apinex, google})
+        self.assertEqual(set(group["member_keys"]), {(apinex, "free/" + model), (google, "goole/" + model)})
+        self.assertEqual(group["provider_label"], "APInex + Google AI Studio")
+        self.assertEqual(group["member_count"], 2)
+        self.assertEqual(group["price"], "unknown")  # provider prices differ; never pretend both are free
+        self.assertEqual(group["tabs"], [mc.TAB_FREE, mc.TAB_PAID])
+        self.assertIn("APInex", group["price_tooltip"])
+        self.assertIn("Google AI Studio", group["price_tooltip"])
+
+    def test_grouped_catalog_members_keep_independent_route_ids(self):
+        s = helpers.fresh_settings()
+        apinex = routes.add_provider(
+            s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key-123456"
+        )
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-key-123456"
+        )
+        CAPABILITIES.clear()
+        api_manager.ensure_registry(s, CAPABILITIES)
+        model = "gemenai-4-hydrogen"
+        api_manager.apply_models(s, apinex, [{"id": "free/" + model, "free": True}], capabilities=CAPABILITIES)
+        api_manager.apply_models(s, google, [{"id": "goole/" + model, "free": True}], capabilities=CAPABILITIES)
+
+        group = next(row for row in catalog_rows(s) if row["model"] == model)
+        route_ids = []
+        for provider, model_id in group["member_keys"]:
+            route_ids.append(api_manager.set_model_enabled(s, provider, model_id, True))
+
+        self.assertEqual(len(set(route_ids)), 2)
+        matching_routes = [route for route in routes.get_routes(s) if route["id"] in route_ids]
+        self.assertEqual({route["provider"] for route in matching_routes}, {apinex, google})
+        self.assertEqual({route["model"] for route in matching_routes}, {"free/" + model, "goole/" + model})
+        refreshed = next(row for row in catalog_rows(s) if row["model"] == model)
+        self.assertTrue(refreshed["enabled"])
+        self.assertIn(mc.TAB_ACTIVE, refreshed["tabs"])
     def test_enabled_route_adds_the_active_tab_and_keeps_its_price_tab(self):
         s = build()
         api_manager.set_model_enabled(s, "groq", "free-a", True)
