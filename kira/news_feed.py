@@ -281,10 +281,22 @@ class NewsFeedStore:
                     published_at, first_seen_at, expires_at, region
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(character_id, url_key) DO UPDATE SET
-                    category=excluded.category,
+                    category=CASE
+                        WHEN excluded.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
+                            THEN excluded.category
+                        WHEN news_items.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
+                            THEN news_items.category
+                        ELSE excluded.category
+                    END,
                     title=excluded.title,
                     summary=excluded.summary,
-                    source=excluded.source,
+                    source=CASE
+                        WHEN excluded.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
+                            THEN excluded.source
+                        WHEN news_items.category IN ('gaming_rumor', 'gaming_community', 'gaming_report', 'gaming_social', 'iran_health')
+                            THEN news_items.source
+                        ELSE excluded.source
+                    END,
                     url=excluded.url,
                     published_at=CASE WHEN excluded.published_at != '' THEN excluded.published_at ELSE news_items.published_at END,
                     expires_at=MIN(news_items.expires_at, excluded.expires_at),
