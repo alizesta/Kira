@@ -285,12 +285,19 @@ def group_routes_for_display(settings, *, status_by_id=None):
         cfg = settings.get("providers", {}).get(provider, {})
         model = normalize_model_id(route.get("model"))
         is_cloud = provider_kind(provider, cfg) == "cloud"
-        key = ("cloud", model.casefold()) if is_cloud and model else ("route", str(route.get("id")))
+        display_model = model
+        # APInex prefixes free-tier catalog IDs with ``free/`` while Google
+        # exposes the same underlying model without that presentation prefix.
+        for prefix in ("free/", "models/"):
+            if display_model.casefold().startswith(prefix):
+                display_model = display_model[len(prefix):]
+                break
+        key = ("cloud", display_model.casefold()) if is_cloud and display_model else ("route", str(route.get("id")))
 
         group = grouped.get(key)
         if group is None:
             group = {
-                "model": model,
+                "model": display_model,
                 "routes": [],
                 "route_ids": [],
                 "provider_ids": [],
