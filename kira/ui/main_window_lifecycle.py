@@ -44,6 +44,33 @@ class LifecycleController(WindowFeatureController):
         if (old == "off") != (new == "off"):
             self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
 
+    def apply_ui_language(self, language):
+        """Persist and apply interface-language changes as soon as the selector changes."""
+        language = str(language or "").strip().lower()
+        if language not in {"fa", "en"}:
+            return False
+
+        settings = self.context.services.settings
+        previous_language = settings.get("ui_lang", "en")
+        if previous_language == language:
+            return True
+
+        settings["ui_lang"] = language
+        try:
+            save_settings(settings)
+        except Exception as exc:  # noqa: BLE001 - keep the prior working language on persistence errors
+            settings["ui_lang"] = previous_language
+            is_persian = previous_language == "fa"
+            QMessageBox.critical(
+                self.window,
+                "خطا در ذخیره زبان" if is_persian else "Could not save language",
+                f"تغییر زبان ذخیره نشد: {exc}" if is_persian else f"The language change could not be saved: {exc}",
+            )
+            return False
+
+        self.feature_controller("session").retranslate()
+        return True
+
     def apply_settings(self):
         ensure_settings_tab = getattr(self.window, "_ensure_settings_tab", None)
         if callable(ensure_settings_tab):
