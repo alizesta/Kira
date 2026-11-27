@@ -120,7 +120,7 @@ def _archive_reason(settings, provider, model, meta, route, *, capabilities: Det
 
 
 def model_rows(settings, *, capabilities: DetectedCapabilities):
-    """Every chat model of every registered API as a flat list of dicts (see module doc for the tab rules)."""
+    """Every chat model of every registered API, grouped by shared cloud model identity for display."""
     api_manager.ensure_registry(settings, capabilities)
     routes = route_model.get_routes(settings)
     order = {(r["provider"], r["model"]): i for i, r in enumerate(routes)}
@@ -236,7 +236,10 @@ def group_model_rows(rows, settings):
         first = dict(members[0])
         first.update({
             "model": display_model,
-            "provider_label": " + ".join(provider_labels) if len(provider_labels) > 1 else provider_labels[0],
+            "provider_label": (
+                (" + ".join(provider_labels) + f" · {len(members)} API")
+                if len(members) > 1 else provider_labels[0]
+            ),
             "provider_ids": provider_ids,
             "provider_labels": provider_labels,
             "member_keys": member_keys,
