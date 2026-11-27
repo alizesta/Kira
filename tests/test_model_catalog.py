@@ -94,10 +94,81 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(group["provider_label"], "APInex + Google AI Studio · 2 API")
         self.assertEqual(group["member_count"], 2)
         self.assertEqual(group["price"], "unknown")  # provider prices differ; never pretend both are free
-        self.assertEqual(group["tabs"], [mc.TAB_FREE, mc.TAB_PAID])
+        self.assertEqual(group["tabs"], [mc.TAB_PAID])
+        self.assertNotIn(group, mc.rows_for_tab(rows, mc.TAB_FREE))
+        self.assertIn(group, mc.rows_for_tab(rows, mc.TAB_PAID))
         self.assertIn("APInex", group["price_tooltip"])
         self.assertIn("Google AI Studio", group["price_tooltip"])
 
+    def test_partially_archived_group_is_not_duplicated_and_only_live_members_toggle(self):
+        s = helpers.fresh_settings()
+        apinex = routes.add_provider(
+            s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key-123456"
+        )
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-key-123456"
+        )
+        CAPABILITIES.clear()
+        api_manager.ensure_registry(s, CAPABILITIES)
+        model = "gemenai-4-hydrogen"
+        api_manager.apply_models(s, apinex, [{"id": "free/" + model, "free": True}], capabilities=CAPABILITIES)
+        api_manager.apply_models(s, google, [{"id": "goole/" + model, "free": True}], capabilities=CAPABILITIES)
+        mc.archive_model(s, apinex, "free/" + model)
+
+        group = next(row for row in catalog_rows(s) if row["model"] == model)
+        self.assertEqual(group["tabs"], [mc.TAB_FREE])
+        self.assertNotIn(group, mc.rows_for_tab(catalog_rows(s), mc.TAB_ARCHIVED))
+        self.assertEqual(group["archived_member_count"], 1)
+        self.assertEqual(group["toggle_member_keys"], ((google, "goole/" + model),))
+        self.assertEqual(group["archived_member_keys"], ((apinex, "free/" + model),))
+
+        api_manager.set_model_enabled(s, google, "goole/" + model, True, capabilities=CAPABILITIES)
+        active_group = next(row for row in catalog_rows(s) if row["model"] == model)
+        self.assertEqual(active_group["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
+        self.assertTrue(active_group["enabled"])
+        self.assertEqual(active_group["enabled_count"], 1)
+        self.assertEqual(active_group["toggle_member_count"], 1)
+        google_route = next(
+            route for route in routes.get_routes(s)
+            if route["provider"] == google and route["model"] == "goole/" + model
+        )
+        self.assertEqual(active_group["provider"], google)
+        self.assertEqual(active_group["route_id"], google_route["id"])
+        self.assertTrue(google_route["enabled"])
+        self.assertFalse(any(
+            route["provider"] == apinex and route["model"] == "free/" + model and route["enabled"]
+            for route in routes.get_routes(s)
+        ))
+
+    def test_group_is_archived_only_when_every_provider_member_is_archived(self):
+        s = helpers.fresh_settings()
+        apinex = routes.add_provider(
+            s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key-123456"
+        )
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-key-123456"
+        )
+        CAPABILITIES.clear()
+        api_manager.ensure_registry(s, CAPABILITIES)
+        model = "gemenai-4-hydrogen"
+        api_manager.apply_models(s, apinex, [{"id": "free/" + model, "free": True}], capabilities=CAPABILITIES)
+        api_manager.apply_models(s, google, [{"id": "goole/" + model, "free": True}], capabilities=CAPABILITIES)
+        mc.archive_model(s, apinex, "free/" + model)
+        mc.archive_model(s, google, "goole/" + model)
+
+        group = next(row for row in catalog_rows(s) if row["model"] == model)
+        self.assertEqual(group["tabs"], [mc.TAB_ARCHIVED])
+        self.assertEqual(group["archived_member_count"], 2)
+        self.assertEqual(group["toggle_member_keys"], ())
+        self.assertEqual(len(group["archived_member_keys"]), 2)
+        self.assertTrue(group["restorable"])
+
+        for provider, model_id in group["archived_member_keys"]:
+            mc.restore_model(s, provider, model_id, capabilities=CAPABILITIES)
+        restored = next(row for row in catalog_rows(s) if row["model"] == model)
+        self.assertEqual(restored["tabs"], [mc.TAB_FREE])
     def test_grouped_catalog_members_keep_independent_route_ids(self):
         s = helpers.fresh_settings()
         apinex = routes.add_provider(
@@ -118,6 +189,8 @@ class TabRuleTests(unittest.TestCase):
         first_route_id = api_manager.set_model_enabled(s, first_provider, first_model, True, capabilities=CAPABILITIES)
         partially_enabled = next(row for row in catalog_rows(s) if row["model"] == model)
         self.assertTrue(partially_enabled["enabled"])
+        self.assertEqual(partially_enabled["enabled_count"], 1)
+        self.assertEqual(partially_enabled["toggle_member_count"], 2)
         self.assertIn(mc.TAB_ACTIVE, partially_enabled["tabs"])
 
         route_ids = [first_route_id]
