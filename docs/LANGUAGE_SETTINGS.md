@@ -16,8 +16,7 @@ The interface-language preference is independent of speech recognition, speech s
 1. Open the General/Preferences settings page.
 2. Find the **Interface language** selector.
 3. Select **English** or **فارسی**.
-4. Save the settings.
-5. The session controller retranslates registered UI strings and sets the Qt layout direction: left-to-right for English and right-to-left for Persian.
+4. The selection is saved immediately; the session controller retranslates registered UI strings and sets the Qt layout direction without requiring a separate Save action: left-to-right for English and right-to-left for Persian.
 
 ## Persistence and migration behavior
 
