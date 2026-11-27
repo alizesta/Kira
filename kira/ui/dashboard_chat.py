@@ -107,8 +107,9 @@ def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", ava
     cell = f"{extra_html}{body}{meta}{footer_html or ''}"
     spacer = '<p style="margin:0;font-size:3pt;">&nbsp;</p>'
     if kind == "user":
-        return (f'<table align="right" cellspacing="0" cellpadding="{USER_PAD}" style="margin:7px 4px;">'
-                f'<tr><td>{cell}</td></tr></table>{spacer}')
+        return (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin:7px 0;"><tr><td align="right">'
+                f'<table align="right" cellspacing="0" cellpadding="{USER_PAD}">'
+                f'<tr><td>{cell}</td></tr></table></td></tr></table>{spacer}')
     avatar = (f'<td width="{AVATAR_SIZE + 10}" valign="top"><img src="{avatar_url}" width="{AVATAR_SIZE}" height="{AVATAR_SIZE}"></td>'
               if avatar_url else "")
     return (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin:7px 0;"><tr>{avatar}'
@@ -161,6 +162,7 @@ class _BubbleUnderlay(QObject):
 def _install_underlay(view) -> None:
     if getattr(view, "_kira_underlay", None) is None:
         view._kira_underlay = _BubbleUnderlay(view)
+        view.document().setDocumentMargin(16)               # room so the rounded corners are not cut by the view edge
 
 
 def _install_bubbles(controller) -> None:

@@ -35,16 +35,16 @@ _LOG = logging.getLogger("kira.ui")
 KIRA_PORTRAIT = ROOT / "assets" / "dashboard" / "kira_portrait.jpg"
 LEFT_WIDTH = 250
 _STAMP = re.compile(r"\d{4}-\d{2}-\d{2} (\d{2}:\d{2})")
-_ICONS = {"chat", "mic", "settings", "user"}      # names make_icon() knows; the other navigation glyphs are plain text
+_ICONS = {"chat", "mic", "settings", "user", "home", "heart", "image", "book"}      # names make_icon() knows; the other navigation glyphs are plain text
 
 # key, icon name or glyph, English, Persian, tab key to open (None = display only)
 NAV = (
-    ("home", "⌂", "Home", "خانه", "tab_chat"),
+    ("home", "home", "Home", "خانه", "tab_chat"),
     ("chat", "chat", "Chat", "گفتگو", "tab_chat"),
     ("call", "mic", "Voice Call", "تماس صوتی", None),
-    ("memories", "♡", "Memories", "خاطرات", None),
-    ("gallery", "▣", "Gallery", "گالری", None),
-    ("journal", "✎", "Journal", "دفتر خاطرات", None),
+    ("memories", "heart", "Memories", "خاطرات", None),
+    ("gallery", "image", "Gallery", "گالری", None),
+    ("journal", "book", "Journal", "دفتر خاطرات", None),
     ("settings", "settings", "Settings", "تنظیمات", "tab_general"),
 )
 
@@ -544,10 +544,11 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
         button.setFixedHeight(40)
+        button.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)   # icon sits before the text in either language
         if glyph in _ICONS:
-            button.setIcon(make_icon(glyph, normal="#cbbcff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
-            button.setIconSize(QSize(20, 20))
-            button.setText("  " + text)
+            button.setIcon(make_icon(glyph, normal="#b9a2ff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
+            button.setIconSize(QSize(22, 22))
+            button.setText(" " + text)
         else:
             button.setText(f"{glyph}   {text}")
         button.clicked.connect(lambda checked=False, target=tab_key: activate(target))
@@ -616,6 +617,9 @@ def _build_greeting(context, lang) -> QWidget:
             button.clicked.connect(lambda checked=False: _soon(context, lang))
         else:
             button = _display_button(context, lang, glyph, "roundIcon", box)
+        button.setText("")
+        button.setIcon(make_icon({"♫": "music", "☾": "moon", "🔔": "bell"}[glyph], normal="#b9a2ff", hover="#ffffff"))
+        button.setIconSize(QSize(20, 20))
         row.addWidget(button)
     return box
 

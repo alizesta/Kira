@@ -1398,12 +1398,14 @@ class SessionController(WindowFeatureController):
         self.context.state._chat_action_seq += 1
         key = str(self.context.state._chat_action_seq)
         self.context.state._chat_action_texts[key] = str(text)
-        actions = [
-            ("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
-            ("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
-        ]
-        if kind == "assistant":
+        if kind == "user":
+            self.context.state._chat_action_texts["__last_user"] = str(text)
+        actions = [("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی")]
+        if kind == "assistant":      # Kira's replies are regenerated, never edited
+            actions.append(("regenerate", "regenerate", "↻", "#E0C8FF", "#30214F", "#B18AFF", "تولید دوباره"))
             actions.append(("speak", "speaker", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+        else:
+            actions.append(("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"))
 
         view = getattr(self.context.session, "view", None)
         cells = []
@@ -1415,15 +1417,14 @@ class SessionController(WindowFeatureController):
                 _log.debug("Could not load the SVG icon for chat action %s", action, exc_info=True)
                 inner = f'<span style="color:{colour};font-size:13pt;">{glyph}</span>'
             cells.append(
-                f'<td bgcolor="{background}" width="30" height="28" align="center" valign="middle" '
-                f'style="border:1px solid {border};border-radius:8px;">'
+                f'<td width="30" height="24" align="center" valign="middle">'
                 f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
                 f'style="text-decoration:none;">{inner}</a>'
                 f'</td>'
             )
         return (
-            '<table dir="rtl" align="right" border="0" cellspacing="4" cellpadding="0" '
-            'style="margin-top:5px;border-top:1px solid #314968;padding-top:4px;">'
+            '<table dir="rtl" align="right" border="0" cellspacing="2" cellpadding="0" '
+            'style="margin-top:5px;">'
             f'<tr>{"".join(cells)}</tr></table>'
         )
 
@@ -1442,6 +1443,10 @@ class SessionController(WindowFeatureController):
                 self.context.views.input.setText(text)
                 self.context.views.input.setFocus()
                 self.context.views.input.moveCursor(QTextCursor.End)
+            elif action == "regenerate":
+                last = self.context.state._chat_action_texts.get("__last_user")
+                if last and not self.context.session.busy:
+                    self.feature_controller("chat").submit(last)
             elif action == "speak":
                 # Speaker.speak() owns cancellation/replacement of the previous session.
                 self.context.services.voice_application_service.speak(text)

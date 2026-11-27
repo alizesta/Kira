@@ -126,7 +126,7 @@ class ChatShellTests(unittest.TestCase):
         buttons["Settings"].click()
         self.assertEqual(p.calls.tabs, [1])
         self.assertTrue(buttons["Chat"].isChecked())           # the chat page stays the current page
-        buttons["♡   Memories"].click()
+        buttons["Memories"].click()
         self.assertEqual(p.status.text(), "Coming soon")
 
     def test_display_only_widgets_say_coming_soon(self):

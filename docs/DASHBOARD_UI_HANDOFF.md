@@ -49,6 +49,8 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 5th pass): Kira's chat background `assets/characters/kira_chat_background.jpg` is wired through `CHARACTERS["kira"]["chat_background"]` (same mechanism as Mika). Note: `test_theme_applies_background_only_when_a_path_is_supplied` already failed before this (appearance_tint gets a non-numeric brightness in the test's appearance dict); not touched.
 
+* Done (Claude 2, 6th pass): sidebar/header icons are all neon SVGs of one size (new Lucide files home/heart/image/book/music/bell/phone/gift/regenerate in assets/icons); nav buttons follow the UI direction so the icon sits before the text (right of the text in Persian). Message actions have no frames; Kira's replies have copy / regenerate / speak (regenerate re-submits the last user message via `__last_user` in `_chat_action_texts`), the user's own messages keep copy / edit. Chat document margin 16 and user bubbles wrapped in a full-width table so rounded corners are not clipped. Not yet seen: the "is typing" box (needs a busy session).
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the
