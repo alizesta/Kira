@@ -478,6 +478,25 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
         confidence = confidence_labels.get(
             _clean(candidate.get("confidence"), 24).lower(), "نامشخص"
         )
+        source_categories = {
+            _clean(source.get("category"), 48) for _index, source in selected
+        }
+        source_hosts = {
+            urlsplit(str(source.get("url") or "")).hostname
+            for _index, source in selected
+            if urlsplit(str(source.get("url") or "")).hostname
+        }
+        social_or_rumor = {"gaming_rumor", "gaming_community", "gaming_social"}
+        independent_reporting = {"gaming_news", "gaming_report"}
+        if source_categories.intersection(social_or_rumor):
+            if not source_categories.intersection(independent_reporting):
+                confidence = "تأییدنشده"
+            elif confidence == "تأییدشده":
+                confidence = "گزارش‌شده"
+        if "iran_health" in source_categories and confidence == "تأییدشده":
+            confidence = "گزارش‌شده"
+        if confidence == "تأییدشده" and len(source_hosts) < 2:
+            confidence = "گزارش‌شده"
         source_labels = []
         for _index, source in selected:
             label = _clean(source.get("source"), 80)
