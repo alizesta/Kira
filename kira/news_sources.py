@@ -44,7 +44,7 @@ FEED_SOURCES = (
     FeedSource("mika", "iran_health", "وبدا", "https://webda.ir/feed/", True),
     FeedSource("mika", "iran_health", "ایسنا", "https://www.isna.ir/rss", True),
     FeedSource("mika", "iran_health", "مهر", "https://www.mehrnews.com/rss", True),
-    FeedSource("mika", "iran_health", "تسنیم", "https://www.tasnimnews.com/fa/rss/feed/0/0/8/1/TopStories", True),
+    FeedSource("mika", "iran_health", "تسنیم", "https://www.tasnimnews.ir/fa/rss/feed/0/0/8/1/TopStories", True),
     FeedSource("mika", "iran_health", "باشگاه خبرنگاران جوان", "https://www.yjc.ir/fa/rss/allnews", True),
     FeedSource("mika", "iran_health", "خبرآنلاین", "https://www.khabaronline.ir/rss", True),
 )
@@ -157,7 +157,7 @@ def collect_character_feeds(character: str) -> tuple[list[dict], list[str]]:
         )
         if response.status < 200 or response.status >= 300:
             raise ValueError(f"HTTP {response.status}")
-        return source, parse_feed(response.body, source)
+        return source, parse_feed(response.body, source, limit=6)
 
     items, errors = [], []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="kira-rss") as pool:
