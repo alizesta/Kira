@@ -189,6 +189,7 @@ jobs:
           tests.test_release
           tests.test_actions
           tests.test_vision_pipeline
+          tests.test_news_feed
       - name: Check Python syntax
         run: python -m compileall -q kira scripts tests
 
