@@ -2,9 +2,13 @@
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
-from kira.news_feed import NewsFeedStore, build_prompt_context, is_official_health_source, is_gaming_news
+from kira.news_feed import (
+    CHARACTER_QUERIES, NewsFeedService, NewsFeedStore, build_prompt_context,
+    is_official_health_source, is_official_weather_source, is_gaming_news,
+)
 
 
 class NewsFeedStoreTests(unittest.TestCase):
@@ -22,6 +26,27 @@ class NewsFeedStoreTests(unittest.TestCase):
         ], now=1_000_000)
         self.assertEqual(len(self.store.list_items("kira", now=1_000_000 + 7 * day - 1)), 1)
         self.assertEqual(len(self.store.list_items("kira", now=1_000_000 + 7 * day)), 0)
+
+    def test_published_news_expires_seven_days_after_publication(self):
+        now = time.time()
+        published = now - 2 * 86_400
+        published_at = datetime.fromtimestamp(published, timezone.utc).isoformat()
+        self.store.upsert_items("kira", [{
+            "title": "Dated story", "url": "https://example.com/dated",
+            "published_at": published_at,
+        }], now=now)
+        self.assertEqual(len(self.store.list_items("kira", now=published + 6 * 86_400)), 1)
+        self.assertEqual(len(self.store.list_items("kira", now=published + 8 * 86_400)), 0)
+
+    def test_known_stale_news_is_rejected(self):
+        now = time.time()
+        stale = datetime.fromtimestamp(now - 8 * 86_400, timezone.utc).isoformat()
+        count = self.store.upsert_items("kira", [{
+            "title": "Old story", "url": "https://example.com/old",
+            "published_at": stale,
+        }], now=now)
+        self.assertEqual(count, 0)
+        self.assertEqual(self.store.list_items("kira", now=now), [])
 
     def test_same_url_is_isolated_between_characters(self):
         stamp = time.time()
@@ -69,11 +94,27 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertNotIn("Abadan", kira)
         self.assertNotIn("Abadan", ren)
 
+    def test_mika_has_weather_and_nutrition_queries(self):
+        categories = {category for category, _query in CHARACTER_QUERIES["mika"]}
+        self.assertTrue({"weather", "nutrition", "medical_science"} <= categories)
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {
+                "news_health_region": {"city": "Frankfurt", "country": "Germany", "confirmed": True}
+            }, temp)
+            local = {category for category, _query in service._queries("mika", service._settings())}
+            self.assertIn("local_weather", local)
+            self.assertIn("local_outbreak", local)
+
     def test_local_health_alerts_require_official_sources(self):
         self.assertTrue(is_official_health_source("https://www.who.int/news"))
         self.assertTrue(is_official_health_source("https://www.cdc.gov/flu/"))
         self.assertTrue(is_official_health_source("https://www.gov.uk/health"))
         self.assertFalse(is_official_health_source("https://health-blog.example.com/outbreak"))
+
+    def test_local_weather_requires_a_recognized_meteorological_source(self):
+        self.assertTrue(is_official_weather_source("https://www.dwd.de/weather"))
+        self.assertTrue(is_official_weather_source("https://weather.gov/alerts"))
+        self.assertFalse(is_official_weather_source("https://random-weather-blog.example.com/forecast"))
 
     def test_ren_feed_rejects_game_industry_stories(self):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
