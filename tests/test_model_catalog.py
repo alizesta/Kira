@@ -129,7 +129,10 @@ class TabRuleTests(unittest.TestCase):
         self.assertTrue(active_group["enabled"])
         self.assertEqual(active_group["enabled_count"], 1)
         self.assertEqual(active_group["toggle_member_count"], 1)
-        google_route = next(route for route in routes.get_routes(s) if route["provider"] == google)
+        google_route = next(
+            route for route in routes.get_routes(s)
+            if route["provider"] == google and route["model"] == "goole/" + model
+        )
         self.assertEqual(active_group["provider"], google)
         self.assertEqual(active_group["route_id"], google_route["id"])
         self.assertTrue(google_route["enabled"])
