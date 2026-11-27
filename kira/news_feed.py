@@ -530,6 +530,7 @@ class NewsFeedService:
         if post_generator is not None and not callable(post_generator):
             raise TypeError("post_generator must be callable")
         self._lock = threading.RLock()
+        self._generation_lock = threading.Lock()
         self._refreshing: set[str] = set()
         self._stop = threading.Event()
         self._scheduler: threading.Thread | None = None
@@ -664,7 +665,10 @@ class NewsFeedService:
                 count = 0
                 if pending:
                     try:
-                        generated = self._post_generator(character_id, pending)
+                        # Serialize model inference across characters to avoid three
+                        # simultaneous local-model loads or cloud requests at startup.
+                        with self._generation_lock:
+                            generated = self._post_generator(character_id, pending)
                         posts = _prepare_character_posts(pending, generated)
                         if posts:
                             count = self.store.upsert_items(character_id, posts, region=region)
