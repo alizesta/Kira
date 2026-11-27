@@ -32,6 +32,7 @@ class PreferencesPage(QScrollArea):
     open_memory_requested = Signal()
     import_history_requested = Signal()
     ui_design_guidance_changed = Signal(bool)
+    ui_language_changed = Signal(str)
 
     def __init__(
         self,
@@ -58,6 +59,9 @@ class PreferencesPage(QScrollArea):
         self.ui_lang.addItem("فارسی", "fa")
         self.ui_lang.addItem("English", "en")
         self.ui_lang.setCurrentIndex(0 if settings.get("ui_lang", "en") == "fa" else 1)
+        self.ui_lang.currentIndexChanged.connect(
+            lambda _index: self.ui_language_changed.emit(str(self.ui_lang.currentData() or "en"))
+        )
 
         self.tavily_key = QLineEdit(str(settings.get("tavily_api_key", "")))
         self.tavily_key.setEchoMode(QLineEdit.Password)
