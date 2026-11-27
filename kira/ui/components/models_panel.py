@@ -54,9 +54,9 @@ class ToggleSwitch(QAbstractButton):
         painter.drawEllipse(QRectF(x, track.top() + 3, d, d))
 
 
-def price_pill(price: str) -> QWidget:
+def price_pill(price: str, tip: str = "") -> QWidget:
     """Rounded badge: green «رایگان», orange «پولی», grey «نامشخص»."""
-    text, color, tip = PRICE[price]
+    text, color, tip_default = PRICE[price]
     box = QWidget()
     lay = QHBoxLayout(box)
     lay.setContentsMargins(2, 1, 2, 1)
@@ -64,7 +64,7 @@ def price_pill(price: str) -> QWidget:
     lay.setAlignment(Qt.AlignCenter)
     label = QLabel(text.replace("● ", ""))
     label.setAlignment(Qt.AlignCenter)
-    label.setToolTip(tip)
+    label.setToolTip(tip or tip_default)
     label.setProperty("price", price)
     label.setStyleSheet(
         f"QLabel{{color:{color.name()};border:1px solid {color.name()};border-radius:9px;padding:2px 10px;min-height:22px;"
@@ -183,11 +183,15 @@ class ModelsPanel(QGroupBox):
         self.apply_filter(self.search.text())
 
     def _fill_row(self, table: QTableWidget, i: int, tab: str, row: dict) -> None:
-        key = (row["provider"], row["model"])
+        members = list(row.get("members") or [row])
+        member_keys = tuple((member["provider"], member["model"]) for member in members)
+        busy = any(key in self._busy for key in member_keys)
         if tab != TAB_ARCHIVED:
             switch = ToggleSwitch(row["enabled"])
-            switch.setToolTip("روشن/خاموش کردن این مدل در Route")
-            switch.toggled.connect(lambda on, k=key: self.toggle_requested.emit(k[0], k[1], bool(on)))
+            switch.setToolTip("روشن/خاموش کردن این مدل در تمام APIهای نمایش‌داده‌شده")
+            switch.toggled.connect(lambda on, keys=member_keys: [
+                self.toggle_requested.emit(provider, model, bool(on)) for provider, model in keys
+            ])
             holder = QWidget()
             hl = QHBoxLayout(holder)
             hl.setContentsMargins(6, 2, 6, 2)
@@ -195,34 +199,49 @@ class ModelsPanel(QGroupBox):
             table.setCellWidget(i, 0, holder)
 
         name = QTableWidgetItem(row["model"])
-        name.setData(Qt.UserRole, key)
-        name.setToolTip(f"{row['provider_label']}\n{row['model']}")
+        name.setData(Qt.UserRole, member_keys)
+        name.setToolTip("\n".join(
+            f"{member['provider_label']} · {member['model']}" for member in members
+        ))
         table.setItem(i, 1, name)
         provider_item = QTableWidgetItem(row["provider_label"])
-        provider_item.setToolTip(row["provider_label"])
+        provider_item.setToolTip("\n".join(row.get("provider_labels") or [row["provider_label"]]))
         table.setItem(i, 2, provider_item)
 
-        table.setCellWidget(i, 3, price_pill(row["price"]))
+        table.setCellWidget(i, 3, price_pill(row["price"], row.get("price_tooltip", "")))
         sort_key = QTableWidgetItem()
         sort_key.setData(Qt.AccessibleTextRole, PRICE[row["price"]][0])
         table.setItem(i, 3, sort_key)
 
         table.setItem(i, 4, self._status_item(row, archived=tab == TAB_ARCHIVED))
-        table.setCellWidget(i, 5, self._button("…" if key in self._busy else "تست", lambda k=key: self.test_requested.emit(*k),
-                                               enabled=key not in self._busy, tip="یک درخواست خیلی کوتاه به همین مدل می‌فرستد"))
+        table.setCellWidget(i, 5, self._button(
+            "…" if busy else "تست",
+            lambda keys=member_keys: [self.test_requested.emit(*key) for key in keys],
+            enabled=not busy, tip="برای هر API متصل به این مدل یک درخواست کوتاه می‌فرستد"
+        ))
         if tab == TAB_ARCHIVED:
             if row["restorable"]:
-                table.setCellWidget(i, 6, self._button("بازگردانی", lambda k=key: self.restore_requested.emit(*k),
-                                                       tip="از منسوخ بیرون می‌آید (خاموش می‌ماند)"))
+                table.setCellWidget(i, 6, self._button(
+                    "بازگردانی",
+                    lambda group=members: [
+                        self.restore_requested.emit(member["provider"], member["model"])
+                        for member in group if member.get("restorable") and TAB_ARCHIVED in member.get("tabs", [])
+                    ],
+                    tip="APIهای قابل‌بازگردانی از منسوخ خارج می‌شوند (خاموش می‌مانند)"
+                ))
         else:
-            table.setCellWidget(i, 6, self._button("منسوخ", lambda k=key: self.archive_requested.emit(*k),
-                                                   tip="به تب «منسوخ / غیرفعال» منتقل و خاموش می‌شود"))
+            table.setCellWidget(i, 6, self._button(
+                "منسوخ",
+                lambda keys=member_keys: [self.archive_requested.emit(*key) for key in keys],
+                tip="تمام APIهای این مدل به تب «منسوخ / غیرفعال» منتقل و خاموش می‌شوند"
+            ))
 
     def _archive_selected(self, table: QTableWidget) -> None:
         item = table.item(table.currentRow(), 1) if table.currentRow() >= 0 else None
         key = item.data(Qt.UserRole) if item is not None else None
         if key:
-            self.archive_requested.emit(*key)
+            for provider, model in key:
+                self.archive_requested.emit(provider, model)
 
     @staticmethod
     def _when(ts) -> str:
@@ -232,8 +251,11 @@ class ModelsPanel(QGroupBox):
     def _status_item(cls, row: dict, *, archived: bool) -> QTableWidgetItem:
         test = row["test"]
         if archived:
-            item = QTableWidgetItem("○ " + row["reason"])
+            item = QTableWidgetItem("○ " + (row["reason"] or "منسوخ / غیرفعال"))
             item.setForeground(QBrush(GREY))
+        elif test and test.get("ok") is None:
+            item = QTableWidgetItem("◐ " + (test.get("message") or "تست ناقص"))
+            item.setForeground(QBrush(ORANGE))
         elif test and test["ok"]:
             ms = f" {test['ms']}ms" if test.get("ms") is not None else ""
             item = QTableWidgetItem("● سالم" + ms)
@@ -282,12 +304,14 @@ class ModelsPanel(QGroupBox):
         for table in self.tables.values():
             for i in range(table.rowCount()):
                 name = table.item(i, 1)
-                if name is not None and name.data(Qt.UserRole) == key:
+                member_keys = name.data(Qt.UserRole) if name is not None else ()
+                if member_keys and key in member_keys:
                     box = table.cellWidget(i, 5)
                     button = box.findChild(QPushButton) if box is not None else None
                     if button is not None:
-                        button.setText("…" if on else "تست")
-                        button.setEnabled(not on)
+                        busy = any(member_key in self._busy for member_key in member_keys)
+                        button.setText("…" if busy else "تست")
+                        button.setEnabled(not busy)
 
     def apply_filter(self, query: str) -> None:
         query = str(query or "").strip().casefold()
