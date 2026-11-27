@@ -2,6 +2,7 @@
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -124,6 +125,15 @@ class NewsFeedStoreTests(unittest.TestCase):
     def test_ren_feed_rejects_game_industry_stories(self):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
         self.assertFalse(is_gaming_news("Central bank holds interest rates", "Currency market update"))
+
+    def test_rss_collector_failure_keeps_web_search_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {}, temp)
+            with patch("kira.news_sources.collect_character_feeds", side_effect=RuntimeError("feed parser failed")), \
+                 patch("kira.webintel.engine.search", return_value={"results": []}) as search:
+                service._refresh_character("kira")
+            self.assertEqual(search.call_count, len(CHARACTER_QUERIES["kira"]))
+            self.assertIn("RSS collector: RuntimeError", service.store.status("kira")["last_error"])
 
     def test_unknown_character_scope_is_rejected(self):
         item = {"title": "Story", "url": "https://example.com/story"}
