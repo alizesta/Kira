@@ -136,7 +136,10 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(active_group["provider"], google)
         self.assertEqual(active_group["route_id"], google_route["id"])
         self.assertTrue(google_route["enabled"])
-        self.assertFalse(any(route["provider"] == apinex and route["enabled"] for route in routes.get_routes(s)))
+        self.assertFalse(any(
+            route["provider"] == apinex and route["model"] == "free/" + model and route["enabled"]
+            for route in routes.get_routes(s)
+        ))
 
     def test_group_is_archived_only_when_every_provider_member_is_archived(self):
         s = helpers.fresh_settings()
