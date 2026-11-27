@@ -12,7 +12,9 @@ INSTANCE only.
 * Composer: one pill [✦][input][emoji][attach][stop][send]. The old toolbar (route chip, search, Eye Mode, microphone, voice,
   expand editor) is moved into a tray that the ✦ button opens, so no feature is lost.
 * Typing box: "<name> is typing..." above the composer while the front chat is thinking.
-* Portrait: assets/dashboard/<character id>_portrait.png. A character without that file keeps the animated avatar.
+* Portrait: assets/dashboard/<character id>_portrait.png. A character without that file keeps the animated avatar. Kira's own
+  portrait (assets/dashboard/kira_portrait.jpg) belongs to chat_shell; when it exists this module never touches the avatar's
+  visibility for a character without a PNG, so the two cannot fight.
 * News panel: the compact news panel is hidden on this page (the reference has none); the News page in Settings is unchanged.
 * Column widths follow the window like the reference (left 16.6 %, right 25.7 %).
 """
@@ -280,8 +282,11 @@ def _build_header(context, lang) -> None:
     layout.insertStretch(0, 1)
     layout.insertWidget(1, chip)
     layout.insertStretch(2, 1)
-    for glyph in ("🔍", "⚙"):
-        layout.addWidget(_display_tool(context, lang, glyph, "headerIcon", header))
+    for icon in ("search", "sliders"):                       # search and filter of the reference, as neon icons (display only)
+        button = _display_tool(context, lang, "", "headerIcon", header)
+        button.setIcon(make_icon(icon, normal="#b9a2ff", hover="#ffffff"))
+        button.setIconSize(QSize(22, 22))
+        layout.addWidget(button)
 
 
 # ---------------------------------------------------------------- composer
@@ -501,8 +506,14 @@ def _sync_portrait(context, portrait) -> None:
     has_picture = portrait.show_character(cid, _character_name(context, cid.capitalize()))
     portrait.setVisible(has_picture)
     avatar = getattr(context.views, "avatar", None)
-    if avatar is not None:
-        avatar.setVisible(not has_picture)                   # no picture for this character: keep the animated avatar
+    if avatar is None:
+        return
+    shell_portrait = getattr(getattr(context.views, "avatar_card", None), "kira_portrait", None)
+    if has_picture:
+        avatar.setVisible(False)                             # this character has a PNG portrait: it replaces the animated avatar
+    elif shell_portrait is None:
+        avatar.setVisible(True)                              # no picture at all: keep the animated avatar
+    # else chat_shell owns the switch between Kira's JPG portrait and the other characters' animated avatar
 
 
 def _build_portrait(context, parts) -> None:
