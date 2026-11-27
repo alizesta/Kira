@@ -30,7 +30,7 @@ class RouteModelTests(unittest.TestCase):
         routes.update_route(s, "groq", model=model, enabled=True)
         routes.update_route(s, "cloudflare", model=model, enabled=True)
         apinex = routes.add_provider(s, "APInex", "https://api.apinex.bond/v1", api_key="test-apinex-key")
-        apinex_route = routes.add_route(s, apinex, model, enabled=True)
+        apinex_route = routes.add_route(s, apinex, "free/" + model, enabled=True)
         before = deepcopy(routes.get_routes(s))
 
         groups = routes.group_routes_for_display(
@@ -47,6 +47,7 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(set(group["provider_ids"]), {"groq", "cloudflare", apinex})
         self.assertEqual(len(group["route_ids"]), 3)
         self.assertEqual(group["active_count"], 2)
+        self.assertEqual(group["model"], model)  # the APInex free/ prefix is presentation metadata
         self.assertEqual(routes.get_routes(s), before)  # display grouping never merges execution routes
 
     def test_display_grouping_keeps_same_named_local_model_separate_from_cloud(self):
