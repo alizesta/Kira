@@ -34,6 +34,7 @@ class NewsPostGeneratorTests(unittest.TestCase):
                 "description": "تحلیلگر دقیق و خونسرد",
                 "prompt": "You are Kira. Speak naturally and playfully.",
                 "specialty_prompt": "Compare independent sources and mark speculation.",
+                "traits": {"playfulness": 0.8, "warmth": 0.9},
             } if owner == "kira" else {},
         )
         result = generator("kira", [{
@@ -53,6 +54,7 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertIn("تو کیرا هستی", chat_call[2])
         self.assertIn("Speak naturally and playfully", chat_call[2])
         self.assertIn("Compare independent sources", chat_call[2])
+        self.assertIn("playfulness", chat_call[2])
         self.assertIn("An earlier game update", chat_call[1][0]["content"])
         self.assertIn("Do not repeat a story", chat_call[1][0]["content"])
         self.assertIn("untrusted", chat_call[2])
