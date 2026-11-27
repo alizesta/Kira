@@ -164,7 +164,7 @@ class NewsFeedPanel(QFrame):
 
     def show_refreshing(self, character_id: str):
         if str(character_id) == self._character_id:
-            self.status_label.setText("در حال دریافت خبرهای همین شخصیت…")
+            self.status_label.setText("در حال بررسی و روایت خبرهای همین شخصیت…" )
             self.refresh_button.setEnabled(False)
 
     def apply_location_suggestion(self, city: str, country: str, source: str, error: str):
@@ -204,11 +204,11 @@ class NewsFeedPanel(QFrame):
             self.feed_browser.setHtml("<p>این شخصیت فید خبری اختصاصی ندارد.</p>")
             return
 
-        items = self._service.store.list_items(cid, limit=2)
+        items = self._service.store.list_posts(cid, limit=2)
         state = self._service.store.status(cid)
         refreshing = self._service.is_refreshing(cid)
         if refreshing:
-            self.status_label.setText("در حال دریافت خبرهای تازه…")
+            self.status_label.setText("در حال بررسی و نوشتن پست تازه…" )
             self.refresh_button.setEnabled(False)
         else:
             self.refresh_button.setEnabled(True)
@@ -216,7 +216,7 @@ class NewsFeedPanel(QFrame):
                 checked = datetime.fromtimestamp(
                     float(state["refreshed_at"]), tz=timezone.utc
                 ).astimezone().strftime("%H:%M")
-                text = f"{len(items)} خبر · بررسی {checked}"
+                text = f"{len(items)} پست · بررسی {checked}"
                 if state.get("last_error"):
                     text += " · برخی منابع در دسترس نبودند"
                 self.status_label.setText(text)
@@ -227,8 +227,8 @@ class NewsFeedPanel(QFrame):
 
         if not items:
             message = (
-                "در حال دریافت نخستین خبرها…" if refreshing
-                else "هنوز خبری دریافت نشده؛ دکمهٔ ↻ را بزن تا دوباره جست‌وجو شود."
+                "در حال بررسی نخستین خبرها…" if refreshing
+                else "هنوز پستی آماده نیست؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
             )
             self.feed_browser.setHtml(
                 "<html><body style='margin:4px'><span>" + html.escape(message) + "</span></body></html>"
@@ -251,7 +251,7 @@ class NewsFeedPanel(QFrame):
                 "<div style='margin:2px 0;padding:2px 4px;border-left:2px solid #8d65ff;'>"
                 f"<small>{category} · {published}</small> "
                 f"<a href='{url}' style='font-weight:600;text-decoration:none'>{title}</a>"
-                f"<br><span>{summary[:110]}</span>"
+                f"<br><span>{summary[:320]}</span>"
                 f" <small>({source})</small></div>"
             )
         self.feed_browser.setHtml(
