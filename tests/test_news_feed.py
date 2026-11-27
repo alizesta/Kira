@@ -66,6 +66,21 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_items("mika", now=1_000 + 7 * day - 1)[0]["summary"], "Updated")
         self.assertEqual(self.store.list_items("mika", now=1_000 + 7 * day), [])
 
+    def test_rss_source_classification_survives_duplicate_search_results(self):
+        stamp = time.time()
+        url = "https://example.com/leak"
+        self.store.upsert_items("kira", [{
+            "title": "Unconfirmed console leak", "url": url,
+            "category": "gaming_rumor", "source_label": "X @insider",
+        }], now=stamp)
+        self.store.upsert_items("kira", [{
+            "title": "Unconfirmed console leak", "url": url,
+            "category": "game_releases", "source_label": "example.com",
+        }], now=stamp)
+        item = self.store.list_items("kira", now=stamp)[0]
+        self.assertEqual(item["category"], "gaming_rumor")
+        self.assertEqual(item["source"], "X @insider")
+
     def test_prompt_context_reads_only_the_requested_character_feed(self):
         stamp = time.time()
         self.store.upsert_items("kira", [
