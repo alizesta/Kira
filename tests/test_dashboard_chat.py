@@ -41,6 +41,8 @@ class BubbleTests(unittest.TestCase):
 
     def test_clock_text(self):
         self.assertEqual(dashboard_chat.clock_text(datetime(2026, 11, 27, 20, 18)), "8:18 PM")
+        self.assertEqual(dashboard_chat.clock_text("2026-11-27T20:18:00"), "8:18 PM")
+        self.assertEqual(dashboard_chat.clock_text(""), "")
 
     def test_installed_message_html_skips_the_time_while_history_is_painted(self):
         from kira.ui import main_window_session as session_module
@@ -51,12 +53,15 @@ class BubbleTests(unittest.TestCase):
             calls.append(args)
             return "ORIGINAL"
 
-        controller = SimpleNamespace(_suppress_conversation_refresh=True)
+        controller = SimpleNamespace(
+            _suppress_conversation_refresh=True,
+            _history_message_created_at="2026-11-27T20:18:00",
+        )
         with mock.patch.object(session_module, "message_html", original):
             dashboard_chat._install_bubbles(controller)
             installed = session_module.message_html
             self.assertEqual(installed("system", "", "hi", "ltr"), "ORIGINAL")      # system/error keep the old look
-            self.assertNotIn("✓✓", installed("user", "", "old", "ltr"))
+            self.assertIn("8:18 PM", installed("user", "", "old", "ltr"))
             controller._suppress_conversation_refresh = False
             self.assertIn("✓✓", installed("user", "", "new", "ltr"))
             self.assertIn(dashboard_chat.AVATAR_URL, installed("assistant", "", "reply", "ltr"))

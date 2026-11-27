@@ -756,7 +756,12 @@ class SessionController(WindowFeatureController):
             else:
                 continue
             if str(text).strip():
-                self.add_chat(role, text)
+                previous_timestamp = getattr(self, "_history_message_created_at", None)
+                self._history_message_created_at = str(item.get("created_at") or "")
+                try:
+                    self.add_chat(role, text)
+                finally:
+                    self._history_message_created_at = previous_timestamp
                 shown += 1
         if shown:
             self.add_chat("system", self.t("history_restored"))
@@ -1135,9 +1140,19 @@ class SessionController(WindowFeatureController):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
             self._ensure_session_conversation(self.context.state.cur)
-            history = self.context.services.chat_application_service.recent_messages(
-                limit, character_id=self.context.state.cur.cid, conversation_id=self.context.state.cur.conversation_id
+            history_reader = getattr(
+                self.context.services.chat_application_service, "recent_message_records", None
             )
+            if callable(history_reader):
+                history = history_reader(
+                    limit, character_id=self.context.state.cur.cid,
+                    conversation_id=self.context.state.cur.conversation_id,
+                )
+            else:
+                history = self.context.services.chat_application_service.recent_messages(
+                    limit, character_id=self.context.state.cur.cid,
+                    conversation_id=self.context.state.cur.conversation_id,
+                )
         except Exception:
             # Leave the Session unloaded so the next synchronization retries history.
             _log.exception("Could not restore persisted chat history")

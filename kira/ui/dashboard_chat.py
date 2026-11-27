@@ -100,7 +100,17 @@ def _character_name(context, fallback="Kira") -> str:
 
 # ---------------------------------------------------------------- bubbles
 
-def clock_text(moment: datetime) -> str:
+def clock_text(moment: datetime | str) -> str:
+    if isinstance(moment, str):
+        value = moment.strip()
+        if not value:
+            return ""
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return ""
+    if moment.tzinfo is not None:
+        moment = moment.astimezone()
     return moment.strftime("%I:%M %p").lstrip("0")
 
 
@@ -210,7 +220,10 @@ def _install_bubbles(controller) -> None:
         if kind not in ("user", "assistant"):
             return original(kind, name, text, ui_dir, extra_html, footer_html, accent)
         restoring = bool(getattr(controller, "_suppress_conversation_refresh", False))   # set while history is painted
-        stamp = "" if restoring else clock_text(datetime.now())
+        if restoring:
+            stamp = clock_text(getattr(controller, "_history_message_created_at", "") or "")
+        else:
+            stamp = clock_text(datetime.now())
         return bubble_html(kind, text, ui_dir, extra_html, footer_html, stamp, AVATAR_URL if kind == "assistant" else "")
 
     wrapped._kira_dashboard = True
