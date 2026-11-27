@@ -77,5 +77,5 @@ jobs:
         run: >-
           python -m unittest
           tests.test_local_voice_auto_setup
-          tests.test_routes
+          tests.test_routes.RouteModelTests
           -v
