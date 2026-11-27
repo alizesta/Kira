@@ -355,11 +355,17 @@ def _pending_hint(state: dict, now: float) -> str:
 
 
 def extend_prompt(prompt, decision, settings=None, router=None, *, character_id: str | None = None) -> str:
-    """The system prompt plus, only when needed: the one-line deep block and the pending hint. Simple turns get the prompt back unchanged."""
+    """Add bounded character-owned news, plus the optional deep block and pending hint."""
     try:
+        news_context = ""
+        try:
+            from .news_feed import build_prompt_context
+            news_context = build_prompt_context(character_id, settings=settings)
+        except Exception:  # noqa: BLE001 - news must never block an ordinary reply
+            _log.exception("Could not load the character news feed")
         if decision.mode == "off":
-            return prompt
-        extras = []
+            return prompt + ("\n\n" + news_context if news_context else "")
+        extras = [news_context] if news_context else []
         if decision.stage == DEEP and not _small_context(settings, router, decision):
             extras.append(DEEP_BLOCK)
         # Turning reflection off invalidates any pending note as well as

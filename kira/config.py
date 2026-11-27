@@ -274,6 +274,16 @@ def _migrate_v7_to_v8(data, warnings=None):
     return data
 
 
+def _migrate_v8_to_v9(data, warnings=None):
+    """Add news-feed settings while leaving IP location suggestions unconfirmed."""
+    region = data.get("news_health_region")
+    if not isinstance(region, dict):
+        data["news_health_region"] = deepcopy(DEFAULTS["news_health_region"])
+    else:
+        data["news_health_region"] = {**deepcopy(DEFAULTS["news_health_region"]), **region}
+    return data
+
+
 def _migrate_settings(saved, *, warnings=None):
     """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
@@ -299,6 +309,7 @@ def _migrate_settings(saved, *, warnings=None):
         5: lambda value: _migrate_v5_to_v6(value, warnings=warnings),
         6: lambda value: _migrate_v6_to_v7(value, warnings=warnings),
         7: lambda value: _migrate_v7_to_v8(value, warnings=warnings),
+        8: lambda value: _migrate_v8_to_v9(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)

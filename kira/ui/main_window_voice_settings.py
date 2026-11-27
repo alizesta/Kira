@@ -9,6 +9,7 @@ from .main_window_voice_settings_support import (
     ChatInput,
     Kode,
     DATA_DIR,
+    save_settings,
     DEFAULT_KEEP_ALIVE,
     DEFAULT_NUM_CTX,
     DEFAULT_NUM_PREDICT,
@@ -82,7 +83,7 @@ class VoiceSettingsController(WindowFeatureController):
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
         self.context.views.avatar = AvatarView(self.context.adapters.animator, view="card")
-        self.context.views.avatar.setMinimumSize(100, 190)
+        self.context.views.avatar.setMinimumSize(150, 190)
         self.context.views.avatar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         av.addWidget(self.context.views.avatar, 1)
         self.tagline = QLabel()
@@ -95,11 +96,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.status.setWordWrap(True)
         av.addWidget(self.tagline)
         av.addWidget(self.context.views.status)
-        # Keep the avatar column at its reference width when space allows, but
-        # let it yield width to the chat on restored/narrow windows.
-        self.context.views.avatar_card.setMinimumWidth(120)
-        self.context.views.avatar_card.setMaximumWidth(250)
-        self.context.views.avatar_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.context.views.avatar_card.setFixedWidth(250)
         root.addWidget(self.context.views.avatar_card)
         # --- chat card: compact header, conversation, composer
         chat_card = QFrame()
@@ -116,16 +113,36 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.companion_btn.clicked.connect(self.feature_controller("runtime").toggle_companion)
         cv.addWidget(self.chat_header)
 
+        # News starts with the chat shell, not when a user later opens Settings.
+        from .pages.news_feed_panel import NewsFeedPanel
+        from ..news_feed import NewsFeedService
+        self._news_feed_service = NewsFeedService(
+            lambda: self.context.services.settings, DATA_DIR
+        )
+        self.context.views.news_feed_panel = NewsFeedPanel(
+            self._news_feed_service, self.context.services.settings, parent=chat_card
+        )
+        news_panel = self.context.views.news_feed_panel
+        news_panel.refresh_requested.connect(self.refresh_news_character)
+        news_panel.location_detection_requested.connect(self.detect_news_region)
+        news_panel.region_confirm_requested.connect(self.confirm_news_region)
+        cv.addWidget(news_panel, 0)
+        self._news_feed_service.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._news_feed_service.stop)
+        region = self.context.services.settings.get("news_health_region") or {}
+        if not (isinstance(region, dict) and region.get("confirmed") is True):
+            self.detect_news_region()
+
         # A per-character conversation history column. The character tabs above remain
         # independent; this list switches durable conversations within the selected character.
         lang = self.context.services.settings.get("ui_lang", "en")
         conversation_sidebar = QFrame(page)
         conversation_sidebar.setObjectName("conversationSidebar")
         conversation_sidebar.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
-        # The history rail is secondary to the message editor on narrow windows.
-        conversation_sidebar.setMinimumWidth(96)
-        conversation_sidebar.setMaximumWidth(154)
-        conversation_sidebar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        conversation_sidebar.setFixedWidth(154)
+        conversation_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
@@ -167,7 +184,7 @@ class VoiceSettingsController(WindowFeatureController):
             QSizePolicy.Expanding, QSizePolicy.Ignored
         )
         cv.addWidget(self.context.views.chat_stack, 1)
-        cv.setStretch(1, 1)
+        cv.setStretch(2, 1)
         chat_card.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
 
         self.context.views.chat_composer = ChatComposer(
@@ -186,7 +203,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         composer = self.context.views.chat_composer
         cv.addWidget(self.context.views.chat_composer)
-        cv.setStretch(2, 0)
+        cv.setStretch(3, 0)
 
         # This host must stay LTR even when QApplication is in Persian RTL mode.
         # The sidebar is inserted first, so it is physically to the left of the chat card.
@@ -207,6 +224,54 @@ class VoiceSettingsController(WindowFeatureController):
         # Chat surfaces share the avatar canvas; don't wrap the composer in a glow/card effect.
         self.context.views.glow_effects = []
         self.context.views.tabs.addTab(page, "")
+
+    def set_news_character(self, character_id):
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None:
+            panel.set_character(character_id)
+
+    def refresh_news_character(self, character_id):
+        service = getattr(self, "_news_feed_service", None)
+        if service is None:
+            return
+        started = service.refresh_character_async(str(character_id or ""))
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None and started:
+            panel.show_refreshing(str(character_id or ""))
+
+    def detect_news_region(self):
+        service = getattr(self, "_news_feed_service", None)
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if service is None or panel is None:
+            return
+        panel.detect_button.setEnabled(False)
+        service.detect_region_async(
+            lambda city, country, source, error:
+                panel.location_suggestion_ready.emit(city, country, source, error)
+        )
+
+    def confirm_news_region(self, value):
+        parts = [part.strip() for part in str(value or "").split(",", 1)]
+        if len(parts) != 2 or not all(parts):
+            QMessageBox.information(
+                self.window, "موقعیت میکا",
+                "شهر و کشور را با این قالب وارد کن: Frankfurt am Main, Germany",
+            )
+            return
+        from datetime import datetime, timezone
+        city, country = parts
+        settings = self.context.services.settings
+        settings["news_health_region"] = {
+            "city": city[:100], "country": country[:100], "confirmed": True,
+            "source": "user_confirmed",
+            "confirmed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        save_settings(settings)
+        self._news_feed_service.clear_local_alerts()
+        panel = getattr(self.context.views, "news_feed_panel", None)
+        if panel is not None:
+            panel.set_region_confirmed(city, country)
+        self.refresh_news_character("mika")
 
     def build_assistant_section(self):
         """Host the independent assistant settings page and bind application actions."""
