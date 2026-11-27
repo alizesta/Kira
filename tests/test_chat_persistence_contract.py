@@ -302,6 +302,18 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(row["status"], "interrupted")
         self.assertTrue(row["created_at"])
 
+    def test_recent_message_records_can_be_scoped_to_one_conversation(self):
+        first = self.persistence.create_conversation("mika", title="first")
+        second = self.persistence.create_conversation("mika", title="second")
+        self.persistence.add_message("user", "first conversation", "mika", conversation_id=first["id"])
+        self.persistence.add_message("user", "second conversation", "mika", conversation_id=second["id"])
+
+        records = self.persistence.recent_message_records(10, "mika", first["id"])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["content"], "first conversation")
+        self.assertEqual(records[0]["conversation_id"], first["id"])
+        self.assertTrue(records[0]["created_at"])
+
     def test_stream_updates_are_idempotent_under_one_message_id(self):
         conversation = self.persistence.get_or_create_conversation("kira")
         self.persistence.update_stream_message(9001, "part 1", character_id="kira", conversation_id=conversation["id"])
