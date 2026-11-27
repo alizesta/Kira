@@ -32,6 +32,7 @@ from kira.settings_schema import (
     DEFAULTS as SETTINGS_DEFAULTS,
     SETTING_RANGES as SETTINGS_RANGES,
     STT_LANGUAGE_OPTIONS as SETTINGS_STT_LANGUAGE_OPTIONS,
+    GEMINI_LIVE_MODELS,
 )
 
 
@@ -210,10 +211,12 @@ class VoicePage(QScrollArea):
         live_form.addRow(self.gemini_refresh_btn)
         self.gemini_model = QComboBox()
         self.gemini_model.setEditable(True)
-        self.gemini_model.addItems([
-            "gemini-3.8-live",
-            "gemini-3.8-live-extended-thinking",
-        ])
+        self.gemini_model.addItems(GEMINI_LIVE_MODELS)
+        self.gemini_model.setToolTip(
+            "مدل‌های 1.5 و Live 2.0 گوگل بازنشسته شده‌اند. "
+            "3.8 مدل پیشنهادی فعلی است؛ 3.1 Live و 2.5 Native Audio نیز در فهرست قابل انتخاب‌اند. "
+            "شناسه‌های سفارشی همچنان قابل واردکردن هستند."
+        )
         self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or SETTINGS_DEFAULTS["gemini_live_model"]))
         self.gemini_model.setEnabled(True)
         live_form.addRow("مدل Gemini Live", self.gemini_model)
