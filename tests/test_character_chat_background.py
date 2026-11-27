@@ -14,7 +14,10 @@ class MikaChatBackgroundTests(unittest.TestCase):
             image.parent.mkdir(parents=True)
             image.write_bytes(b"test image")
             self.assertEqual(chat_background_file(CHARACTERS["mika"], root), image.resolve())
-            self.assertIsNone(chat_background_file(CHARACTERS["kira"], root))
+            self.assertIsNone(chat_background_file(CHARACTERS["kira"], root))   # file not created yet
+            kira_image = root / CHARACTERS["kira"]["chat_background"]
+            kira_image.write_bytes(b"test image")
+            self.assertEqual(chat_background_file(CHARACTERS["kira"], root), kira_image.resolve())
             self.assertIsNone(chat_background_file(CHARACTERS["ren"], root))
 
     def test_background_paths_cannot_escape_the_asset_root(self):
