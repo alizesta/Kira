@@ -27,7 +27,7 @@ class NewsSourceTests(unittest.TestCase):
 
     def test_rss_items_are_parsed_and_health_filtered(self):
         source = FeedSource("mika", "iran_health", "سلامت نیوز", "https://example.ir/rss", True)
-        xml = b"""<?xml version="1.0"?>
+        xml = """<?xml version="1.0"?>
         <rss version="2.0"><channel>
           <item><title>خبر تازه درباره سلامت قلب</title>
             <link>https://example.ir/health/1</link>
@@ -38,7 +38,7 @@ class NewsSourceTests(unittest.TestCase):
             <link>https://example.ir/sport/2</link>
             <description>نتیجه مسابقه امروز</description>
           </item>
-        </channel></rss>"""
+        </channel></rss>""".encode("utf-8")
         items = parse_feed(xml, source)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["category"], "iran_health")
