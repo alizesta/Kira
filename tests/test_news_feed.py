@@ -9,6 +9,7 @@ from pathlib import Path
 from kira.news_feed import (
     CHARACTER_QUERIES, NewsFeedService, NewsFeedStore, build_prompt_context,
     is_official_health_source, is_official_weather_source, is_gaming_news,
+    _prepare_character_posts,
 )
 
 
@@ -180,6 +181,18 @@ class NewsFeedStoreTests(unittest.TestCase):
             self.assertIn("منابع تکمیلی:", posts[0]["summary"])
             self.assertEqual(service.store.list_unprocessed_items("kira"), [])
             self.assertEqual(service.store.status("kira")["item_count"], 1)
+
+    def test_rumor_only_sources_cannot_be_promoted_to_confirmed(self):
+        sources = [{
+            "title": "Possible console leak", "url": "https://x.example/post",
+            "source": "X @insider", "category": "gaming_rumor",
+        }]
+        posts = _prepare_character_posts(sources, [{
+            "source_ids": [0], "title": "A possible leak",
+            "body": "این ادعا هنوز تأیید مستقلی ندارد.", "confidence": "confirmed",
+        }])
+        self.assertEqual(len(posts), 1)
+        self.assertIn("سطح اطمینان: تأییدنشده", posts[0]["summary"])
 
     def test_failed_post_generation_never_exposes_raw_source_as_a_post(self):
         with tempfile.TemporaryDirectory() as temp:
