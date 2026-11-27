@@ -91,7 +91,7 @@ class TabRuleTests(unittest.TestCase):
         group = matching[0]
         self.assertEqual(set(group["provider_ids"]), {apinex, google})
         self.assertEqual(set(group["member_keys"]), {(apinex, "free/" + model), (google, "goole/" + model)})
-        self.assertEqual(group["provider_label"], "APInex + Google AI Studio")
+        self.assertEqual(group["provider_label"], "APInex + Google AI Studio · 2 API")
         self.assertEqual(group["member_count"], 2)
         self.assertEqual(group["price"], "unknown")  # provider prices differ; never pretend both are free
         self.assertEqual(group["tabs"], [mc.TAB_FREE, mc.TAB_PAID])
@@ -133,21 +133,21 @@ class TabRuleTests(unittest.TestCase):
         self.assertIn(mc.TAB_ACTIVE, refreshed["tabs"])
     def test_enabled_route_adds_the_active_tab_and_keeps_its_price_tab(self):
         s = build()
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
         row = by_model(catalog_rows(s))["free-a"]
         self.assertEqual(row["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
         self.assertTrue(row["enabled"])
 
     def test_active_tab_follows_route_priority(self):
         s = build()
-        api_manager.set_model_enabled(s, "mistral", "m-free", True)
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
+        api_manager.set_model_enabled(s, "mistral", "m-free", True, capabilities=CAPABILITIES)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
         active = mc.rows_for_tab(catalog_rows(s), mc.TAB_ACTIVE)
         self.assertEqual([r["model"] for r in active], ["m-free", "free-a"])
 
     def test_counts(self):
         s = build()
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
         counts = mc.tab_counts(catalog_rows(s))
         self.assertEqual(counts, {"active": 1, "free": 2, "paid": 2, "archived": 0})
 
@@ -164,12 +164,12 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(local["tabs"], [mc.TAB_FREE])
         self.assertFalse(local["enabled"])
 
-        api_manager.set_model_enabled(s, "ollama", "local-model:latest", True)
+        api_manager.set_model_enabled(s, "ollama", "local-model:latest", True, capabilities=CAPABILITIES)
         enabled = by_model(catalog_rows(s))["local-model:latest"]
         self.assertTrue(enabled["enabled"])
         self.assertEqual(enabled["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
 
-        api_manager.set_model_enabled(s, "ollama", "local-model:latest", False)
+        api_manager.set_model_enabled(s, "ollama", "local-model:latest", False, capabilities=CAPABILITIES)
         disabled = by_model(catalog_rows(s))["local-model:latest"]
         self.assertFalse(disabled["enabled"])
         self.assertEqual(disabled["tabs"], [mc.TAB_FREE])
@@ -178,8 +178,8 @@ class TabRuleTests(unittest.TestCase):
 class ArchiveTests(unittest.TestCase):
     def test_archive_moves_the_model_and_switches_its_route_off(self):
         s = build()
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
-        api_manager.set_model_enabled(s, "groq", "paid-b", True)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
+        api_manager.set_model_enabled(s, "groq", "paid-b", True, capabilities=CAPABILITIES)
         mc.archive_model(s, "groq", "free-a")
         row = by_model(catalog_rows(s))["free-a"]
         self.assertEqual(row["tabs"], [mc.TAB_ARCHIVED])
@@ -189,14 +189,14 @@ class ArchiveTests(unittest.TestCase):
 
     def test_archiving_the_pinned_model_unpins_it(self):
         s = build()
-        rid = api_manager.set_model_enabled(s, "groq", "free-a", True)
+        rid = api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
         s["manual_route_id"] = rid
         mc.archive_model(s, "groq", "free-a")
         self.assertEqual(s["manual_route_id"], "")
 
     def test_restore_brings_it_back_switched_off(self):
         s = build()
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
         mc.archive_model(s, "groq", "free-a")
         mc.restore_model(s, "groq", "free-a", capabilities=CAPABILITIES)
         row = by_model(catalog_rows(s))["free-a"]
@@ -213,8 +213,8 @@ class ArchiveTests(unittest.TestCase):
 
     def test_auto_disabled_route_is_archived_until_restored(self):
         s = build()
-        api_manager.set_model_enabled(s, "groq", "free-a", True)
-        api_manager.set_model_enabled(s, "mistral", "m-free", True)
+        api_manager.set_model_enabled(s, "groq", "free-a", True, capabilities=CAPABILITIES)
+        api_manager.set_model_enabled(s, "mistral", "m-free", True, capabilities=CAPABILITIES)
         rid = next(r["id"] for r in routes.get_routes(s) if r["model"] == "free-a")
         routes.disable_route(
             s, rid, "این مدل دیگر رایگان نیست", capabilities=CAPABILITIES
