@@ -125,10 +125,25 @@ class VoiceSettingsController(WindowFeatureController):
                 self.context.services.settings
             )
 
+        def news_profile_factory(character_id):
+            profile = self.context.services.character_service.all_profiles(
+                self.context.services.settings
+            ).get(character_id) or {}
+            return {
+                "description": profile.get("description", ""),
+                "prompt": profile.get("prompt", ""),
+                "specialty_prompt": (
+                    profile.get("specialty_prompt", "")
+                    if character_id in ("ren", "mika") else ""
+                ),
+            }
+
         self._news_feed_service = NewsFeedService(
             lambda: self.context.services.settings,
             DATA_DIR,
-            post_generator=NewsPostGenerator(news_router_factory),
+            post_generator=NewsPostGenerator(
+                news_router_factory, profile_factory=news_profile_factory
+            ),
         )
         self.context.views.news_feed_panel = NewsFeedPanel(
             self._news_feed_service, self.context.services.settings,
