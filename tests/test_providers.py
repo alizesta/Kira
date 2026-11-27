@@ -64,6 +64,27 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 503)
         sleep.assert_not_called()
 
+    def test_apinex_provider_uses_openai_chat_completions_and_preserves_model_id(self):
+        key = "sk-apx-" + "b" * 40
+        cfg = {
+            "type": "openai_compat",
+            "service": "apinex",
+            "base_url": "https://api.apinex.bond/v1",
+            "api_key": key,
+            "model": "free/deepseek-v4.1-flash",
+            "enabled": True,
+        }
+        provider_cls = hybrid_ai.provider_class("custom-apinex", cfg)
+        self.assertIs(provider_cls, hybrid_ai.CustomOpenAIProvider)
+        provider = provider_cls(cfg, name="custom-apinex")
+
+        url, headers, payload = provider._prepare(MSGS, SYS, 0.7, False)
+
+        self.assertEqual(url, "https://api.apinex.bond/v1/chat/completions")
+        self.assertEqual(headers["Authorization"], f"Bearer {key}")
+        self.assertEqual(payload["model"], "free/deepseek-v4.1-flash")
+        self.assertEqual(payload["messages"][-1], {"role": "user", "content": "سلام"})
+
     def test_non_google_provider_does_not_retry_503(self):
         provider = hybrid_ai.OpenAICompatibleProvider({
             "base_url": "https://example.com/v1", "api_key": "custom-test-key", "model": "test-model",
