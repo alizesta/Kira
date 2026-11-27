@@ -5,6 +5,8 @@ on:
     branches: [new-main]
     paths:
       - "kira/model_catalog.py"
+      - "kira/routes.py"
+      - "tests/test_routes.py"
       - "kira/ui/components/models_panel.py"
       - "tests/test_model_catalog.py"
       - ".github/workflows/model-catalog-grouping.yml"
@@ -31,6 +33,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile changed modules and tests
-        run: python -m py_compile kira/model_catalog.py kira/routes.py kira/ui/components/models_panel.py tests/test_model_catalog.py
+        run: python -m py_compile kira/model_catalog.py kira/routes.py kira/ui/components/models_panel.py tests/test_model_catalog.py tests/test_routes.py
       - name: Run model catalog regression tests
-        run: python -m unittest tests.test_model_catalog -v
+        run: python -m unittest tests.test_model_catalog tests.test_routes.RouteModelTests -v
