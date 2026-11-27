@@ -14,7 +14,7 @@ A key is never sent to services it cannot belong to:
 
 - `gsk_` → Groq only
 - `AIza` → Google AI Studio only
-- `sk-apx-` → APInex only
+- `sk-apx` → APInex only
 - An unrecognized prefix → Mistral and Cloudflare only (their keys have no identifying prefix)
 
 **Cloudflare:** If the token can read Accounts, Kira discovers the Account ID automatically. Otherwise, Kira asks for it and the Account ID field must be filled in. Account API Tokens always require an Account ID.
