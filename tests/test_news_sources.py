@@ -64,6 +64,9 @@ class NewsSourceTests(unittest.TestCase):
         xml = b"""<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
         <rss><channel><item><title>&xxe;</title></item></channel></rss>"""
         self.assertEqual(parse_feed(xml, source), [])
+        self.assertEqual(parse_feed(b" " * 5000 + xml, source), [])
+        utf16 = b"\\xff\\xfe" + xml.decode("utf-8").encode("utf-16-le")
+        self.assertEqual(parse_feed(utf16, source), [])
 
     def test_unknown_character_returns_no_feeds_without_network(self):
         self.assertEqual(collect_character_feeds("unknown"), ([], []))
