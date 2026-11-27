@@ -26,6 +26,7 @@ configure_cache_environment(_DATA_ROOT)
 
 _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
+_piper_setup_lock = threading.Lock()
 _shenava_recognizer = None
 _shenava_model_path = ""
 _shenava_error = None
@@ -163,6 +164,31 @@ def tts_ready(model_path="") -> bool:
     except ImportError:
         return False
 
+
+def ensure_piper_runtime(cancel_event=None) -> bool:
+    """Install Piper into Kira's active environment on demand, exactly once.
+
+    The installer uses the project's pinned dependency constraints and verifies
+    the resulting environment with pip check. This function is safe to call from
+    the background warm-up and from the first synthesis request concurrently.
+    """
+    global _tts_error
+    if tts_ready():
+        return True
+    with _piper_setup_lock:
+        if tts_ready():
+            return True
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("نصب Piper به‌دلیل لغو عملیات متوقف شد.")
+        try:
+            _install_voice_package("piper-tts>=1.3.0,<2", cancel_event)
+            if not tts_ready():
+                raise RuntimeError("Piper پس از نصب در محیط فعال Python قابل بارگذاری نیست.")
+            _tts_error = None
+            return True
+        except Exception as exc:
+            _tts_error = exc
+            raise RuntimeError(f"نصب خودکار موتور Piper ناموفق بود: {type(exc).__name__}: {exc}") from exc
 
 def _resolve_shenava_model_files(model_path=""):
     """Resolve either supported Shenava HF variant, a snapshot folder, or a direct ONNX file."""
@@ -575,6 +601,22 @@ def warmup_tts(model_path="") -> bool:
         logging.getLogger(__name__).exception("Optional Persian ezafe warmup failed")
     return ready
 
+
+def ensure_tts_ready(model_path="", cancel_event=None) -> bool:
+    """Install Piper if needed, load the selected/default Persian voice and warm it up."""
+    global _tts_error
+    ensure_piper_runtime(cancel_event=cancel_event)
+    selected = str(model_path or "").strip()
+    if selected:
+        path = Path(selected).expanduser()
+        if not path.is_file() or path.suffix.lower() != ".onnx":
+            raise RuntimeError(f"مدل Piper انتخاب‌شده وجود ندارد یا ONNX نیست: {path}")
+        if not Path(str(path) + ".json").is_file():
+            raise RuntimeError(f"فایل تنظیمات مدل Piper پیدا نشد: {path}.json")
+    if not warmup_tts(selected):
+        detail = str(_tts_error) if _tts_error else "علت مشخصی گزارش نشد."
+        raise RuntimeError(f"آماده‌سازی صدای محلی Piper ناموفق بود: {detail}")
+    return True
 
 def synthesize_persian(text: str, model_path="", rate=0, prosody=None, postprocess=True) -> bytes:
     """Synthesize Persian speech with Piper's native timing controls.
