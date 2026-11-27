@@ -313,7 +313,12 @@ class NewsFeedStore:
                     expires_at=MIN(news_items.expires_at, excluded.expires_at),
                     region=excluded.region,
                     is_post=MAX(news_items.is_post, excluded.is_post),
-                    processed=MAX(news_items.processed, excluded.processed)""",
+                    processed=CASE
+                        WHEN news_items.is_post=0 AND excluded.is_post=0
+                             AND (news_items.title != excluded.title OR news_items.summary != excluded.summary)
+                            THEN 0
+                        ELSE MAX(news_items.processed, excluded.processed)
+                    END""",
                 rows,
             )
             changed = len(rows)
