@@ -7,6 +7,8 @@ on:
       - "kira/settings_schema.py"
       - "kira/ui/pages/voice_page.py"
       - "kira/gemini_live.py"
+      - "docs/GEMINI_LIVE.md"
+      - "docs/GEMINI_LIVE_FA.md"
       - "tests/test_gemini_live_models.py"
       - ".github/workflows/google-live-models.yml"
   push:
@@ -15,6 +17,8 @@ on:
       - "kira/settings_schema.py"
       - "kira/ui/pages/voice_page.py"
       - "kira/gemini_live.py"
+      - "docs/GEMINI_LIVE.md"
+      - "docs/GEMINI_LIVE_FA.md"
       - "tests/test_gemini_live_models.py"
       - ".github/workflows/google-live-models.yml"
 
