@@ -185,7 +185,7 @@ class ModelsPanel(QGroupBox):
     def _fill_row(self, table: QTableWidget, i: int, tab: str, row: dict) -> None:
         members = list(row.get("members") or [row])
         member_keys = tuple((member["provider"], member["model"]) for member in members)
-        toggle_keys = tuple(row.get("toggle_member_keys") or member_keys)
+        toggle_keys = tuple(row["toggle_member_keys"]) if "toggle_member_keys" in row else member_keys
         archived_members = [
             member for member in members if TAB_ARCHIVED in member.get("tabs", [])
         ]
