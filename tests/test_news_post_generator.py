@@ -43,6 +43,9 @@ class NewsPostGeneratorTests(unittest.TestCase):
             "source": "X @insider",
             "published_at": "2026-11-27T10:00:00Z",
             "url": "https://example.com/leak",
+        }], existing_posts=[{
+            "title": "An earlier game update",
+            "summary": "The last post already covered the previous patch.",
         }])
         self.assertEqual(owners, ["kira"])
         self.assertEqual(result[0]["source_ids"], [0])
@@ -50,6 +53,8 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertIn("تو کیرا هستی", chat_call[2])
         self.assertIn("Speak naturally and playfully", chat_call[2])
         self.assertIn("Compare independent sources", chat_call[2])
+        self.assertIn("An earlier game update", chat_call[1][0]["content"])
+        self.assertIn("Do not repeat a story", chat_call[1][0]["content"])
         self.assertIn("untrusted", chat_call[2])
         self.assertEqual(chat_call[3], 0.55)
         self.assertEqual(router.calls[0], ("role", "chat"))
