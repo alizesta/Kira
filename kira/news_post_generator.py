@@ -22,7 +22,12 @@ class NewsPostGenerator:
         self._router_factory = router_factory
         self._profile_factory = profile_factory
 
-    def __call__(self, character_id: str, sources: list[dict]) -> list[dict]:
+    def __call__(
+        self,
+        character_id: str,
+        sources: list[dict],
+        existing_posts: list[dict] | None = None,
+    ) -> list[dict]:
         owner = str(character_id or "").strip().lower()
         if owner not in CHARACTER_IDS:
             raise ValueError(f"Unknown news character: {owner}")
@@ -69,7 +74,8 @@ class NewsPostGenerator:
             "speculation. If sources conflict or a claim is unverified, say so plainly. For medical content, "
             "do not diagnose, prescribe, or make unsupported treatment claims. For market content, do not "
             "give buy/sell instructions.\n\n"
-            "Create at most 4 distinct posts. Combine records about the same story into one post and cite "
+            "Create at most 4 distinct posts. Do not repeat stories already present in the existing-post context "
+            "unless the new source records contain a meaningful update. Combine records about the same story into one post and cite "
             "all source IDs used. Skip trivial, stale, duplicate, or unsupported material. Each post must "
             "have a short conversational Persian title and a substantial Persian body (roughly 250-500 "
             "characters) that includes the key facts, the character's own take, and why it matters. "
@@ -78,10 +84,23 @@ class NewsPostGenerator:
             "source_ids must refer only to IDs in the input. Never create or rewrite URLs. "
             "If nothing deserves a post, return {\"posts\":[]}."
         )
+        previous = [
+            {
+                "title": str(item.get("title") or "")[:180],
+                "summary": str(item.get("summary") or "")[:240],
+            }
+            for item in (existing_posts or [])[:10]
+            if isinstance(item, dict)
+        ]
         user_prompt = (
-            "Turn these source records into the character's own news posts. "
-            "Preserve the source IDs exactly:\n"
-            + json.dumps(material, ensure_ascii=False, separators=(",", ":"))
+            "Turn these new source records into the character's own news posts. "
+            "Do not repeat a story already covered below unless the new sources contain a material update. "
+            "Preserve the new source IDs exactly. Existing posts are context only, not new evidence:\\n"
+            + json.dumps(
+                {"new_sources": material, "already_published": previous},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         )
         router = self._router_factory(owner)
         if router is None or not callable(getattr(router, "chat", None)):
