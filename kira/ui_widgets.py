@@ -6,7 +6,11 @@ import random
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout, QSizePolicy, QWIDGETSIZE_MAX
+from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout, QSizePolicy
+
+# Qt defines QWIDGETSIZE_MAX as a C++ macro (2^24 - 1); PySide6 does not
+# consistently expose that macro in QtWidgets across supported releases.
+QWIDGETSIZE_MAX = (1 << 24) - 1
 
 
 class ChatInput(QPlainTextEdit):
