@@ -1,0 +1,43 @@
+name: Gemini Live Model Regression
+
+on:
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/settings_schema.py"
+      - "kira/ui/pages/voice_page.py"
+      - "kira/gemini_live.py"
+      - "tests/test_gemini_live_models.py"
+      - ".github/workflows/google-live-models.yml"
+  push:
+    branches: [feature/google-live-model-option]
+    paths:
+      - "kira/settings_schema.py"
+      - "kira/ui/pages/voice_page.py"
+      - "kira/gemini_live.py"
+      - "tests/test_gemini_live_models.py"
+      - ".github/workflows/google-live-models.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  supported-model-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile changed Gemini Live modules
+        run: >-
+          python -m py_compile
+          kira/settings_schema.py
+          kira/ui/pages/voice_page.py
+          kira/gemini_live.py
+          tests/test_gemini_live_models.py
+      - name: Verify default and available Live model IDs
+        run: python -m unittest tests.test_gemini_live_models -v
