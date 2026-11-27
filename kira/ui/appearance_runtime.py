@@ -98,7 +98,9 @@ class AppearanceRuntime:
             )
         try:
             from .chat_shell import apply_chat_shell
-            apply_chat_shell(self.context)                      # once per chat page; later calls only report True
+            from .dashboard_chat import apply_dashboard_chat
+            apply_chat_shell(self.context)                      # the three columns; once per chat page
+            apply_dashboard_chat(self.context)                  # bubbles, composer pill, portrait; after the columns exist
         except Exception:                                       # noqa: BLE001 - a skin problem must never break the app
             logging.getLogger("kira.ui").exception("Chat shell could not be applied")
         if save:
