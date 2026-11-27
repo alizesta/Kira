@@ -112,6 +112,8 @@ class _TitleBar(QFrame):
             "background: #c94062; color: white; }"
         )
         layout = QHBoxLayout(self)
+        # Keep window controls on the physical right edge, even when the app is RTL.
+        layout.setDirection(QHBoxLayout.Direction.LeftToRight)
         layout.setContentsMargins(10, 4, 8, 4)
         layout.setSpacing(4)
 
