@@ -21,7 +21,7 @@ from datetime import datetime
 
 import math
 
-from PySide6.QtCore import QPoint, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QSizePolicy,
@@ -379,6 +379,7 @@ def apply_chat_shell(context) -> bool:
     steps = (
         ("layout", lambda: _build_layout(context, controller, parts, lang)),
         ("right column", lambda: _build_right(avatar_card, context, lang)),
+        ("tagline", lambda: _hide_tagline(avatar_card)),
         ("avatar side", lambda: _avatar_on_the_right(page, avatar_card, lang)),
         ("style survives theme changes", lambda: _wrap_theme(controller, page, style)),
         ("character pictures", lambda: _wrap_tabs(context, controller)),
@@ -432,8 +433,23 @@ def _build_layout(context, controller, parts, lang) -> None:
     center_layout.setContentsMargins(0, 0, 0, 0)
     center_layout.setSpacing(12)
     center_layout.addWidget(_build_greeting(context, lang))
-    center_layout.addWidget(_build_stats(context, parts, lang))
+    stats = _build_stats(context, parts, lang)
+    stats.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    center_layout.addWidget(stats)
     center_layout.addWidget(chat_card, 1)
+    parts["chat_card"] = chat_card
+    panel = getattr(views, "news_feed_panel", None)
+    if panel is not None:                                  # the characters' news feed lives in Journal
+        for guard in [c for c in panel.children() if type(c).__name__ == "_HideGuard"]:
+            panel.removeEventFilter(guard)
+            guard.deleteLater()
+        panel.setParent(center)
+        center_layout.addWidget(panel, 1)
+        panel.setMaximumSize(16777215, 16777215)
+        panel.setMinimumWidth(0)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        panel.hide()
+        parts["news_panel"] = panel
     area_layout.addWidget(left, 0)
     area_layout.addWidget(center, 1)
 
@@ -481,10 +497,6 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     holder_layout.setContentsMargins(0, 0, 0, 8)
     holder_layout.setSpacing(6)
     holder_layout.addWidget(scroll, 1)
-    gear_row = QHBoxLayout()
-    gear_row.setContentsMargins(8, 0, 8, 0)
-    gear_row.addWidget(_settings_button(context, lang))
-    holder_layout.addLayout(gear_row)
     return holder
 
 
@@ -529,7 +541,15 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
     buttons = {}
     keys = list(getattr(context.views, "tab_keys", []) or [])
 
-    def activate(tab_key):
+    def activate(tab_key, key=None):
+        card, panel = parts.get("chat_card"), parts.get("news_panel")
+        if card is not None and panel is not None:
+            journal = key == "journal"
+            card.setVisible(not journal)
+            panel.setVisible(journal)
+            if journal:
+                buttons["journal"].setChecked(True)
+                return
         if tab_key is None:
             _soon(context, lang)
         elif controller is not None and tab_key in keys:
@@ -551,7 +571,7 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
             button.setText(" " + text)
         else:
             button.setText(f"{glyph}   {text}")
-        button.clicked.connect(lambda checked=False, target=tab_key: activate(target))
+        button.clicked.connect(lambda checked=False, target=tab_key, name=key: activate(target, name))
         group.addButton(button)
         buttons[key] = button
         layout.addWidget(button)
@@ -666,6 +686,12 @@ def _build_stats(context, parts, lang) -> QWidget:
     parts["mood_sub"] = _label("آسوده" if fa else "Relaxed", "statSub")
     texts.addWidget(parts["mood_title"])
     texts.addWidget(parts["mood_sub"])
+    for name in ("mood_emotion_icon", "mood_indicator"):    # moved here from the old left-bottom corner, frame removed
+        widget = getattr(context.views, name, None)
+        if widget is not None:
+            widget.setParent(None)
+            widget.setStyleSheet("border: none; background: transparent; padding: 0px;")
+            body.addWidget(widget)
     parts["sparkline"] = _Sparkline()
     body.addWidget(parts["sparkline"])
     row.addWidget(mood, 1)
@@ -727,6 +753,11 @@ def _build_right(avatar_card, context, lang) -> None:
     heart.setAlignment(Qt.AlignRight)
     quote_layout.addWidget(heart)
     layout.addWidget(quote)
+
+
+def _hide_tagline(avatar_card) -> None:
+    for label in avatar_card.findChildren(QLabel, "hint"):
+        label.hide()
 
 
 def _sync_portrait(context) -> None:

@@ -51,6 +51,8 @@ avatar. The user will supply Kira's picture; place it there.
 
 * Done (Claude 2, 6th pass): sidebar/header icons are all neon SVGs of one size (new Lucide files home/heart/image/book/music/bell/phone/gift/regenerate in assets/icons); nav buttons follow the UI direction so the icon sits before the text (right of the text in Persian). Message actions have no frames; Kira's replies have copy / regenerate / speak (regenerate re-submits the last user message via `__last_user` in `_chat_action_texts`), the user's own messages keep copy / edit. Chat document margin 16 and user bubbles wrapped in a full-width table so rounded corners are not clipped. Not yet seen: the "is typing" box (needs a busy session).
 
+* Done (Claude 2, 7th pass): bubbles are painted around the real text blocks (`_content_rect`, pad 14x9) so text sits inside; bottom-left Settings button removed (the nav Settings item is the main one; the hamburger bar still appears on the other pages); mood emoji + energy bolt moved into the Kira's Mood card without frames; "Your desktop assistant" tagline hidden; the characters' news feed panel (`views.news_feed_panel`) now lives in the Journal page: Journal swaps the chat card for the panel, any other nav item swaps back. The panel's own look is still the compact one (text small) - restyle it for the wide page if wanted.
+
 ## Test checklist for the final pass
 
 Run `run_tests.bat`. Likely failures: tests that assert the old layout (avatar width, tab row position, composer button order) or the

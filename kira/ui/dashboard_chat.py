@@ -125,6 +125,22 @@ def _bubble_tables(frame):
         yield from _bubble_tables(child)
 
 
+BUBBLE_PAD_X, BUBBLE_PAD_Y = 14, 9
+
+
+def _content_rect(document, layout, table):
+    """Union of the text blocks inside one bubble table: the bubble is drawn around what is really there."""
+    block = document.findBlock(table.firstPosition())
+    end = table.lastPosition()
+    rect = None
+    while block.isValid() and block.position() <= end:
+        part = layout.blockBoundingRect(block)
+        if part.height() > 0:
+            rect = part if rect is None else rect.united(part)
+        block = block.next()
+    return rect
+
+
 class _BubbleUnderlay(QObject):
     """Paints the rounded bubble shapes behind the text of one chat view (QTextBrowser), on every repaint."""
 
@@ -151,7 +167,10 @@ class _BubbleUnderlay(QObject):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(QPen(QColor(BUBBLE_BORDER), 1))
         for table in _bubble_tables(view.document().rootFrame()):
-            rect = layout.frameBoundingRect(table).translated(dx, dy)
+            rect = _content_rect(view.document(), layout, table)
+            if rect is None:
+                rect = layout.frameBoundingRect(table)
+            rect = rect.adjusted(-BUBBLE_PAD_X, -BUBBLE_PAD_Y, BUBBLE_PAD_X, BUBBLE_PAD_Y).translated(dx, dy)
             if not rect.intersects(visible):
                 continue
             painter.setBrush(QColor(USER_BUBBLE if round(table.format().cellPadding()) == USER_PAD else ASSISTANT_BUBBLE))
