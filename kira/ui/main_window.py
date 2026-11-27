@@ -1,6 +1,9 @@
 """Thin Qt host with lazy, feature-scoped controller construction."""
 from __future__ import annotations
 
+import sys
+
+from PySide6.QtGui import QCursor
 from PySide6.QtCore import QTimer, Signal, Qt
 from PySide6.QtWidgets import QMainWindow
 
@@ -45,6 +48,40 @@ class MainWindow(QMainWindow):
 
         enable_main_window_fluid(self)
         self._init_input_hint_rotation()
+
+
+    def nativeEvent(self, event_type, message):
+        """Expose native Windows resize hit targets for all window edges and corners."""
+        if sys.platform == "win32" and bytes(event_type) in (
+            b"windows_generic_MSG",
+            b"windows_dispatcher_MSG",
+        ):
+            import ctypes
+            from ctypes import wintypes
+
+            native_message = ctypes.cast(
+                int(message), ctypes.POINTER(wintypes.MSG)
+            ).contents
+            if (
+                native_message.message == 0x0084  # WM_NCHITTEST
+                and not self.isMaximized()
+                and not self.isFullScreen()
+            ):
+                from .custom_window_frame import (
+                    WINDOWS_RESIZE_HIT_CODES,
+                    resize_region_at,
+                )
+
+                point = self.mapFromGlobal(QCursor.pos())
+                region = resize_region_at(
+                    point.x(), point.y(), self.width(), self.height()
+                )
+                hit_code = WINDOWS_RESIZE_HIT_CODES.get(region)
+                if hit_code is not None:
+                    return True, hit_code
+
+        return super().nativeEvent(event_type, message)
+
 
     def _init_input_hint_rotation(self):
         """Pick a fresh character-specific example prompt periodically."""

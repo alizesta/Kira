@@ -1,8 +1,53 @@
 """Native-feeling custom frame for Kira's frameless desktop window."""
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QToolButton
+
+
+WINDOWS_RESIZE_HIT_CODES = {
+    "left": 10,          # HTLEFT
+    "right": 11,         # HTRIGHT
+    "top": 12,            # HTTOP
+    "top_left": 13,       # HTTOPLEFT
+    "top_right": 14,      # HTTOPRIGHT
+    "bottom": 15,         # HTBOTTOM
+    "bottom_left": 16,    # HTBOTTOMLEFT
+    "bottom_right": 17,   # HTBOTTOMRIGHT
+}
+
+
+def resize_region_at(x, y, width, height, border=8):
+    """Return the native resize region for a point in the window's client area."""
+    x, y = int(x), int(y)
+    width, height, border = int(width), int(height), max(1, int(border))
+    if width <= 0 or height <= 0 or x < 0 or y < 0 or x >= width or y >= height:
+        return None
+
+    left = x < border
+    right = x >= width - border
+    top = y < border
+    bottom = y >= height - border
+
+    if top and left:
+        return "top_left"
+    if top and right:
+        return "top_right"
+    if bottom and left:
+        return "bottom_left"
+    if bottom and right:
+        return "bottom_right"
+    if left:
+        return "left"
+    if right:
+        return "right"
+    if top:
+        return "top"
+    if bottom:
+        return "bottom"
+    return None
 
 
 class _ResizeEventFilter(QObject):
@@ -122,7 +167,8 @@ class _TitleBar(QFrame):
 def create_custom_title_bar(window, parent):
     """Create Kira's title bar and install native OS edge-resize delegation once."""
     app = QApplication.instance()
-    if app is not None and not getattr(window, "_kira_resize_filter", None):
+    if (sys.platform != "win32" and app is not None
+            and not getattr(window, "_kira_resize_filter", None)):
         resize_filter = _ResizeEventFilter(window)
         app.installEventFilter(resize_filter)
         window._kira_resize_filter = resize_filter
