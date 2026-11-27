@@ -94,6 +94,11 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertNotIn("Abadan", kira)
         self.assertNotIn("Abadan", ren)
 
+    def test_default_refresh_interval_is_four_hours(self):
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {}, temp)
+            self.assertEqual(service._interval_seconds(), 4 * 3600)
+
     def test_mika_has_weather_and_nutrition_queries(self):
         categories = {category for category, _query in CHARACTER_QUERIES["mika"]}
         self.assertTrue({"weather", "nutrition", "medical_science"} <= categories)

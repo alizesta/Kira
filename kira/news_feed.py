@@ -120,7 +120,7 @@ def is_official_weather_source(raw_url: object) -> bool:
         "weather.gov", "metoffice.gov.uk", "dwd.de", "meteofrance.com",
         "aemet.es", "bom.gov.au", "ecmwf.int", "wmo.int", "knmi.nl",
         "met.ie", "meteoswiss.admin.ch", "smhi.se", "yr.no",
-        "meteoalarm.org",
+        "meteoalarm.org", "irimo.ir",
     }
     if host in exact or any(host.endswith("." + domain) for domain in exact):
         return True
