@@ -1,4 +1,5 @@
 """Regression tests for character news retention and isolation."""
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -150,6 +151,39 @@ class NewsFeedStoreTests(unittest.TestCase):
                 service._refresh_character("kira")
             self.assertEqual(search.call_count, len(CHARACTER_QUERIES["kira"]))
             self.assertIn("RSS collector: RuntimeError", service.store.status("kira")["last_error"])
+
+    def test_existing_news_database_is_migrated_without_publishing_old_raw_items(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "news_feed"
+            root.mkdir()
+            path = root / "news.sqlite3"
+            stamp = time.time()
+            with sqlite3.connect(path) as db:
+                db.execute(
+                    """CREATE TABLE news_items (
+                        id INTEGER PRIMARY KEY, character_id TEXT NOT NULL,
+                        category TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL,
+                        source TEXT NOT NULL, url TEXT NOT NULL, url_key TEXT NOT NULL,
+                        published_at TEXT NOT NULL DEFAULT '', first_seen_at REAL NOT NULL,
+                        expires_at REAL NOT NULL, region TEXT NOT NULL DEFAULT ''
+                    )"""
+                )
+                db.execute(
+                    """INSERT INTO news_items(
+                        character_id, category, title, summary, source, url, url_key,
+                        published_at, first_seen_at, expires_at, region
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ("kira", "gaming_news", "Old raw headline", "Old snippet", "example.com",
+                     "https://example.com/old", "https://example.com/old", "", stamp,
+                     stamp + 7 * 86400, ""),
+                )
+            migrated = NewsFeedStore(Path(temp))
+            columns = {
+                row["name"] for row in migrated._connect().execute("PRAGMA table_info(news_items)")
+            }
+            self.assertTrue({"is_post", "processed"} <= columns)
+            self.assertEqual(migrated.list_posts("kira"), [])
+            self.assertEqual(len(migrated.list_unprocessed_items("kira")), 1)
 
     def test_raw_sources_are_hidden_from_the_character_feed(self):
         stamp = time.time()
