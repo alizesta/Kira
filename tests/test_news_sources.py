@@ -12,7 +12,10 @@ class NewsSourceTests(unittest.TestCase):
         self.assertTrue(any(item.category == "gaming_community" for item in kira))
         x_sources = [item for item in kira if item.url.startswith("https://fxtwitter.com/")]
         self.assertGreaterEqual(len(x_sources), 5)
-        self.assertTrue(all(item.category == "gaming_rumor" for item in x_sources))
+        self.assertGreaterEqual(sum(item.category == "gaming_rumor" for item in x_sources), 3)
+        self.assertGreaterEqual(sum(item.category == "gaming_report" for item in x_sources), 2)
+        self.assertTrue(any(item.category == "gaming_social" for item in x_sources))
+        self.assertTrue(any(item.category == "gaming_rumor" and "GamingLeaksAndRumours" in item.label for item in kira))
 
     def test_mika_has_multiple_iranian_health_sources(self):
         mika = [item for item in FEED_SOURCES if item.character == "mika"]
