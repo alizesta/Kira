@@ -156,6 +156,39 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
         self.assertFalse(is_gaming_news("Central bank holds interest rates", "Currency market update"))
 
+    def test_missing_story_images_are_backfilled_from_configured_tavily_image_search(self):
+        sources = [{
+            "title": "Grand Theft Auto VI new trailer",
+            "summary": "A new trailer is reported.",
+            "url": "https://example.com/gta6",
+            "category": "gaming_news",
+            "source_label": "Example Games",
+        }]
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {"tavily_api_key": "test-key"}, temp)
+
+            def fake_search(_context, _query, kind="web", max_results=8):
+                if kind == "images":
+                    return {"results": [{
+                        "title": "Grand Theft Auto VI official artwork",
+                        "url": "https://cdn.example.com/gta6-artwork.jpg",
+                    }]}
+                return {"results": []}
+
+            with (
+                patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])),
+                patch("kira.webintel.engine.search", side_effect=fake_search) as search,
+            ):
+                service._refresh_character("kira")
+
+            stored = service.store.list_items("kira")
+            self.assertEqual(len(stored), 1)
+            self.assertEqual(stored[0]["image_url"], "https://cdn.example.com/gta6-artwork.jpg")
+            self.assertEqual(
+                sum(call.kwargs.get("kind") == "images" for call in search.call_args_list),
+                1,
+            )
+
     def test_rss_collector_failure_keeps_web_search_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             service = NewsFeedService(lambda: {}, temp)
