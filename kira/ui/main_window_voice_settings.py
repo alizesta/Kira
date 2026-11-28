@@ -178,6 +178,11 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
+        # These indicators are displayed in the conversation sidebar, not in the chat header.
+        # Reparent them explicitly before inserting them into a separate widget layout;
+        # otherwise a parentless/detached Qt widget can surface as its own desktop window.
+        self.context.views.mood_emotion_icon.setParent(conversation_sidebar)
+        self.context.views.mood_indicator.setParent(conversation_sidebar)
         mood_row = QHBoxLayout()
         mood_row.setContentsMargins(2, 2, 2, 4)
         mood_row.setSpacing(6)
