@@ -10,7 +10,7 @@ from pathlib import Path
 from kira.news_feed import (
     CHARACTER_QUERIES, NewsFeedService, NewsFeedStore, build_prompt_context,
     is_official_health_source, is_official_weather_source, is_gaming_news,
-    _prepare_character_posts,
+    _prepare_character_posts, _commons_thumbnail,
 )
 
 
@@ -155,6 +155,51 @@ class NewsFeedStoreTests(unittest.TestCase):
     def test_ren_feed_rejects_game_industry_stories(self):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
         self.assertFalse(is_gaming_news("Central bank holds interest rates", "Currency market update"))
+
+    def test_commons_thumbnail_uses_only_wikimedia_raster_assets(self):
+        payload = (
+            b'{"query":{"pages":{"1":{"imageinfo":[{"thumburl":'
+            b'"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/game.jpg/640px-game.jpg"}]}}}}'
+        )
+        response = type("Fetched", (), {"body": payload})()
+        with patch("kira.webintel.netguard.fetch", return_value=response) as fetch:
+            image = _commons_thumbnail("Grand Theft Auto VI")
+        self.assertEqual(
+            image,
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/game.jpg/640px-game.jpg",
+        )
+        self.assertIn("generator=search", fetch.call_args.args[0])
+
+        unsafe_payload = (
+            b'{"query":{"pages":{"1":{"imageinfo":[{"thumburl":'
+            b'"https://evil.example.com/game.jpg"}]}}}}'
+        )
+        with patch(
+            "kira.webintel.netguard.fetch",
+            return_value=type("Fetched", (), {"body": unsafe_payload})(),
+        ):
+            self.assertEqual(_commons_thumbnail("Grand Theft Auto VI"), "")
+
+    def test_missing_images_use_the_keyless_commons_fallback(self):
+        sources = [{
+            "title": "Central bank publishes new rate outlook",
+            "summary": "The central bank published its new outlook.",
+            "url": "https://example.com/rates",
+            "category": "economy_markets",
+            "source_label": "Example Finance",
+        }]
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {}, temp)
+            with (
+                patch("kira.webintel.engine.search", return_value={"results": []}),
+                patch("kira.news_sources.collect_character_feeds", return_value=([], [])),
+                patch("kira.news_feed._commons_thumbnail", return_value="https://upload.wikimedia.org/wikipedia/commons/rate.png") as commons,
+            ):
+                service._queries = lambda *_args: []
+                service._refresh_character("ren")
+            stored = service.store.list_items("ren")
+            self.assertEqual(stored[0]["image_url"], "https://upload.wikimedia.org/wikipedia/commons/rate.png")
+            commons.assert_called_once_with("Central bank publishes new rate outlook")
 
     def test_missing_story_images_are_backfilled_from_configured_tavily_image_search(self):
         sources = [{
