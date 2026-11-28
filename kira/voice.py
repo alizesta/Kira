@@ -1,5 +1,6 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import atexit
+import logging
 import hashlib
 import io
 import json
@@ -566,9 +567,9 @@ class Speaker(QObject):
                     f"مدل پیش‌فرض: {type(fallback_error).__name__}: {fallback_error}"
                 ) from fallback_error
             if previous_failure != model_path:
-                self._report(
-                    "مدل Piper انتخاب‌شده آماده نبود؛ برای ادامهٔ پاسخ از صدای پیش‌فرض محلی Mana استفاده شد. "
-                    f"علت: {type(selected_error).__name__}: {selected_error}"
+                logging.getLogger(__name__).warning(
+                    "Selected local Piper voice is unavailable; using the bundled Mana voice: %s: %s",
+                    type(selected_error).__name__, selected_error,
                 )
             model_path = ""
 
