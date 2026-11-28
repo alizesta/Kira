@@ -21,7 +21,7 @@ class _Store:
             return [{
                 "category": "gaming_industry",
                 "title": "Visible character-written headline for Kira",
-                "summary": "این روایت خود کیراست؛ خبر را از چند زاویه بررسی کرده و توضیح داده چرا برای بازیکن‌ها اهمیت دارد.\\n\\nسطح اطمینان: گزارش‌شده\\nمنابع تکمیلی: Example source: https://source.example/report",
+                "summary": "این روایت خود کیراست؛ خبر را از چند زاویه بررسی کرده و توضیح داده چرا برای بازیکن‌ها اهمیت دارد.\n\nسطح اطمینان: گزارش‌شده\nمنابع تکمیلی: Example source: https://source.example/report",
                 "source": "example.com",
                 "url": "https://example.com/kira",
                 "image_url": "https://cdn.example.com/kira.jpg",
