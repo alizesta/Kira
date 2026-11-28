@@ -876,7 +876,7 @@ def resize_chat_shell(context, available_width=None) -> None:
             avatar_card.setFixedWidth(0)
             avatar_card.hide()
 
-    left_width = max(155, min(LEFT_WIDTH, int(width * 0.25)))
+    left_width = max(150, min(LEFT_WIDTH, int(width * 0.24)))
     left_holder = page.findChild(QWidget, "dashLeftHolder")
     left_scroll = page.findChild(QScrollArea, "dashLeftScroll")
     if left_scroll is not None:
@@ -884,14 +884,14 @@ def resize_chat_shell(context, available_width=None) -> None:
     if left_holder is not None:
         left_holder.setFixedWidth(left_width + 5)
 
-    # Keep the conversation history reachable but compact. The message editor
-    # and message viewport get all remaining width instead of overlapping it.
+    # Keep history narrower than the available width; chat receives the rest.
     conversation_list = getattr(views, "conversation_list", None)
     history_panel = conversation_list.parentWidget() if conversation_list is not None else None
     if history_panel is not None:
-        history_width = max(96, min(154, int(width * 0.16)))
-        history_panel.setMinimumWidth(history_width)
+        history_width = max(90, min(154, int(width * 0.14)))
+        history_panel.setMinimumWidth(0)
         history_panel.setMaximumWidth(history_width)
+        history_panel.setMinimumWidth(history_width)
 
     center = page.findChild(QWidget, "dashCenter")
     if center is not None:
