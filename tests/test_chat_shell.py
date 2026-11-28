@@ -216,7 +216,7 @@ class ChatShellTests(unittest.TestCase):
         self.assertIsInstance(portrait_widgets[0], chat_shell._Portrait)
         self.assertEqual(portrait_widgets[0]._subtitle, "همیشه اینجام برات")
         self.assertTrue(avatar.isHidden())
-        self.assertFalse(stale_portrait.isVisible())
+        self.assertIsNone(stale_portrait.parent())
 
     def test_chat_shell_reflows_columns_when_window_is_not_maximized(self):
         context, p = build()
