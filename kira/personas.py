@@ -174,6 +174,7 @@ def is_broad_news_request(text: str) -> bool:
     value = value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
     value = re.sub(r"[؟?!.,،؛:…]+$", "", value).strip()
     value = re.sub(r"^(?:(?:سلام|ببین|راستی)[،,:؛!؟-]?\s*)+", "", value)
+    value = re.sub(r"^(?:(?:کیرا|کيرا|میکا|میكا|رِن|رن|kira|mika|ren)(?:\s+جان)?[،,:؛!؟-]?\s*)+", "", value)
     return bool(_BROAD_NEWS_REQUEST_RX.fullmatch(value))
 
 def scope_news_search_query(character_id: str, query: str, request_text: str) -> str:
