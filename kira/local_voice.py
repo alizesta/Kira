@@ -150,14 +150,22 @@ def normalize_persian_tts_text(text: str) -> str:
     return re.sub(r" {2,}", " ", value).strip()
 
 
+def tts_model_files_ready(model_path="") -> bool:
+    """Return whether a selected Piper model has its ONNX weights and native .onnx.json sidecar."""
+    if not model_path:
+        return True
+    path = Path(str(model_path)).expanduser()
+    return bool(
+        path.is_file()
+        and path.suffix.lower() == ".onnx"
+        and Path(str(path) + ".json").is_file()
+    )
+
+
 def tts_ready(model_path="") -> bool:
     """Check the local Piper runtime and, for custom voices, the selected ONNX file."""
-    if model_path:
-        path = Path(str(model_path)).expanduser()
-        if not path.is_file() or path.suffix.lower() != ".onnx":
-            return False
-        if not Path(str(path) + ".json").is_file():
-            return False
+    if model_path and not tts_model_files_ready(model_path):
+        return False
     try:
         import piper  # noqa: F401
         return True
@@ -949,6 +957,10 @@ def discover_cached_models() -> dict:
                     })
                     seen_asr.add(repo_id.casefold())
                 for onnx in snapshot.glob("*.onnx"):
+                    # A bare ONNX file is not a Piper voice. Piper requires its
+                    # adjacent <model>.onnx.json phoneme/config sidecar as well.
+                    if not tts_model_files_ready(onnx):
+                        continue
                     key = str(onnx.absolute()).casefold()
                     if key not in seen_tts:
                         display_name = "Mana Persian Piper" if "mana" in onnx.stem.casefold() or "mana-persian-piper" in repo_id.casefold() else onnx.stem
@@ -980,6 +992,8 @@ def discover_cached_models() -> dict:
                 continue
             visited_roots.add(resolved_root)
             for onnx in resolved_root.rglob("*.onnx"):
+                if not tts_model_files_ready(onnx):
+                    continue
                 key = str(onnx.resolve()).casefold()
                 if key not in seen_tts:
                     display_name = "Mana Persian Piper" if "mana" in onnx.stem.casefold() else onnx.stem
