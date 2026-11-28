@@ -6,14 +6,12 @@ from html.parser import HTMLParser
 from threading import Thread
 from urllib.parse import urljoin, urlsplit
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, QUrl
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
-    QDesktopServices, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import QUrl
-
 from ...news_feed import CATEGORY_LABELS, CHARACTER_IDS
 
 
