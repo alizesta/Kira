@@ -9,7 +9,7 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QFrame, QLabel
 
-from kira.ui.pages.news_feed_panel import NewsFeedPanel, _SwipeScrollArea
+from kira.ui.pages.news_feed_panel import NewsFeedPanel, _ImageMetaParser, _SwipeScrollArea
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -118,12 +118,23 @@ class NewsFeedPanelTests(unittest.TestCase):
         })()
         panel = NewsFeedPanel(service, {})
         self.addCleanup(panel.close)
-        panel.resize(460, 520)
+        panel.resize(1100, 620)
         panel.show()
         panel.set_character("kira")
         _APP.processEvents()
 
         self.assertIsInstance(panel.cards_scroll, _SwipeScrollArea)
+        panel._refresh_card_widths()
+        cards = panel.cards_container.findChildren(QFrame, "newsStoryCard")
+        self.assertEqual(len(cards), 6)
+        margins = panel.cards_layout.contentsMargins()
+        visible_width = panel.cards_scroll.viewport().width()
+        used_width = (
+            sum(card.width() for card in cards[:3])
+            + 2 * panel.cards_layout.spacing()
+            + margins.left() + margins.right()
+        )
+        self.assertLessEqual(used_width, visible_width)
         bar = panel.cards_scroll.horizontalScrollBar()
         self.assertGreater(bar.maximum(), 0)
 
@@ -144,6 +155,30 @@ class NewsFeedPanelTests(unittest.TestCase):
         _APP.sendEvent(target, move)
         self.assertGreater(bar.value(), 0)
         _APP.sendEvent(target, release)
+
+    def test_publisher_image_metadata_parser_reads_open_graph_lazy_images_and_json_ld(self):
+        parser = _ImageMetaParser()
+        parser.feed("""
+            <html><head>
+              <meta property="og:image:secure_url" content="https://cdn.example.com/cover.jpg">
+              <script type="application/ld+json">
+                {"@type":"NewsArticle","image":{"url":"https://cdn.example.com/story.webp"}}
+              </script>
+            </head><body>
+              <img data-srcset="https://cdn.example.com/lazy.webp 640w, https://cdn.example.com/lazy-large.webp 1280w">
+            </body></html>
+        """)
+        parser.close()
+        self.assertEqual(parser.candidates[0], "https://cdn.example.com/cover.jpg")
+        self.assertIn("https://cdn.example.com/story.webp", parser.candidates)
+        self.assertIn("https://cdn.example.com/lazy.webp", parser.candidates)
+
+    def test_image_decoder_accepts_octet_stream_only_with_a_raster_signature(self):
+        jpeg = bytes.fromhex("ffd8ff") + b"jpeg"
+        self.assertTrue(NewsFeedPanel._supported_image(jpeg, "application/octet-stream"))
+        self.assertTrue(NewsFeedPanel._supported_image(jpeg, "image/jpeg"))
+        self.assertFalse(NewsFeedPanel._supported_image(b"<svg/>", "application/octet-stream"))
+        self.assertFalse(NewsFeedPanel._supported_image(b"<svg/>", "image/svg+xml"))
 
     def test_missing_image_preview_is_not_permanently_cached(self):
         self.panel._apply_image("https://example.com/story", b"")
