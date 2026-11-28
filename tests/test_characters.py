@@ -3,7 +3,7 @@ from pathlib import Path
 
 from kira import characters
 from kira.characters.kira import PROFILE as KIRA_PROFILE
-from kira.personas import prompt_for
+from kira.personas import is_broad_news_request, prompt_for, scope_news_search_query
 
 
 class CharacterProfilesTests(unittest.TestCase):
@@ -35,6 +35,42 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertIn("observant and inquisitive", ren_prompt)
         self.assertIn("openly warm, caring and encouraging", mika_prompt)
         self.assertNotEqual(ren_prompt, mika_prompt)
+
+    def test_default_news_domains_are_character_specific_but_not_refusals(self):
+        kira = prompt_for({"active_character_id": "kira"})
+        ren = prompt_for({"active_character_id": "ren"})
+        mika = prompt_for({"active_character_id": "mika"})
+
+        self.assertIn("video games", kira)
+        self.assertIn("financial markets", ren)
+        self.assertIn("medical science", mika)
+        self.assertIn("Never fill a general news request with war", mika)
+        self.assertIn("if the user explicitly asks about war, politics or another outside topic", mika)
+
+    def test_broad_news_detection_does_not_capture_explicit_topics(self):
+        for text in ("چه خبر؟", "خب چه خبر", "سلام، چه خبر؟", "الان چه خبره؟", "/web چه خبر؟", "latest news"):
+            with self.subTest(text=text):
+                self.assertTrue(is_broad_news_request(text))
+
+        for text in ("اخبار جنگ ایران", "چه خبر از انتخابات؟", "اخبار پزشکی", "قیمت دلار امروز"):
+            with self.subTest(text=text):
+                self.assertFalse(is_broad_news_request(text))
+
+    def test_character_news_search_scope_only_changes_generic_news_requests(self):
+        mika_query = scope_news_search_query("mika", "چه خبر", "چه خبر؟")
+        self.assertIn("medical science", mika_query)
+        self.assertIn("weather", mika_query)
+        self.assertIn("exclude war", mika_query)
+
+        ren_query = scope_news_search_query("ren", "چه خبر", "چه خبر؟")
+        self.assertIn("financial markets", ren_query)
+        self.assertIn("cryptocurrency", ren_query)
+
+        kira_query = scope_news_search_query("kira", "چه خبر", "چه خبر؟")
+        self.assertIn("video game industry", kira_query)
+
+        explicit_query = "اخبار جنگ ایران"
+        self.assertEqual(scope_news_search_query("mika", explicit_query, explicit_query), explicit_query)
 
     def test_saved_trait_overrides_are_reflected_in_the_active_profile_prompt(self):
         prompt = prompt_for({
