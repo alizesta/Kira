@@ -30,6 +30,9 @@ class CharacterProfileService:
     def avatar_file(self, profile: dict, root: str | Path) -> Path | None:
         return characters.avatar_file(profile, root)
 
+    def portrait_file(self, profile: dict, root: str | Path) -> Path | None:
+        return characters.portrait_file(profile, root)
+
     def chat_background_file(self, profile: dict, root: str | Path) -> Path | None:
         return characters.chat_background_file(profile, root)
 
