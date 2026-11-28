@@ -1,7 +1,8 @@
-"""Large, character-authored news cards with image previews and mouse-swipe navigation."""
+"""Character-authored news cards (three per row, two rows in view) with image previews and vertical mouse-swipe navigation."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from html.parser import HTMLParser
 from threading import Thread
 from urllib.parse import urljoin, urlsplit
@@ -9,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 from ...news_feed import CATEGORY_LABELS, CHARACTER_IDS
@@ -50,14 +51,14 @@ QPushButton#newsCardOpen {
 QPushButton#newsCardOpen:hover { background: rgba(112, 73, 196, 170); }
 QLabel#newsFeedEmptyTitle { color: #eee7ff; font-size: 20px; font-weight: 700; }
 QLabel#newsFeedEmptyBody { color: #b8a9d9; font-size: 13px; }
-QScrollBar:horizontal {
-    background: rgba(18, 12, 42, 150); height: 9px; border-radius: 4px; margin: 3px 10px;
+QScrollBar:vertical {
+    background: rgba(18, 12, 42, 150); width: 9px; border-radius: 4px; margin: 10px 3px;
 }
-QScrollBar::handle:horizontal {
-    background: #7950c7; min-width: 38px; border-radius: 4px;
+QScrollBar::handle:vertical {
+    background: #7950c7; min-height: 38px; border-radius: 4px;
 }
-QScrollBar::handle:horizontal:hover { background: #9c74ec; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QScrollBar::handle:vertical:hover { background: #9c74ec; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
 
@@ -180,7 +181,7 @@ class _CoverImageLabel(QLabel):
 
 
 class _SwipeScrollArea(QScrollArea):
-    """Horizontal carousel that can be dragged with the left mouse button."""
+    """Vertical feed (top to bottom) that can be dragged with the left mouse button."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -189,8 +190,8 @@ class _SwipeScrollArea(QScrollArea):
         self._dragging = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self.viewport().setCursor(Qt.OpenHandCursor)
 
@@ -203,18 +204,18 @@ class _SwipeScrollArea(QScrollArea):
         event_type = event.type()
         if event_type == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             self._drag_origin = event.globalPosition().toPoint()
-            self._scroll_origin = self.horizontalScrollBar().value()
+            self._scroll_origin = self.verticalScrollBar().value()
             self._dragging = False
             return False
         if event_type == QEvent.MouseMove and self._drag_origin is not None:
             if not (event.buttons() & Qt.LeftButton):
                 return False
             delta = event.globalPosition().toPoint() - self._drag_origin
-            if not self._dragging and abs(delta.x()) >= 7:
+            if not self._dragging and abs(delta.y()) >= 7:
                 self._dragging = True
                 self.viewport().setCursor(Qt.ClosedHandCursor)
             if self._dragging:
-                self.horizontalScrollBar().setValue(self._scroll_origin - delta.x())
+                self.verticalScrollBar().setValue(self._scroll_origin - delta.y())
                 return True
         if event_type == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
             was_dragging = self._dragging
@@ -231,7 +232,7 @@ class _NewsCard(QFrame):
         self.setObjectName("newsStoryCard")
         self.setStyleSheet(_CARD_STYLE)
         self.setMinimumWidth(0)
-        self.setMinimumHeight(440)
+        self.setMinimumHeight(0)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setLayoutDirection(Qt.RightToLeft)
 
@@ -270,12 +271,12 @@ class _NewsCard(QFrame):
             editorial_text, _marker, confidence = editorial_text.partition("سطح اطمینان:")
             confidence = "سطح اطمینان: " + confidence.strip().splitlines()[0]
             editorial_text = editorial_text.strip()
-        body = QLabel(editorial_text, self)
+        body = QLabel(_short_caption(editorial_text), self)
         body.setObjectName("newsCardBody")
         body.setWordWrap(True)
         body.setAlignment(Qt.AlignRight | Qt.AlignTop)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body.setMaximumHeight(146)
+        body.setMaximumHeight(84)
         layout.addWidget(body)
         if confidence:
             confidence_label = QLabel(confidence, self)
@@ -296,6 +297,27 @@ class _NewsCard(QFrame):
         layout.addWidget(open_button)
 
         panel._register_image(article_url, str(item.get("image_url") or ""), self.cover)
+
+
+CARDS_PER_ROW = 3
+SCROLLBAR_ROOM = 16
+CAPTION_LIMIT = 150                                         # characters shown under a headline; the full text stays in the store
+
+
+def _short_caption(text: str, limit: int = CAPTION_LIMIT) -> str:
+    """Keep the caption short: whole sentences while they fit, otherwise cut at a word and add an ellipsis."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    kept = ""
+    for part in re.split(r"(?<=[.!؟?!…])\s+", text):
+        if len(kept) + len(part) + (1 if kept else 0) > limit:
+            break
+        kept = (kept + " " + part).strip()
+    if kept:
+        return kept
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip("،,;:-– ")
+    return (cut or text[:limit]) + "…"
 
 
 def _published_label(item: dict) -> str:
@@ -411,9 +433,10 @@ class NewsFeedPanel(QFrame):
         self.cards_container = QWidget()
         self.cards_container.setObjectName("newsCardsContainer")
         self.cards_container.setLayoutDirection(Qt.LeftToRight)
-        self.cards_layout = QHBoxLayout(self.cards_container)
+        self.cards_layout = QGridLayout(self.cards_container)       # three cards per row, rows go down the page
         self.cards_layout.setContentsMargins(7, 5, 7, 12)
         self.cards_layout.setSpacing(15)
+        self.cards_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.cards_scroll.setWidget(self.cards_container)
         self.feed_stack.addWidget(self.cards_scroll)
 
@@ -610,20 +633,25 @@ class NewsFeedPanel(QFrame):
                 )
 
     def _refresh_card_widths(self):
-        """Fit three complete stories into the visible feed area at every window size."""
+        """Three cards per row, and exactly two rows (six stories) fill the visible feed; more stories scroll down."""
         if not hasattr(self, "cards_scroll") or not hasattr(self, "cards_layout"):
             return
         margins = self.cards_layout.contentsMargins()
-        available = (
-            self.cards_scroll.viewport().width()
-            - margins.left() - margins.right()
-            - 2 * self.cards_layout.spacing()
-        )
-        if available <= 0:
+        spacing = self.cards_layout.spacing()
+        viewport = self.cards_scroll.viewport()
+        count = len(self.cards_container.findChildren(_NewsCard))
+        bar_width = SCROLLBAR_ROOM if count > 2 * CARDS_PER_ROW else 0         # room for the vertical bar only when it will show
+        available_w = viewport.width() - margins.left() - margins.right() - 2 * spacing - bar_width
+        available_h = viewport.height() - margins.top() - margins.bottom() - spacing
+        if available_w <= 0:
             return
-        width = max(190, available // 3)
+        width = max(190, available_w // 3)
+        height = max(250, available_h // 2)
+        cover = max(70, min(190, int(height * 0.34)))
         for card in self.cards_container.findChildren(_NewsCard):
-            card.setFixedWidth(width)
+            card.setFixedSize(width, height)
+            card.cover.setMinimumHeight(0)
+            card.cover.setFixedHeight(cover)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -640,9 +668,9 @@ class NewsFeedPanel(QFrame):
         if not items:
             self.feed_stack.setCurrentWidget(self.empty_state)
             return
-        for item in items:
+        for index, item in enumerate(items):
             card = _NewsCard(item, self, self.cards_container)
-            self.cards_layout.addWidget(card)
+            self.cards_layout.addWidget(card, index // CARDS_PER_ROW, index % CARDS_PER_ROW)
         self.cards_scroll.install_drag_targets(self.cards_container)
         self.feed_stack.setCurrentWidget(self.cards_scroll)
         self.cards_container.updateGeometry()

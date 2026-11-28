@@ -87,10 +87,10 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertNotIn("https://source.example/report", text)
         cards = self.panel.cards_container.findChildren(QFrame, "newsStoryCard")
         self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0].width(), 372)
+        self.assertGreaterEqual(cards[0].width(), 190)
         cover = cards[0].findChild(QLabel, "newsCardCover")
         self.assertIsNotNone(cover)
-        self.assertGreaterEqual(cover.height(), 170)
+        self.assertGreaterEqual(cover.height(), 70)
 
     def test_switching_character_changes_authored_cards_and_keeps_them_isolated(self):
         self.panel.set_character("ren")
@@ -98,7 +98,7 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertIn("Visible market analysis written by Ren", text)
         self.assertNotIn("Visible character-written headline for Kira", text)
 
-    def test_feed_uses_a_horizontal_scroll_area_for_mouse_swipe(self):
+    def test_feed_is_three_by_two_and_swipes_vertically(self):
         class ManyPostsStore(_Store):
             def list_posts(self, character_id, limit=12):
                 if character_id != "kira":
@@ -106,11 +106,11 @@ class NewsFeedPanelTests(unittest.TestCase):
                 return [{
                     "category": "gaming_industry",
                     "title": f"روایت شماره {index}",
-                    "summary": "متن روایت‌شده توسط کیرا.",
+                    "summary": "متن روایت‌شده توسط کیرا. " * 30,
                     "source": "Example",
                     "url": f"https://example.com/{index}",
                     "published_at": "2026-11-27T00:00:00Z",
-                } for index in range(6)]
+                } for index in range(9)]
 
         service = type("Service", (), {
             "store": ManyPostsStore(),
@@ -118,43 +118,56 @@ class NewsFeedPanelTests(unittest.TestCase):
         })()
         panel = NewsFeedPanel(service, {})
         self.addCleanup(panel.close)
-        panel.resize(1100, 620)
+        panel.resize(1100, 760)
         panel.show()
         panel.set_character("kira")
         _APP.processEvents()
 
         self.assertIsInstance(panel.cards_scroll, _SwipeScrollArea)
         panel._refresh_card_widths()
+        _APP.processEvents()
         cards = panel.cards_container.findChildren(QFrame, "newsStoryCard")
-        self.assertEqual(len(cards), 6)
-        margins = panel.cards_layout.contentsMargins()
-        visible_width = panel.cards_scroll.viewport().width()
-        used_width = (
-            sum(card.width() for card in cards[:3])
-            + 2 * panel.cards_layout.spacing()
-            + margins.left() + margins.right()
-        )
-        self.assertLessEqual(used_width, visible_width)
-        bar = panel.cards_scroll.horizontalScrollBar()
-        self.assertGreater(bar.maximum(), 0)
+        self.assertEqual(len(cards), 9)
+        cards.sort(key=lambda card: (card.y(), card.x()))
+        self.assertEqual(len({card.y() for card in cards[:3]}), 1)           # three in the first row
+        self.assertEqual(len({card.y() for card in cards[3:6]}), 1)          # three in the second row
+        self.assertLess(cards[0].y(), cards[3].y())
+        self.assertLess(cards[3].y(), cards[6].y())
+        viewport = panel.cards_scroll.viewport()
+        self.assertLessEqual(cards[5].geometry().bottom(), viewport.height())  # six stories fit without scrolling
+        self.assertEqual(panel.cards_scroll.horizontalScrollBar().maximum(), 0)
+        bar = panel.cards_scroll.verticalScrollBar()
+        self.assertGreater(bar.maximum(), 0)                                   # the 7th-9th are reached by scrolling down
+
+        body = cards[0].findChild(QLabel, "newsCardBody")
+        self.assertLessEqual(len(body.text()), 151)                            # the caption is short
 
         target = panel.cards_container
         press = QMouseEvent(
-            QEvent.MouseButtonPress, QPointF(220, 100), QPointF(220, 100),
+            QEvent.MouseButtonPress, QPointF(100, 220), QPointF(100, 220),
             Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
         )
         move = QMouseEvent(
-            QEvent.MouseMove, QPointF(110, 100), QPointF(110, 100),
+            QEvent.MouseMove, QPointF(100, 110), QPointF(100, 110),
             Qt.NoButton, Qt.LeftButton, Qt.NoModifier,
         )
         release = QMouseEvent(
-            QEvent.MouseButtonRelease, QPointF(110, 100), QPointF(110, 100),
+            QEvent.MouseButtonRelease, QPointF(100, 110), QPointF(100, 110),
             Qt.LeftButton, Qt.NoButton, Qt.NoModifier,
         )
         _APP.sendEvent(target, press)
         _APP.sendEvent(target, move)
         self.assertGreater(bar.value(), 0)
         _APP.sendEvent(target, release)
+
+    def test_short_caption_keeps_whole_sentences_or_cuts_with_an_ellipsis(self):
+        from kira.ui.pages.news_feed_panel import _short_caption
+        self.assertEqual(_short_caption("کوتاه است."), "کوتاه است.")
+        two = "جملهٔ اول. " + "کلمه " * 60
+        self.assertEqual(_short_caption(two), "جملهٔ اول.")
+        cut = _short_caption("کلمه " * 80)
+        self.assertTrue(cut.endswith("…"))
+        self.assertLessEqual(len(cut), 151)
 
     def test_publisher_image_metadata_parser_reads_open_graph_lazy_images_and_json_ld(self):
         parser = _ImageMetaParser()

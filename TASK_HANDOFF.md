@@ -1,3 +1,8 @@
+## AIWU layout and captions — handoff (2026-11-28 18:33 Iran)
+- Branch: `claude/aiwu-layout`, based on `new-main` b3a6023. Rendered the real MainWindow offscreen with nine seeded stories: 3 cards on top, 3 below, vertical scrollbar on the right, scrolling down shows stories 7-9 in the same grid.
+- Verified: `tests/test_news_feed_panel.py`, `test_news_post_generator.py`, `test_news_feed.py`, `test_news_sources.py` pass (47). Not verified: Windows, a real model producing the shorter body (the prompt asks for about 140 characters; the screen limit of 150 shortens anything longer).
+- Known limit: a refresh still creates at most 4 posts per run (`news_post_generator`), the store keeps up to 12; the grid shows 6 without scrolling.
+
 ## Missing character art in the update package — handoff (2026-11-28 18:24 Iran)
 - Branch: `claude/mika-art` (same branch as the Mika art commit). Not merged; no PR; no GitHub Actions run.
 - Verified here: `tests/test_release.py` + `tests/test_release_package.py` give the same 4 failures as before the change (`test_bat_files_keep_crlf_and_call_installer`, `test_install_deps_reports_failed_package_and_dns_hint`, `test_requirements_contain_no_unneeded_packages`, `test_version`); the rest pass. Not verified: a real package build, Windows.

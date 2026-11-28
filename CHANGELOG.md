@@ -1,3 +1,8 @@
+## 2026-11-28 18:33 Iran — AIWU: shorter captions, 3 + 3 cards, vertical swipe
+- `kira/ui/pages/news_feed_panel.py`: the story cards sit in a grid, three per row; two rows (six stories) fill the visible feed and further stories (up to the 12 the store lists) are reached by scrolling/dragging from top to bottom. The swipe area is vertical now (`verticalScrollBar`, 7 px drag threshold on Y, vertical scrollbar style); horizontal scrolling is off. Card size = a third of the width and half of the height of the visible area (min 190 x 250); the cover image shrinks with the card.
+- Captions: the card shows at most ~150 characters (`_short_caption`: whole sentences while they fit, else a word cut with an ellipsis); `kira/news_post_generator.py` now asks the model for one or two short sentences (about 140 characters) instead of 250-500 characters. Stored older posts are only shortened on screen.
+- Tests: `tests/test_news_feed_panel.py` (3x2 grid, vertical drag, short caption).
+
 ## 2026-11-28 18:24 Iran — Release package now ships the character pictures, backgrounds, icons and font
 - Cause: `scripts/release-allowlist.json` (the exact inventory of the update package) did not list `assets/dashboard/*_portrait.jpg`, `assets/characters/*_chat_background.jpg`, most of `assets/icons/` (incl. `snake.svg`, `bull.svg`, `cat.svg`, `star.svg`) or `assets/fonts/`, so an installed/updated Kira had no Kira portrait and no chat backgrounds.
 - Fix: 40 runtime asset files added to the allowlist (portraits, backgrounds, icons, Vazirmatn). `assets/reference/` and `assets/sounds/` stay out.
