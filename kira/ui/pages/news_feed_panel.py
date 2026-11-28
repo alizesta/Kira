@@ -62,18 +62,58 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 
 class _ImageMetaParser(HTMLParser):
-    """Read only standard preview metadata from an already safely fetched article page."""
+    """Extract publisher image references from HTML metadata without loading page scripts."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.candidates = []
+        self._json_ld = False
+        self._json_parts = []
+
+    @staticmethod
+    def _srcset(value: str) -> list[str]:
+        found = []
+        for part in str(value or "").split(","):
+            candidate = part.strip().split(" ", 1)[0].strip()
+            if candidate:
+                found.append(candidate)
+        return found
+
+    @staticmethod
+    def _json_images(value) -> list[str]:
+        found = []
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if str(key).lower() in {"image", "thumbnail", "thumbnailurl", "contenturl"}:
+                    if isinstance(item, str):
+                        found.append(item)
+                    elif isinstance(item, list):
+                        found.extend(str(entry) for entry in item if isinstance(entry, str))
+                    elif isinstance(item, dict):
+                        found.extend(
+                            str(item.get(name)) for name in ("url", "contentUrl", "@id")
+                            if item.get(name)
+                        )
+                found.extend(_ImageMetaParser._json_images(item))
+        elif isinstance(value, list):
+            for item in value:
+                found.extend(_ImageMetaParser._json_images(item))
+        return found
 
     def handle_starttag(self, tag, attrs):
         values = {str(key).lower(): str(value or "").strip() for key, value in attrs}
         tag = tag.lower()
-        if tag == "meta":
-            marker = (values.get("property") or values.get("name") or "").lower()
-            if marker in {"og:image", "og:image:url", "twitter:image", "twitter:image:src"}:
+        if tag == "script" and "ld+json" in values.get("type", "").lower():
+            self._json_ld = True
+            self._json_parts = []
+        elif tag == "meta":
+            marker = (
+                values.get("property") or values.get("name") or values.get("itemprop") or ""
+            ).lower()
+            if marker in {
+                "og:image", "og:image:url", "og:image:secure_url",
+                "twitter:image", "twitter:image:src", "image",
+            }:
                 value = values.get("content", "")
                 if value:
                     self.candidates.append(value)
@@ -81,10 +121,28 @@ class _ImageMetaParser(HTMLParser):
             value = values.get("href", "")
             if value:
                 self.candidates.append(value)
-        elif tag == "img" and not self.candidates:
-            value = values.get("src") or values.get("data-src") or ""
-            if value:
-                self.candidates.append(value)
+        elif tag in {"img", "source"}:
+            for key in ("data-src", "data-original", "data-lazy-src", "src"):
+                value = values.get(key, "")
+                if value:
+                    self.candidates.append(value)
+            for key in ("srcset", "data-srcset"):
+                self.candidates.extend(self._srcset(values.get(key, "")))
+
+    def handle_data(self, data):
+        if self._json_ld and data:
+            self._json_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "script" and self._json_ld:
+            self._json_ld = False
+            try:
+                import json
+                payload = json.loads("".join(self._json_parts))
+                self.candidates.extend(self._json_images(payload))
+            except (TypeError, ValueError):
+                pass
+            self._json_parts = []
 
 
 class _CoverImageLabel(QLabel):
@@ -590,11 +648,17 @@ class NewsFeedPanel(QFrame):
 
     @staticmethod
     def _supported_image(data: bytes, content_type: str) -> bool:
-        if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+        allowed_types = {
+            "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+            "application/octet-stream", "binary/octet-stream",
+        }
+        if content_type not in allowed_types:
             return False
+        # Trust the raster signature, not a publisher/CDN's MIME label. SVG and
+        # other active formats are deliberately excluded.
         return (
-            data.startswith(b"\xff\xd8\xff")
-            or data.startswith(b"\x89PNG\r\n\x1a\n")
+            data.startswith(bytes.fromhex("ffd8ff"))
+            or data.startswith(bytes.fromhex("89504e470d0a1a0a"))
             or data.startswith((b"GIF87a", b"GIF89a"))
             or (len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP")
         )
