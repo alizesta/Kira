@@ -1,6 +1,7 @@
 """Tests for safe, character-specific editorial news generation."""
 import unittest
 from contextlib import contextmanager
+from unittest.mock import patch
 
 from kira.news_post_generator import NewsPostGenerator
 
@@ -113,6 +114,26 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertIn("علیرضا، ...", prompt)
         self.assertIn("Write to exactly one person", prompt)
 
+    def test_default_name_reader_loads_the_active_characters_memory(self):
+        router = FakeRouter(
+            '{"posts":[{"source_ids":[0],"title":"خبر سلامت",'
+            '"body":"این پژوهش پزشکی تازه می‌تواند به پیشگیری کمک کند.",'
+            '"confidence":"reported"}]}'
+        )
+        with patch(
+            "kira.services.memory_service.PersonaMemoryService.user_name",
+            return_value="علیرضا",
+        ) as read_name:
+            generator = NewsPostGenerator(lambda _owner: router)
+            generator("mika", [{
+                "title": "Medical study", "summary": "A medical study.",
+                "url": "https://example.com/medical",
+            }])
+
+        read_name.assert_called_once_with("mika")
+        prompt = next(call for call in router.calls if call[0] == "chat")[2]
+        self.assertIn("علیرضا، ...", prompt)
+
     def test_missing_remembered_name_is_not_guessed_or_fabricated(self):
         router = FakeRouter(
             '{"posts":[{"source_ids":[0],"title":"خبر",'
@@ -132,7 +153,10 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertIn("never guess one", prompt)
 
     def test_invalid_model_output_is_rejected(self):
-        generator = NewsPostGenerator(lambda _owner: FakeRouter("not json"))
+        generator = NewsPostGenerator(
+            lambda _owner: FakeRouter("not json"),
+            user_name_factory=lambda _owner: "",
+        )
         with self.assertRaisesRegex(ValueError, "JSON"):
             generator("mika", [{
                 "title": "خبر سلامت", "url": "https://example.ir/health",
