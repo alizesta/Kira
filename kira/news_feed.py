@@ -546,12 +546,13 @@ class NewsFeedStore:
         if character_id not in CHARACTER_IDS:
             return []
         self.purge_expired(now=now)
+        requested_limit = max(1, min(int(limit), 50))
         with self._connection() as db:
             rows = db.execute(
                 """SELECT category, title, summary, source, url, image_url, published_at, first_seen_at, expires_at, region
                    FROM news_items WHERE character_id = ? AND is_post = 1
                    ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
-                (character_id, max(1, min(int(limit), 50))),
+                (character_id, MAX_ITEMS_PER_CHARACTER),
             ).fetchall()
         items = [dict(row) for row in rows]
         items.sort(
@@ -559,13 +560,14 @@ class NewsFeedStore:
             or float(item.get("first_seen_at") or 0),
             reverse=True,
         )
-        return [
+        relevant = [
             item for item in items
             if is_relevant_character_news(
                 character_id, item.get("category"), item.get("title"), item.get("summary"),
                 require_topic_match=False,
             )
         ]
+        return relevant[:requested_limit]
 
     def list_unprocessed_items(self, character_id: str, *, limit: int = 12) -> list[dict]:
         """Return bounded source material awaiting a successful editorial pass."""
