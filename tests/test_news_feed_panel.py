@@ -145,6 +145,10 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertGreater(bar.value(), 0)
         _APP.sendEvent(target, release)
 
+    def test_missing_image_preview_is_not_permanently_cached(self):
+        self.panel._apply_image("https://example.com/story", b"")
+        self.assertNotIn("https://example.com/story", self.panel._image_cache)
+
     def test_mika_region_controls_are_only_shown_for_mika(self):
         self.panel.set_character("kira")
         self.assertTrue(self.panel.region_row.isHidden())
