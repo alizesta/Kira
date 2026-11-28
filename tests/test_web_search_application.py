@@ -173,6 +173,59 @@ class WebSearchApplicationServiceTests(unittest.TestCase):
         self.assertEqual(options.user_text, "نه بهتر سرچ کن")
         self.assertEqual(options.rewrite(), "resolved query")
 
+    def test_broad_news_search_is_scoped_to_mikas_medical_and_weather_domain(self):
+        options = self.service.web_search_options(
+            {"web_fallback": True},
+            "چه خبر",
+            [],
+            _ChatClient(),
+            character_id="mika",
+            request_text="چه خبر؟",
+        )
+
+        self.assertIn("medical science", options.query)
+        self.assertIn("nutrition", options.query)
+        self.assertIn("weather forecasts", options.query)
+        self.assertIn("exclude war", options.query)
+        self.assertEqual(options.user_text, "چه خبر؟")
+
+    def test_explicit_out_of_domain_news_request_is_not_rewritten(self):
+        query = "اخبار جنگ ایران"
+        options = self.service.web_search_options(
+            {"web_fallback": True},
+            query,
+            [],
+            _ChatClient(),
+            character_id="mika",
+            request_text=query,
+        )
+
+        self.assertEqual(options.query, query)
+        self.assertEqual(options.user_text, query)
+
+    def test_followup_search_inherits_domain_from_previous_broad_news_request(self):
+        client = _ChatClient("resolved query")
+        history = [
+            {"role": "user", "content": "چه خبر؟"},
+            {"role": "assistant", "content": "چند خبر سلامت و هواشناسی پیدا کردم."},
+            {"role": "user", "content": "نه بهتر سرچ کن"},
+        ]
+        options = self.service.web_search_options(
+            {"web_fallback": True},
+            "نه بهتر سرچ کن",
+            history,
+            client,
+            character_id="mika",
+            request_text="نه بهتر سرچ کن",
+        )
+
+        self.assertIn("medical science", options.query)
+        self.assertIn("exclude war", options.query)
+        self.assertEqual(options.user_text, "نه بهتر سرچ کن")
+        self.assertIn("medical science", options.rewrite())
+        self.assertIn("exclude war", options.rewrite())
+        self.assertEqual(client.calls[0][0], history[-6:])
+
     def test_can_search_reflects_tavily_key_and_fallback_policy(self):
         self.assertTrue(self.service.can_search({"tavily_api_key": "key", "web_fallback": False}))
         self.assertTrue(self.service.can_search({"web_fallback": True}))
