@@ -1,3 +1,8 @@
+## 2026-11-28 18:19 Iran — Mika: new portrait, neon-clinic chat background and snake emblem
+- `assets/characters/mika_portrait.jpg` and the new `assets/dashboard/mika_portrait.jpg` (1024x1536, the pink-haired doctor) replace the 256x384 placeholder; `assets/characters/mika_chat_background.jpg` (1536x1024, neon clinic with cherry blossoms) replaces the 384x256 one.
+- Mika's emblem is now a snake: new `assets/icons/snake.svg` (own drawing, same line style as `bull`), used as her Quick People badge instead of `flower-2`.
+- `kira/ui/chat_shell.py`: face crop for Mika's round avatar (`_FACE_CROP["mika"]`), tagline in the portrait card, `_BADGES["mika"] = "snake"`.
+
 ## 2026-11-25 00:35 Iran — Progress is written inside the chat, not above the input
 - The composer panel from the previous change is gone. `KodeActivityPanel` is now a headless tracker (QObject, `changed` signal); the chat page draws the latest three stages as small lines at the end of the conversation (`✓` finished, `◌` running), e.g. "در حال فکر کردن…" -> "جست‌وجوی وب انجام شد" -> "در حال بررسی نتایج…".
 - Rendering lives in `apply_progress_to_view` / `clear_progress` (kira/ui/components/kode_activity.py); `MainWindowSession.sync_progress` calls it for the front session. Lines are tagged with a block user state, so removal works even if other messages were appended after them, and a tab switch mid-request clears the old view.

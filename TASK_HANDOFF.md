@@ -1,3 +1,10 @@
+## Mika art and snake emblem — handoff (2026-11-28 18:19 Iran)
+- Branch: `claude/mika-art`, based on `new-main` bf3e96d. Not merged and not pushed to `new-main` (a push there starts kira-release); no Pull Request, no GitHub Actions run.
+- Done: new Mika portrait (both `assets/characters/` and `assets/dashboard/`), new chat background, `assets/icons/snake.svg` as her badge, face crop and tagline in `chat_shell.py`; `tests/test_avatar_art.py` now expects 1024x1536 for Mika's portrait.
+- Verified here (Linux, PySide6 offscreen): the face crop and the snake icon were rendered to PNG and inspected; `test_avatar_art.py` and `test_characters.py` pass. Not verified: the full MainWindow, Windows, the real theme.
+- Pre-existing, unrelated: `tests/test_character_chat_background.py::test_theme_applies_background_only_when_a_path_is_supplied` fails on untouched `new-main` (TypeError in `kira/theme.py:529`).
+- Not changed: `mika_full.png` (the standing cut-out) and `scripts/release-allowlist.json` (it lists neither the dashboard portraits nor the chat backgrounds).
+
 ## Model-read user state: [user:state] reply tag (2026-11-26 08:16 Iran)
 - `director.format_hint()` asks the model, ONLY when the user's last message clearly shows a state even through slang/sarcasm, to add ONE extra line `[user:state]` right after the emotion tag (state = the 12 keys of `mood.USER_STATES`). No extra request; ~60 prompt tokens.
 - `emotion/parser.extract_user_states` removes it inside `parse_reply` (the single choke point for display, history, TTS, stream flush), including a half-typed `[us` / `[user:do` at the end of a stream; unknown names are dropped; `ReplyMeta.user_states` carries the result.

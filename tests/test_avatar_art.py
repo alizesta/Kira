@@ -66,9 +66,10 @@ class AvatarArtGeometryTests(unittest.TestCase):
             from PIL import Image
         except Exception:                                  # pragma: no cover
             self.skipTest("Pillow not installed")
+        portrait_sizes = {"ren": (784, 1168), "mika": (1024, 1536)}      # Mika's portrait was replaced by the high-resolution neon-clinic picture
         for cid in ("ren", "mika"):
             with Image.open(root / f"{cid}_portrait.jpg") as im:
-                self.assertEqual(im.size, (784, 1168))
+                self.assertEqual(im.size, portrait_sizes[cid])
             with Image.open(root / f"{cid}_full.png") as im:          # background removed: transparent PNG, same size as the original picture
                 self.assertEqual(im.size, (720, 1280))
                 rgba = im.convert("RGBA")

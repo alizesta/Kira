@@ -38,7 +38,7 @@ from . import dash_theme
 
 _LOG = logging.getLogger("kira.ui")
 KIRA_PORTRAIT = ROOT / "assets" / "dashboard" / "kira_portrait.jpg"
-_FACE_CROP = {"ren": (0.17, 0.08, 0.66)}                    # (x, y, side) of the face square as fractions of the picture width
+_FACE_CROP = {"ren": (0.17, 0.08, 0.66), "mika": (0.26, 0.17, 0.50)}                    # (x, y, side) of the face square as fractions of the picture width
 
 
 def _portrait_file(character_id, context=None):
@@ -62,6 +62,8 @@ def _portrait_file(character_id, context=None):
 def _portrait_texts(character_id, fa):
     if character_id == "ren":
         return ("Ren", "بازار هیچ‌وقت نمی‌خوابه" if fa else "Markets never sleep")
+    if character_id == "mika":
+        return ("Mika", "سلامتت اولویت منه" if fa else "Your health comes first")
     if character_id == "kira":
         return ("Kira ✦", "همیشه اینجام برات" if fa else "Always here for you")
     return (str(character_id).capitalize(), "")
@@ -383,7 +385,7 @@ def _icon_label(icon_name: str, size: int, colour: str = "#b9a2ff") -> QLabel:
     return label
 
 
-_BADGES = {"kira": "star", "ren": "bull", "mika": "flower-2"}
+_BADGES = {"kira": "star", "ren": "bull", "mika": "snake"}
 
 
 def _is_fa(context) -> bool:
