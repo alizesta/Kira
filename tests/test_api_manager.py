@@ -468,8 +468,9 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         s["providers"]["groq"].update({"enabled": True, "api_key": GROQ_KEY})
         s["providers"]["mistral"].update({"enabled": True, "api_key": MISTRAL_KEY})
         for route in rm.get_routes(s):
-            if route["provider"] in ("groq", "mistral"):
-                route["enabled"] = True
+            route["enabled"] = route["provider"] in ("groq", "mistral")
+            if route["provider"] not in ("groq", "mistral"):
+                s["providers"][route["provider"]]["enabled"] = False
         s["default_route_id"] = "groq"
         s["manual_route_id"] = "groq"
         am.set_api_enabled(s, "groq", False)
