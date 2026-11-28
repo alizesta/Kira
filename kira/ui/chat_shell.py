@@ -121,11 +121,6 @@ class _Ring(QWidget):
         self._percent = max(0, min(100, int(percent)))
         self.setFixedSize(56, 56)
 
-    def update_content(self, path, caption: str, subtitle: str) -> None:
-        self._pixmap = QPixmap(str(path))
-        self._caption, self._subtitle = caption, subtitle
-        self.update()
-
     def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -221,6 +216,11 @@ class _Portrait(QWidget):
         self._caption, self._subtitle = caption, subtitle
         self.setMinimumSize(150, 190)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def update_content(self, path, caption: str, subtitle: str) -> None:
+        self._pixmap = QPixmap(str(path))
+        self._caption, self._subtitle = caption, subtitle
+        self.update()
 
     def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -843,7 +843,8 @@ def _sync_portrait(context) -> None:
     avatar = getattr(views, "avatar", None)
     if portrait is None or avatar is None:
         return
-    cid = str(getattr(getattr(context.state, "cur", None), "cid", "") or "kira")
+    session = getattr(context.state, "front", None) or getattr(context.state, "cur", None)
+    cid = str(getattr(session, "cid", "") or "kira")
     own = cid == "kira"
     portrait.setVisible(own)
     avatar.setVisible(not own)
