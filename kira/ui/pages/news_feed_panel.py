@@ -219,9 +219,11 @@ class NewsFeedPanel(QFrame):
             "خبرهای دریافت‌شده · هنوز توسط شخصیت روایت نشده‌اند</div>"
         ]
         detail = str(last_error or "")
-        if detail.startswith("Post generation:"):
-            parts = detail.split(":", 2)
-            detail = parts[2].strip() if len(parts) > 2 else ""
+        marker = "Post generation:"
+        if marker in detail:
+            detail = detail.split(marker, 1)[1].strip()
+            _error_type, separator, detail = detail.partition(":")
+            detail = detail.strip() if separator else ""
             if detail:
                 cards.append(
                     "<div style='margin:2px 0 5px;color:#ffbd8a'>"
