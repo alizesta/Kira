@@ -203,12 +203,27 @@ class _NewsCard(QFrame):
         title.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(title)
 
-        body = QLabel(str(item.get("summary") or "برای این خبر توضیح بیشتری در دسترس نیست."), self)
+        editorial_text = str(item.get("summary") or "برای این خبر توضیح بیشتری در دسترس نیست.")
+        editorial_text = editorial_text.partition("\\nمنابع تکمیلی:")[0].strip()
+        confidence = ""
+        if "سطح اطمینان:" in editorial_text:
+            editorial_text, _marker, confidence = editorial_text.partition("سطح اطمینان:")
+            confidence = "سطح اطمینان: " + confidence.strip().splitlines()[0]
+            editorial_text = editorial_text.strip()
+        body = QLabel(editorial_text, self)
         body.setObjectName("newsCardBody")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body.setMaximumHeight(116)
+        body.setMaximumHeight(146)
         layout.addWidget(body)
+        if confidence:
+            confidence_label = QLabel(confidence, self)
+            confidence_label.setObjectName("newsCardConfidence")
+            confidence_label.setStyleSheet(
+                "color:#b9a2ec;font-size:11px;background:rgba(109,72,176,65);"
+                "border:1px solid rgba(139,92,246,90);border-radius:7px;padding:4px 8px;"
+            )
+            layout.addWidget(confidence_label)
 
         layout.addStretch(1)
         open_button = QPushButton("مشاهدهٔ گزارش اصلی  ↗", self)
