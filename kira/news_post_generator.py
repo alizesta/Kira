@@ -42,9 +42,9 @@ class NewsPostGenerator:
             material.append({
                 "id": index,
                 "title": title,
-                "summary": str(source.get("summary") or "")[:700],
+                "summary": str(source.get("summary") or "")[:420],
                 "category": str(source.get("category") or "")[:48],
-                "publisher": str(source.get("source") or "")[:100],
+                "publisher": str(source.get("source") or "")[:80],
                 "published_at": str(source.get("published_at") or "")[:80],
                 "url": url,
             })
@@ -54,11 +54,21 @@ class NewsPostGenerator:
         persona = CHARACTER_GUIDANCE[owner]
         profile = self._profile_factory(owner) if self._profile_factory else {}
         profile = profile if isinstance(profile, dict) else {}
-        profile_style = "\n".join(
-            f"{key}: {str(profile.get(key) or '').strip()[:5000]}"
-            for key in ("description", "prompt", "specialty_prompt", "traits")
-            if str(profile.get(key) or "").strip()
-        )
+        # Character profiles can contain large system prompts. Keep only a small
+        # voice sample so news generation fits the compact routes used by chat.
+        # Keep the voice guidance small while preserving a sample of every profile field.
+        profile_limits = {
+            "description": 350,
+            "prompt": 900,
+            "specialty_prompt": 350,
+            "traits": 200,
+        }
+        profile_parts = []
+        for key, limit in profile_limits.items():
+            value = str(profile.get(key) or "").strip()
+            if value:
+                profile_parts.append(f"{key}: {value[:limit]}")
+        profile_style = "\n".join(profile_parts)
         system_prompt = (
             "You write a small, human-feeling news feed for one AI companion character. "
             "Write naturally in Persian (Farsi), as if telling a friend something interesting. "

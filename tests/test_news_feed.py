@@ -265,6 +265,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             self.assertEqual(service.store.list_posts("kira"), [])
             self.assertEqual(len(service.store.list_unprocessed_items("kira")), 1)
             self.assertIn("Post generation: RuntimeError", service.store.status("kira")["last_error"])
+            self.assertIn("model offline", service.store.status("kira")["last_error"])
 
     def test_unknown_character_scope_is_rejected(self):
         item = {"title": "Story", "url": "https://example.com/story"}

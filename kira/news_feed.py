@@ -684,10 +684,10 @@ class NewsFeedService:
                 count = self.store.upsert_items(character_id, collected, region=region)
             else:
                 if collected:
-                    # Keep source evidence privately so failed model generations can retry;
-                    # list_posts() deliberately excludes these raw records from the UI.
+                    # Keep source evidence separately from authored posts so generation can retry;
+                    # the panel may label and show pending source links without calling them character posts.
                     self.store.upsert_items(character_id, collected, region=region)
-                pending = self.store.list_unprocessed_items(character_id, limit=12)
+                pending = self.store.list_unprocessed_items(character_id, limit=8)
                 count = 0
                 if pending:
                     try:
@@ -705,7 +705,11 @@ class NewsFeedService:
                             character_id, [item.get("url", "") for item in pending]
                         )
                     except Exception as exc:  # noqa: BLE001 - never publish raw source text as a fallback
-                        errors.append(f"Post generation: {type(exc).__name__}")
+                        detail = _clean(str(exc), 300)
+                        errors.append(
+                            f"Post generation: {type(exc).__name__}"
+                            + (f": {detail}" if detail else "")
+                        )
                         _LOG.warning(
                             "Character news post generation failed for %s; raw items remain hidden and retryable",
                             character_id, exc_info=True,

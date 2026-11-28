@@ -36,6 +36,9 @@ class _Store:
             }]
         return []
 
+    def list_unprocessed_items(self, _character_id, limit=12):
+        return []
+
     def status(self, _character_id):
         return {"refreshed_at": 1_000, "last_error": ""}
 
@@ -112,6 +115,44 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertEqual(panel._character_id, "ren")
         self.assertEqual(EmptyService.started, ["ren"])
         self.assertIn("در حال بررسی", panel.status_label.text())
+
+    def test_pending_source_headlines_are_visible_when_model_generation_fails(self):
+        class PendingStore(_Store):
+            def list_posts(self, _character_id, limit=4):
+                return []
+
+            def list_unprocessed_items(self, _character_id, limit=12):
+                return [{
+                    "category": "gaming_hardware",
+                    "title": "Pending GPU launch report",
+                    "summary": "Publisher reports a new graphics card announcement.",
+                    "source": "Example Hardware",
+                    "url": "https://example.com/gpu-launch",
+                    "published_at": "2026-11-28T08:00:00Z",
+                    "first_seen_at": 1_000,
+                }]
+
+            def status(self, _character_id):
+                return {
+                    "refreshed_at": 1_000,
+                    "last_error": "Post generation: RuntimeError: model offline",
+                }
+
+        service = type("Service", (), {
+            "store": PendingStore(),
+            "is_refreshing": staticmethod(lambda _character_id: False),
+        })()
+        panel = NewsFeedPanel(service, {})
+        self.addCleanup(panel.close)
+        panel.set_character("kira")
+        panel.refresh_view()
+        content = panel.feed_browser.toPlainText()
+        self.assertIn("خبرهای دریافت‌شده", content)
+        self.assertIn("هنوز توسط شخصیت روایت نشده‌اند", content)
+        self.assertIn("Pending GPU launch report", content)
+        self.assertIn("model offline", content)
+        self.assertIn("Example Hardware", content)
+        self.assertIn("خبر دریافتی", panel.status_label.text())
 
     def test_empty_feed_still_displays_refresh_guidance(self):
         self.panel.set_character("mika")
