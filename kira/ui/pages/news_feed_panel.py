@@ -252,7 +252,7 @@ class NewsFeedPanel(QFrame):
             elif last_error:
                 message = "دریافت فید کامل نشد؛ دکمهٔ ↻ را بزن تا دوباره تلاش شود."
             else:
-                message = "هنوز پستی آماده نیست؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
+                message = "هنوز خبری دریافت نشده؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
             self.feed_browser.setHtml(
                 "<html><body style='margin:4px'><span>" + html.escape(message) + "</span></body></html>"
             )
