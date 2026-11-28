@@ -291,7 +291,7 @@ class CommandRegistry:
         *,
         permission_checker: PermissionChecker | None = None,
         result_cache_size: int = 2048,
-        duplicate_wait_seconds: float = 0.0,
+        duplicate_wait_seconds: float = 2.0,
     ) -> None:
         if result_cache_size < 1:
             raise ValueError("result_cache_size must be at least 1")
