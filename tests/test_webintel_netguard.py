@@ -106,6 +106,47 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
         self.assertTrue(response.closed)
         self.assertLess(time.monotonic() - started, 0.5)
 
+    def test_raster_images_require_explicit_opt_in(self):
+        url = "https://cdn.example.com/cover.jpg"
+        image = b"\\xff\\xd8\\xff" + b"jpeg"
+        response = _Response(url, 200, {"Content-Type": "image/jpeg"}, image)
+        session = mock.Mock()
+        session.get.return_value = response
+        session.cookies.clear = mock.Mock()
+        with (
+            mock.patch.object(netguard.requests, "Session", return_value=session),
+            mock.patch.object(netguard, "check_host"),
+            mock.patch.object(netguard, "_peer_blocked", return_value=False),
+        ):
+            with self.assertRaisesRegex(netguard.GuardError, "نوع فایل"):
+                netguard.fetch(url)
+        self.assertTrue(response.closed)
+
+        response = _Response(url, 200, {"Content-Type": "image/jpeg"}, image)
+        session = mock.Mock()
+        session.get.return_value = response
+        session.cookies.clear = mock.Mock()
+        with (
+            mock.patch.object(netguard.requests, "Session", return_value=session),
+            mock.patch.object(netguard, "check_host"),
+            mock.patch.object(netguard, "_peer_blocked", return_value=False),
+        ):
+            result = netguard.fetch(url, allow_images=True, max_bytes=1024)
+        self.assertEqual(result.body, image)
+        self.assertEqual(result.ctype, "image/jpeg")
+
+        response = _Response(url, 200, {"Content-Type": "image/svg+xml"}, b"<svg/>")
+        session = mock.Mock()
+        session.get.return_value = response
+        session.cookies.clear = mock.Mock()
+        with (
+            mock.patch.object(netguard.requests, "Session", return_value=session),
+            mock.patch.object(netguard, "check_host"),
+            mock.patch.object(netguard, "_peer_blocked", return_value=False),
+        ):
+            with self.assertRaisesRegex(netguard.GuardError, "نوع فایل"):
+                netguard.fetch(url, allow_images=True)
+
     def test_response_cookies_are_cleared_before_following_redirects(self):
         start = "https://example.com/start"
         target = "https://cdn.example.com/final"
