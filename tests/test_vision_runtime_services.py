@@ -257,6 +257,19 @@ class TestVisionRuntimeServiceTests:
         assert result.reason == "blocked-by-policy"
         assert not any(call[0] == "monitor" for call in adapter.calls)
 
+    def test_desktop_capture_uses_configured_policy_dimensions(self):
+        privacy = FakePrivacy()
+        adapter = FakeCaptureAdapter(privacy=privacy)
+        service = VisionCaptureService(adapter, FakeVisionPolicy(privacy))
+
+        result = service.capture_desktop_frame()
+
+        assert result.allowed
+        assert isinstance(result.frame, FakeImage)
+        assert adapter.calls[-1][0] == "monitor"
+        assert adapter.calls[-1][2]["max_width"] == 800
+        assert adapter.calls[-1][2]["max_height"] == 450
+
     def test_explicit_window_capture_keeps_explicit_privacy_check(self):
         privacy = FakePrivacy()
         adapter = FakeCaptureAdapter(privacy=privacy)
