@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable
 
 from .news_feed import CHARACTER_GUIDANCE, CHARACTER_IDS
@@ -24,7 +25,9 @@ class NewsPostGenerator:
             raise TypeError("user_name_factory must be callable")
         self._router_factory = router_factory
         self._profile_factory = profile_factory
-        self._user_name_factory = user_name_factory or self._remembered_user_name
+        self._user_name_factory = (
+            user_name_factory if user_name_factory is not None else self._remembered_user_name
+        )
 
     @staticmethod
     def _remembered_user_name(character_id: str) -> str:
@@ -65,7 +68,10 @@ class NewsPostGenerator:
         profile = self._profile_factory(owner) if self._profile_factory else {}
         profile = profile if isinstance(profile, dict) else {}
         try:
-            user_name = str(self._user_name_factory(owner) or "").strip()[:40]
+            raw_user_name = str(self._user_name_factory(owner) or "").strip()
+            user_name = re.sub(r"[^\w\u200c-]", "", raw_user_name, flags=re.UNICODE)[:40].strip("_-")
+            if len(user_name) < 2:
+                user_name = ""
         except Exception:  # noqa: BLE001 - optional personalization must never block news generation
             user_name = ""
         # Character profiles can contain large system prompts. Keep only a small
