@@ -147,6 +147,20 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("pin_conversation(cid)", self.refresh)
         self.assertIn("delete_conversation(cid)", self.refresh)
 
+    def test_mood_indicators_are_parented_to_the_sidebar_that_displays_them(self):
+        self.assertIn(
+            "self.context.views.mood_emotion_icon.setParent(conversation_sidebar)",
+            self.builder,
+        )
+        self.assertIn(
+            "self.context.views.mood_indicator.setParent(conversation_sidebar)",
+            self.builder,
+        )
+        self.assertLess(
+            self.builder.index("self.context.views.mood_indicator.setParent(conversation_sidebar)"),
+            self.builder.index("mood_row.addWidget(self.context.views.mood_indicator"),
+        )
+
     def test_message_action_icons_use_equal_centered_cells(self):
         self.assertIn('width="16" height="16" align="middle"', self.chat_actions)
         self.assertIn('width="30" height="28" align="center" valign="middle"', self.chat_actions)
