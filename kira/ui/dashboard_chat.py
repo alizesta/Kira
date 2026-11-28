@@ -600,18 +600,16 @@ def _wrap_theme(context, controller, page, parts) -> None:
 def _add_model_chip(context, header, layout) -> None:
     """The current model/route stays visible on the main page: a chip in the chat header opens the same route menu as the tray."""
     views = context.views
-    badge, menu = getattr(views, "route_badge", None), getattr(views, "route_menu", None)
-    if badge is None or menu is None:
+    badge = getattr(views, "route_badge", None)
+    if badge is None:
         return
     chip = QToolButton(header)
     chip.setObjectName("modelChip")
-    chip.setCursor(Qt.PointingHandCursor)
+    chip.setCursor(Qt.ArrowCursor)
     chip.setFocusPolicy(Qt.NoFocus)
-    chip.setPopupMode(QToolButton.InstantPopup)
     chip.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     chip.setIcon(make_icon("sparkle", normal="#c4a6ff", hover="#ffffff"))
     chip.setIconSize(QSize(14, 14))
-    chip.setMenu(menu)
     chip.setMaximumWidth(240)
     chip.setStyleSheet("QToolButton#modelChip { color: #d9ccff; background: rgba(139,92,246,0.12); border: 1px solid #5b3fb0; border-radius: 14px; padding: 4px 12px; font-size: 12px; }"
                        "QToolButton#modelChip:hover { background: rgba(167,139,250,0.26); border-color: #c4b5fd; }"
