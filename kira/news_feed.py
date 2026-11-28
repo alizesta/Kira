@@ -538,7 +538,9 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
                 continue
             selected.append((index, sources[index]))
         title = _clean(candidate.get("title"), 180)
-        body = _clean(candidate.get("body"), 650)
+        body = _clean(candidate.get("body"), 220)
+        if len(body) > 180:
+            body = body[:180].rsplit(" ", 1)[0].rstrip(" ،؛:") + "…"
         if not selected or not title or not body:
             continue
         primary = selected[0][1]
