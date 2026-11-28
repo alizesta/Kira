@@ -1,5 +1,6 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import atexit
+import logging
 import hashlib
 import io
 import json
@@ -546,13 +547,31 @@ class Speaker(QObject):
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
             raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
-        # The first response may arrive before the delayed background setup finishes.
-        # Install only the runtime here; default voice download/load remains inside Piper's
-        # synthesis worker, while an explicitly selected missing custom voice is reported.
-        if not local_voice.tts_ready():
-            local_voice.ensure_piper_runtime()
-        if model_path and not local_voice.tts_ready(model_path):
-            raise RuntimeError("مدل Piper انتخاب‌شده آماده نیست؛ فایل ONNX و فایل تنظیمات JSON آن را بررسی کن یا مدل پیش‌فرض را انتخاب کن.")
+        # The delayed startup warm-up may still be running when the first reply
+        # arrives. Validate and load the selected model in this synthesis worker;
+        # if a saved custom path is stale/incomplete, keep speech working with Mana.
+        try:
+            local_voice.ensure_tts_ready(model_path)
+            self._tts_fallback_for = ""
+        except Exception as selected_error:
+            if not model_path:
+                raise
+            previous_failure = getattr(self, "_tts_fallback_for", "")
+            self._tts_fallback_for = model_path
+            try:
+                local_voice.ensure_tts_ready("")
+            except Exception as fallback_error:
+                raise RuntimeError(
+                    "مدل Piper انتخاب‌شده آماده نشد و صدای پیش‌فرض Mana هم قابل بارگذاری نیست؛ "
+                    f"مدل انتخابی: {type(selected_error).__name__}: {selected_error}؛ "
+                    f"مدل پیش‌فرض: {type(fallback_error).__name__}: {fallback_error}"
+                ) from fallback_error
+            if previous_failure != model_path:
+                logging.getLogger(__name__).warning(
+                    "Selected local Piper voice is unavailable; using the bundled Mana voice: %s: %s",
+                    type(selected_error).__name__, selected_error,
+                )
+            model_path = ""
 
         spoken_text = expand_persian_numbers(local_voice.normalize_persian_tts_text(text))
         if not spoken_text:

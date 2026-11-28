@@ -422,6 +422,7 @@ def apply_chat_shell(context) -> bool:
             step()
         except Exception:                                  # noqa: BLE001 - a skin problem must never break the app
             _LOG.exception("Chat shell step %r failed", name)
+    QTimer.singleShot(0, lambda: resize_chat_shell(context))
     return True
 
 
@@ -777,24 +778,25 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
         return
     avatar_card.setLayoutDirection(Qt.LeftToRight)
     if KIRA_PORTRAIT.is_file():
-        existing = avatar_card.findChildren(_Portrait)
-        portrait = existing[0] if existing else None
-        # The skin can be rebuilt while language/theme changes; never leave a
-        # second Kira portrait behind in the same right-hand character panel.
-        for duplicate in existing[1:]:
+        # Match by Qt objectName, not Python class identity: hot reloads can
+        # leave an older _Portrait class alive that isinstance() cannot see.
+        # Remove every previous portrait before constructing exactly one.
+        stale_portraits = [
+            widget for widget in avatar_card.findChildren(QWidget)
+            if widget.objectName() == "kiraPortrait" or type(widget).__name__ == "_Portrait"
+        ]
+        for duplicate in stale_portraits:
             layout.removeWidget(duplicate)
             duplicate.hide()
             duplicate.setParent(None)
             duplicate.deleteLater()
-        caption = "Kira ✦"
-        subtitle = "همیشه اینجام برات" if fa else "Always here for you"
-        if portrait is None:
-            portrait = _Portrait(KIRA_PORTRAIT, caption, subtitle, avatar_card)
-            layout.insertWidget(0, portrait, 1)
-        else:
-            portrait.update_content(KIRA_PORTRAIT, caption, subtitle)
-            if layout.indexOf(portrait) < 0:
-                layout.insertWidget(0, portrait, 1)
+        portrait = _Portrait(
+            KIRA_PORTRAIT,
+            "Kira ✦",
+            "همیشه اینجام برات" if fa else "Always here for you",
+            avatar_card,
+        )
+        layout.insertWidget(0, portrait, 1)
         avatar_card.kira_portrait = portrait
         _sync_portrait(context)
     actions = _frame("dashActions")
@@ -843,11 +845,66 @@ def _sync_portrait(context) -> None:
     avatar = getattr(views, "avatar", None)
     if portrait is None or avatar is None:
         return
-    session = getattr(context.state, "front", None) or getattr(context.state, "cur", None)
-    cid = str(getattr(session, "cid", "") or "kira")
+    try:
+        cid = str(context.services.character_service.active_id(context.services.settings) or "kira")
+    except Exception:                                          # noqa: BLE001 - retain a safe UI fallback for test/legacy hosts
+        session = getattr(context.state, "cur", None) or getattr(context.state, "front", None)
+        cid = str(getattr(session, "cid", "") or "kira")
     own = cid == "kira"
     portrait.setVisible(own)
     avatar.setVisible(not own)
+
+
+def resize_chat_shell(context, available_width=None) -> None:
+    """Reflow the chat shell using the chat page's width, not the whole window width."""
+    views = getattr(context, "views", None)
+    page = getattr(views, "chat_page", None)
+    avatar_card = getattr(views, "avatar_card", None)
+    if page is None:
+        return
+    try:
+        width = int(available_width if available_width is not None else page.width())
+    except (TypeError, ValueError):
+        width = int(page.width())
+    if width <= 0:
+        return
+
+    # The main app navigation already consumes part of the window. Measure only
+    # the remaining chat page so the right portrait never steals the chat column.
+    show_character_panel = width >= 900
+    if avatar_card is not None:
+        if show_character_panel:
+            avatar_card.setFixedWidth(max(185, min(250, int(width * 0.23))))
+            avatar_card.show()
+        else:
+            avatar_card.setFixedWidth(0)
+            avatar_card.hide()
+
+    left_width = max(150, min(LEFT_WIDTH, int(width * 0.24)))
+    left_holder = page.findChild(QWidget, "dashLeftHolder")
+    left_scroll = page.findChild(QScrollArea, "dashLeftScroll")
+    if left_scroll is not None:
+        left_scroll.setFixedWidth(left_width)
+    if left_holder is not None:
+        left_holder.setFixedWidth(left_width + 5)
+
+    # Keep history narrower than the available width; chat receives the rest.
+    conversation_list = getattr(views, "conversation_list", None)
+    history_panel = conversation_list.parentWidget() if conversation_list is not None else None
+    if history_panel is not None:
+        history_width = max(90, min(154, int(width * 0.14)))
+        history_panel.setMinimumWidth(0)
+        history_panel.setMaximumWidth(history_width)
+        history_panel.setMinimumWidth(history_width)
+
+    center = page.findChild(QWidget, "dashCenter")
+    if center is not None:
+        center.setMinimumWidth(0)
+        center.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        chat_card = center.findChild(QFrame, "chatCard")
+        if chat_card is not None:
+            chat_card.setMinimumWidth(0)
+            chat_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
 
 def _avatar_on_the_right(page, avatar_card, lang) -> None:

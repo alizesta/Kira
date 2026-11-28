@@ -194,11 +194,17 @@ class ChatShellTests(unittest.TestCase):
         self.assertIn("Happy", texts(p.avatar_card))
         self.assertIn("Energetic", texts(p.avatar_card))
 
-    def test_rebuilding_right_column_keeps_a_single_kira_portrait(self):
+    def test_rebuilding_right_column_removes_portraits_from_stale_class_definitions(self):
         context, p = build("en")
         avatar = QWidget(p.avatar_card)
         p.avatar_card.layout().addWidget(avatar)
         context.views.avatar = avatar
+        stale_portrait = QLabel("old portrait", p.avatar_card)
+        stale_portrait.setObjectName("kiraPortrait")
+        legacy_portrait_type = type("_Portrait", (QLabel,), {})
+        legacy_portrait = legacy_portrait_type("legacy portrait without objectName", p.avatar_card)
+        p.avatar_card.layout().insertWidget(0, stale_portrait)
+        p.avatar_card.layout().insertWidget(1, legacy_portrait)
 
         with tempfile.TemporaryDirectory() as temp:
             image_path = Path(temp) / "kira.png"
@@ -206,13 +212,37 @@ class ChatShellTests(unittest.TestCase):
             image.fill(QColor("#ff00ff"))
             self.assertTrue(image.save(str(image_path)))
             with patch.object(chat_shell, "KIRA_PORTRAIT", image_path):
-                chat_shell._build_right(p.avatar_card, context, "en")
                 chat_shell._build_right(p.avatar_card, context, "fa")
+                portrait_widgets = p.avatar_card.findChildren(QWidget, "kiraPortrait")
 
-        portraits = p.avatar_card.findChildren(chat_shell._Portrait)
-        self.assertEqual(len(portraits), 1)
-        self.assertEqual(portraits[0]._subtitle, "همیشه اینجام برات")
+        self.assertEqual(len(portrait_widgets), 1)
+        self.assertIsInstance(portrait_widgets[0], chat_shell._Portrait)
+        self.assertEqual(portrait_widgets[0]._subtitle, "همیشه اینجام برات")
         self.assertTrue(avatar.isHidden())
+        self.assertIsNone(stale_portrait.parent())
+        self.assertIsNone(legacy_portrait.parent())
+
+    def test_chat_shell_reflows_columns_when_window_is_not_maximized(self):
+        context, p = build()
+        chat_shell.apply_chat_shell(context)
+
+        chat_shell.resize_chat_shell(context, 820)
+        self.assertTrue(p.avatar_card.isHidden())
+        self.assertEqual(p.avatar_card.width(), 0)
+        left = p.page.findChild(QScrollArea, "dashLeftScroll")
+        history_panel = p.list.parentWidget()
+        self.assertIsNotNone(left)
+        self.assertLess(left.maximumWidth(), 250)
+        self.assertGreaterEqual(history_panel.minimumWidth(), 90)
+        self.assertLessEqual(history_panel.maximumWidth(), 154)
+
+        chat_shell.resize_chat_shell(context, 1100)
+        self.assertFalse(p.avatar_card.isHidden())
+        self.assertEqual(p.avatar_card.minimumWidth(), 250)
+        self.assertEqual(p.avatar_card.maximumWidth(), 250)
+        self.assertEqual(left.maximumWidth(), 250)
+        self.assertEqual(history_panel.minimumWidth(), 154)
+        self.assertEqual(history_panel.maximumWidth(), 154)
 
     def test_applying_twice_changes_nothing(self):
         context, p = build()

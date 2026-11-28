@@ -119,6 +119,51 @@ class LocalTtsPlaybackTests(unittest.TestCase):
         self.assertEqual(samples[265 * 2:], b"\\x01\\x00" * 10)
 
 
+    def test_invalid_selected_piper_voice_falls_back_to_local_mana(self):
+        import io
+        import wave
+
+        from kira import local_voice
+        from kira.voice_prosody import resolve_prosody
+        from kira import voice as voice_module
+
+        wav = io.BytesIO()
+        with wave.open(wav, "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(24000)
+            audio.writeframes(bytes(64))
+
+        speaker = Speaker.__new__(Speaker)
+        speaker.settings = {"local_voice_tts": True, "voice_rate": 0, "tts_engine": "piper"}
+        speaker._tmp = "/tmp/kira-piper-fallback"
+        speaker._save_local_wav = mock.Mock(return_value=("fallback.wav", []))
+        speaker._report = mock.Mock()
+        session = SimpleNamespace(
+            rate=0, pitch=0, cache=False, gen=1,
+            prosody=resolve_prosody(), cond=threading.Condition(),
+        )
+        with (
+            mock.patch.object(speaker, "_use_kitten", return_value=False),
+            mock.patch.object(
+                local_voice, "ensure_tts_ready",
+                side_effect=[RuntimeError("missing ONNX or JSON"), None],
+            ) as prepare,
+            mock.patch.object(local_voice, "normalize_persian_tts_text", return_value="سلام"),
+            mock.patch.object(local_voice, "synthesize_persian", return_value=wav.getvalue()) as synthesize,
+            mock.patch.object(voice_module, "split_comma_clauses", return_value=["سلام"]),
+            mock.patch.object(voice_module, "join_wavs_with_pauses", return_value=wav.getvalue()),
+            mock.patch.object(voice_module, "apply_audio_effects", side_effect=lambda payload, _profile: payload),
+        ):
+            with self.assertLogs("kira.voice", level="WARNING") as captured:
+                result = Speaker._synth(speaker, session, 0, "سلام")
+
+        self.assertEqual(result, ("fallback.wav", []))
+        self.assertEqual([call.args[0] for call in prepare.call_args_list], ["custom-voice.onnx", ""])
+        self.assertEqual(synthesize.call_args.args[1], "")
+        speaker._report.assert_not_called()
+        self.assertTrue(any("bundled Mana voice" in entry for entry in captured.output))
+
     def test_speaker_idle_state_waits_for_real_thread_exit(self):
         class FakeThread:
             def __init__(self):

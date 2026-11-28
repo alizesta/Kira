@@ -1495,10 +1495,14 @@ class SessionController(WindowFeatureController):
 
     def resizeEvent(self, event):
         self.qt_super_event("resizeEvent", event)
-        card = getattr(self.context.views, "avatar_card", None)
-        if card is not None:                         # narrow window: give the whole width to the conversation
-            card.setVisible(self.window.width() >= 640)
-            card.setFixedWidth(max(200, min(300, int(self.window.width() * 0.30))))
+        page = getattr(self.context.views, "chat_page", None)
+        if page is not None:
+            # The global navigation is outside chat_page. Defer until Qt has
+            # assigned the page its new geometry, then reflow against that width.
+            from .chat_shell import resize_chat_shell
+
+            context = self.context
+            QTimer.singleShot(0, lambda: resize_chat_shell(context, page.width()))
 
     # ---------- UI building ----------
 
