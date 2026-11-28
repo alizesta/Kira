@@ -510,7 +510,7 @@ class NewsFeedPanel(QFrame):
             if error:
                 self.empty_title.setText("شخصیت نتوانست خبرها را روایت کند")
                 self.empty_body.setText(
-                    f"خطای تولید روایت: {error}\\nخبرهای دریافت‌شده محفوظ مانده‌اند؛ برای تلاش دوباره «به‌روزرسانی» را بزن."
+                    f"خطای تولید روایت: {error}\nخبرهای دریافت‌شده محفوظ مانده‌اند؛ برای تلاش دوباره «به‌روزرسانی» را بزن."
                 )
             elif refreshing:
                 self.empty_title.setText("در حال آماده‌کردن روایت‌ها…")
@@ -563,8 +563,8 @@ class NewsFeedPanel(QFrame):
         if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
             return False
         return (
-            data.startswith(b"\\xff\\xd8\\xff")
-            or data.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
+            data.startswith(b"\xff\xd8\xff")
+            or data.startswith(b"\x89PNG\r\n\x1a\n")
             or data.startswith((b"GIF87a", b"GIF89a"))
             or (len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP")
         )
@@ -621,7 +621,7 @@ class NewsFeedPanel(QFrame):
             values.extend(label.text() for label in card.findChildren(QLabel) if label.text())
         if self.feed_stack.currentWidget() == self.empty_state:
             values.extend((self.empty_title.text(), self.empty_body.text()))
-        return "\\n".join(values)
+        return "\n".join(values)
 
     def showEvent(self, event):
         super().showEvent(event)
