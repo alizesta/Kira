@@ -135,6 +135,19 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
         self.assertEqual(result.body, image)
         self.assertEqual(result.ctype, "image/jpeg")
 
+        response = _Response(url, 200, {"Content-Type": "application/octet-stream"}, image)
+        session = mock.Mock()
+        session.get.return_value = response
+        session.cookies.clear = mock.Mock()
+        with (
+            mock.patch.object(netguard.requests, "Session", return_value=session),
+            mock.patch.object(netguard, "check_host"),
+            mock.patch.object(netguard, "_peer_blocked", return_value=False),
+        ):
+            result = netguard.fetch(url, allow_images=True, max_bytes=1024)
+        self.assertEqual(result.body, image)
+        self.assertEqual(result.ctype, "application/octet-stream")
+
         response = _Response(url, 200, {"Content-Type": "image/svg+xml"}, b"<svg/>")
         session = mock.Mock()
         session.get.return_value = response

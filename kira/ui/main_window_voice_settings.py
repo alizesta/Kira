@@ -118,19 +118,23 @@ class VoiceSettingsController(WindowFeatureController):
         from ..news_feed import NewsFeedService
         from ..news_post_generator import NewsPostGenerator
 
+        # Capture the profile/settings/provider dependencies on the UI thread.
+        # NewsPostGenerator runs its factories on a worker thread, so it must not
+        # dereference the voice-settings controller's scoped presentation proxy.
+        character_settings = self.feature_controller("character_settings").context
+        character_service = character_settings.services.character_service
+        app_settings = self.context.services.settings
+        provider_service = self.context.services.provider_application_service
+
         def news_router_factory(_character_id):
             # Each character gets an isolated router with the same configured chat
             # routes used by ordinary conversations; generation runs in the feed worker.
-            return self.context.services.provider_application_service.create_router(
-                self.context.services.settings
-            )
+            return provider_service.create_router(app_settings)
 
         def news_profile_factory(character_id):
-            profile = self.context.services.character_service.all_profiles(
-                self.context.services.settings
-            ).get(character_id) or {}
+            profile = character_service.all_profiles(app_settings).get(character_id) or {}
             traits = dict(profile.get("traits") or {})
-            saved_traits = self.context.services.settings.get("character_traits") or {}
+            saved_traits = app_settings.get("character_traits") or {}
             if isinstance(saved_traits, dict) and isinstance(saved_traits.get(character_id), dict):
                 traits.update(saved_traits[character_id])
             return {

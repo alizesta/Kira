@@ -10,8 +10,10 @@ from pathlib import Path
 from kira.news_feed import (
     CHARACTER_QUERIES, NewsFeedService, NewsFeedStore, build_prompt_context,
     is_official_health_source, is_official_weather_source, is_gaming_news,
-    _prepare_character_posts,
+    _prepare_character_posts, _commons_thumbnail,
 )
+from kira.webintel import engine as webintel_engine
+from kira.webintel import netguard as webintel_netguard
 
 
 class NewsFeedStoreTests(unittest.TestCase):
@@ -156,11 +158,101 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
         self.assertFalse(is_gaming_news("Central bank holds interest rates", "Currency market update"))
 
+    def test_commons_thumbnail_uses_only_wikimedia_raster_assets(self):
+        payload = (
+            b'{"query":{"pages":{"1":{"imageinfo":[{"thumburl":'
+            b'"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/game.jpg/640px-game.jpg"}]}}}}'
+        )
+        response = type("Fetched", (), {"body": payload})()
+        with patch.object(webintel_netguard, "fetch", return_value=response) as fetch:
+            image = _commons_thumbnail("Grand Theft Auto VI")
+        self.assertEqual(
+            image,
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/game.jpg/640px-game.jpg",
+        )
+        self.assertIn("generator=search", fetch.call_args.args[0])
+
+        unsafe_payload = (
+            b'{"query":{"pages":{"1":{"imageinfo":[{"thumburl":'
+            b'"https://evil.example.com/game.jpg"}]}}}}'
+        )
+        with patch(
+            "kira.webintel.netguard.fetch",
+            return_value=type("Fetched", (), {"body": unsafe_payload})(),
+        ):
+            self.assertEqual(_commons_thumbnail("Grand Theft Auto VI"), "")
+
+    def test_missing_images_use_the_keyless_commons_fallback(self):
+        source = {
+            "title": "Central bank publishes new rate outlook",
+            "summary": "The central bank published its new outlook.",
+            "url": "https://example.com/rates",
+            "category": "economy_markets",
+            "source_label": "Example Finance",
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {}, temp)
+
+            def fake_search(_context, _query, kind="web", max_results=8):
+                if kind == "news":
+                    return {"results": [{
+                        "title": source["title"],
+                        "url": source["url"],
+                        "snippet": source["summary"],
+                        "date": "2026-11-28",
+                    }]}
+                return {"results": []}
+
+            with (
+                patch.object(webintel_engine, "search", side_effect=fake_search),
+                patch("kira.news_feed._commons_thumbnail", return_value="https://upload.wikimedia.org/wikipedia/commons/rate.png") as commons,
+            ):
+                service._queries = lambda *_args: [("economy_markets", "central bank rates")]
+                service._refresh_character("ren")
+
+            stored = service.store.list_items("ren")
+            self.assertEqual(len(stored), 1)
+            self.assertEqual(stored[0]["image_url"], "https://upload.wikimedia.org/wikipedia/commons/rate.png")
+            commons.assert_called_once_with("Central bank publishes new rate outlook")
+
+    def test_missing_story_images_are_backfilled_from_configured_tavily_image_search(self):
+        sources = [{
+            "title": "Grand Theft Auto VI new trailer",
+            "summary": "A new trailer is reported.",
+            "url": "https://example.com/gta6",
+            "category": "gaming_news",
+            "source_label": "Example Games",
+        }]
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {"tavily_api_key": "test-key"}, temp)
+
+            def fake_search(_context, _query, kind="web", max_results=8):
+                if kind == "images":
+                    return {"results": [{
+                        "title": "Grand Theft Auto VI official artwork",
+                        "url": "https://cdn.example.com/gta6-artwork.jpg",
+                    }]}
+                return {"results": []}
+
+            with (
+                patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])),
+                patch.object(webintel_engine, "search", side_effect=fake_search) as search,
+            ):
+                service._refresh_character("kira")
+
+            stored = service.store.list_items("kira")
+            self.assertEqual(len(stored), 1)
+            self.assertEqual(stored[0]["image_url"], "https://cdn.example.com/gta6-artwork.jpg")
+            self.assertEqual(
+                sum(call.kwargs.get("kind") == "images" for call in search.call_args_list),
+                1,
+            )
+
     def test_rss_collector_failure_keeps_web_search_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             service = NewsFeedService(lambda: {}, temp)
             with patch("kira.news_sources.collect_character_feeds", side_effect=RuntimeError("feed parser failed")), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}) as search:
+                 patch.object(webintel_engine, "search", return_value={"results": []}) as search:
                 service._refresh_character("kira")
             self.assertEqual(search.call_count, len(CHARACTER_QUERIES["kira"]))
             self.assertIn("RSS collector: RuntimeError", service.store.status("kira")["last_error"])
@@ -240,7 +332,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             }]
             service = NewsFeedService(lambda: {}, temp, post_generator=generator)
             with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                 patch.object(webintel_engine, "search", return_value={"results": []}):
                 service._refresh_character("kira")
             posts = service.store.list_posts("kira")
             self.assertEqual(len(posts), 1)
@@ -274,7 +366,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 post_generator=lambda *_args: (_ for _ in ()).throw(RuntimeError("model offline")),
             )
             with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                 patch.object(webintel_engine, "search", return_value={"results": []}):
                 service._refresh_character("kira")
             self.assertEqual(service.store.list_posts("kira"), [])
             self.assertEqual(len(service.store.list_unprocessed_items("kira")), 1)

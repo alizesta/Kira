@@ -211,10 +211,16 @@ class _Portrait(QWidget):
 
     def __init__(self, path, caption: str, subtitle: str, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("kiraPortrait")
         self._pixmap = QPixmap(str(path))
         self._caption, self._subtitle = caption, subtitle
         self.setMinimumSize(150, 190)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def update_content(self, path, caption: str, subtitle: str) -> None:
+        self._pixmap = QPixmap(str(path))
+        self._caption, self._subtitle = caption, subtitle
+        self.update()
 
     def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -664,7 +670,8 @@ def _build_profile(context, parts, lang) -> QFrame:
     top.setSpacing(10)
     picture = QLabel()
     picture.setFixedSize(52, 52)
-    cid = str(getattr(getattr(context.state, "cur", None), "cid", "") or "kira")
+    session = getattr(context.state, "front", None) or getattr(context.state, "cur", None)
+    cid = str(getattr(session, "cid", "") or "kira")
     pixmap = _character_pixmap(context, cid, 52)
     if pixmap is not None:
         picture.setPixmap(pixmap)
@@ -770,8 +777,24 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
         return
     avatar_card.setLayoutDirection(Qt.LeftToRight)
     if KIRA_PORTRAIT.is_file():
-        portrait = _Portrait(KIRA_PORTRAIT, "Kira ✦", "همیشه اینجام برات" if fa else "Always here for you", avatar_card)
-        layout.insertWidget(0, portrait, 1)
+        existing = avatar_card.findChildren(_Portrait)
+        portrait = existing[0] if existing else None
+        # The skin can be rebuilt while language/theme changes; never leave a
+        # second Kira portrait behind in the same right-hand character panel.
+        for duplicate in existing[1:]:
+            layout.removeWidget(duplicate)
+            duplicate.hide()
+            duplicate.setParent(None)
+            duplicate.deleteLater()
+        caption = "Kira ✦"
+        subtitle = "همیشه اینجام برات" if fa else "Always here for you"
+        if portrait is None:
+            portrait = _Portrait(KIRA_PORTRAIT, caption, subtitle, avatar_card)
+            layout.insertWidget(0, portrait, 1)
+        else:
+            portrait.update_content(KIRA_PORTRAIT, caption, subtitle)
+            if layout.indexOf(portrait) < 0:
+                layout.insertWidget(0, portrait, 1)
         avatar_card.kira_portrait = portrait
         _sync_portrait(context)
     actions = _frame("dashActions")
@@ -820,7 +843,8 @@ def _sync_portrait(context) -> None:
     avatar = getattr(views, "avatar", None)
     if portrait is None or avatar is None:
         return
-    cid = str(getattr(getattr(context.state, "cur", None), "cid", "") or "kira")
+    session = getattr(context.state, "front", None) or getattr(context.state, "cur", None)
+    cid = str(getattr(session, "cid", "") or "kira")
     own = cid == "kira"
     portrait.setVisible(own)
     avatar.setVisible(not own)

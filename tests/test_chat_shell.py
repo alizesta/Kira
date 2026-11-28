@@ -1,9 +1,13 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
     QToolButton, QVBoxLayout, QWidget,
@@ -189,6 +193,26 @@ class ChatShellTests(unittest.TestCase):
         p.session.update_mood_indicator()
         self.assertIn("Happy", texts(p.avatar_card))
         self.assertIn("Energetic", texts(p.avatar_card))
+
+    def test_rebuilding_right_column_keeps_a_single_kira_portrait(self):
+        context, p = build("en")
+        avatar = QWidget(p.avatar_card)
+        p.avatar_card.layout().addWidget(avatar)
+        context.views.avatar = avatar
+
+        with tempfile.TemporaryDirectory() as temp:
+            image_path = Path(temp) / "kira.png"
+            image = QPixmap(64, 96)
+            image.fill(QColor("#ff00ff"))
+            self.assertTrue(image.save(str(image_path)))
+            with patch.object(chat_shell, "KIRA_PORTRAIT", image_path):
+                chat_shell._build_right(p.avatar_card, context, "en")
+                chat_shell._build_right(p.avatar_card, context, "fa")
+
+        portraits = p.avatar_card.findChildren(chat_shell._Portrait)
+        self.assertEqual(len(portraits), 1)
+        self.assertEqual(portraits[0]._subtitle, "همیشه اینجام برات")
+        self.assertTrue(avatar.isHidden())
 
     def test_applying_twice_changes_nothing(self):
         context, p = build()
