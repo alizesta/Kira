@@ -204,7 +204,7 @@ class _NewsCard(QFrame):
         layout.addWidget(title)
 
         editorial_text = str(item.get("summary") or "برای این خبر توضیح بیشتری در دسترس نیست.")
-        editorial_text = editorial_text.partition("\\nمنابع تکمیلی:")[0].strip()
+        editorial_text = editorial_text.partition("\nمنابع تکمیلی:")[0].strip()
         confidence = ""
         if "سطح اطمینان:" in editorial_text:
             editorial_text, _marker, confidence = editorial_text.partition("سطح اطمینان:")
