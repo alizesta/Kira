@@ -216,6 +216,27 @@ class NewsFeedStoreTests(unittest.TestCase):
         }])
         self.assertEqual(self.store.list_posts("mika"), [])
 
+    def test_off_domain_legacy_posts_do_not_starve_relevant_posts_below_limit(self):
+        now = time.time()
+        self.store.upsert_items("mika", [{
+            "title": "واکسیناسیون و پیشگیری از آنفلوآنزا",
+            "summary": "پژوهش پزشکی تازه دربارهٔ واکسن منتشر شد.\n\nسطح اطمینان: گزارش‌شده",
+            "url": "https://example.com/medical",
+            "category": "medical_science",
+            "is_post": True,
+        }], now=now - 60)
+        self.store.upsert_items("mika", [{
+            "title": "جنگ و انتخابات در منطقه",
+            "summary": "گزارش سیاسی و نظامی.\n\nسطح اطمینان: گزارش‌شده",
+            "url": "https://example.com/war-newer",
+            "category": "iran_health",
+            "is_post": True,
+        }], now=now)
+
+        posts = self.store.list_posts("mika", limit=1)
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["url"], "https://example.com/medical")
+
     def test_local_health_alerts_require_official_sources(self):
         self.assertTrue(is_official_health_source("https://www.who.int/news"))
         self.assertTrue(is_official_health_source("https://www.cdc.gov/flu/"))
