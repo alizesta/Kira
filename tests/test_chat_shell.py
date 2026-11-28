@@ -261,6 +261,39 @@ class ChatShellTests(unittest.TestCase):
         self.assertEqual(history_panel.minimumWidth(), 234)
         self.assertEqual(history_panel.maximumWidth(), 234)
 
+    def test_character_chat_background_loads_and_tracks_character_switches(self):
+        context, p = build()
+        profiles = {"mika": {"chat_background": "mika_chat_background.jpg"}}
+        context.services.character_service.active_id = lambda _settings: "mika"
+        context.services.character_service.all_profiles = lambda _settings: profiles
+
+        with tempfile.TemporaryDirectory() as temp:
+            image_path = Path(temp) / "mika_chat_background.jpg"
+            image = QPixmap(96, 64)
+            image.fill(QColor("#ff66bb"))
+            self.assertTrue(image.save(str(image_path)))
+            context.services.character_service.chat_background_file = (
+                lambda profile, _root: image_path if profile.get("chat_background") else None
+            )
+
+            with patch.object(chat_shell, "ROOT", Path(temp)):
+                chat_shell.apply_chat_shell(context)
+                background = getattr(p.page, "_character_chat_background", None)
+                self.assertIsNotNone(background)
+                self.assertFalse(background.isHidden())
+                self.assertFalse(background._pixmap.isNull())
+                self.assertEqual(background.geometry(), p.page.rect())
+
+                p.page.resize(900, 700)
+                _APP.processEvents()
+                self.assertEqual(background.geometry(), p.page.rect())
+
+                context.services.character_service.active_id = lambda _settings: "kira"
+                profiles.clear()
+                chat_shell._sync_chat_background(context)
+                self.assertTrue(background.isHidden())
+                self.assertTrue(background._pixmap.isNull())
+
     def test_applying_twice_changes_nothing(self):
         context, p = build()
         chat_shell.apply_chat_shell(context)
