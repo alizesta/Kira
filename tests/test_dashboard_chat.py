@@ -187,6 +187,29 @@ class PortraitTests(unittest.TestCase):
         self.assertTrue(parts["portrait"].isHidden())
         self.assertFalse(avatar.isHidden())
 
+    def test_profile_portrait_is_used_for_the_character_dashboard_card(self):
+        from kira.personas import portrait_file
+
+        folder = Path(self.tmp.name) / "assets" / "characters"
+        folder.mkdir(parents=True)
+        picture_path = folder / "ren_portrait.jpg"
+        picture = QPixmap(60, 80)
+        picture.fill()
+        self.assertTrue(picture.save(str(picture_path), "JPG"))
+        context, card, avatar = self.build()
+        context.state.front.cid = "ren"
+        context.state.cur.cid = "ren"
+        profile = {"image": "assets/characters/ren_portrait.jpg"}
+        context.services.character_service = SimpleNamespace(
+            display_name=lambda settings: "Ren",
+            all_profiles=lambda settings: {"ren": profile},
+            portrait_file=portrait_file,
+        )
+        parts = {}
+        dashboard_chat._build_portrait(context, parts)
+        self.assertFalse(parts["portrait"].isHidden())
+        self.assertTrue(avatar.isHidden())
+
     def test_with_a_picture_the_portrait_replaces_the_animated_avatar(self):
         folder = Path(self.tmp.name) / "assets" / "dashboard"
         folder.mkdir(parents=True)
