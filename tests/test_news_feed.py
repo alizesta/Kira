@@ -10,7 +10,7 @@ from pathlib import Path
 from kira.news_feed import (
     CHARACTER_QUERIES, NewsFeedService, NewsFeedStore, build_prompt_context,
     is_official_health_source, is_official_weather_source, is_gaming_news,
-    _prepare_character_posts, _commons_thumbnail,
+    is_relevant_character_news, _prepare_character_posts, _commons_thumbnail,
 )
 from kira.webintel import engine as webintel_engine
 from kira.webintel import netguard as webintel_netguard
@@ -101,10 +101,10 @@ class NewsFeedStoreTests(unittest.TestCase):
     def test_prompt_context_reads_only_the_requested_character_feed(self):
         stamp = time.time()
         self.store.upsert_items("kira", [
-            {"title": "Kira-only game update", "summary": "A release", "url": "https://example.com/kira", "is_post": True}
+            {"title": "Kira-only game update", "summary": "A release", "url": "https://example.com/kira", "category": "gaming_news", "is_post": True}
         ], now=stamp)
         self.store.upsert_items("ren", [
-            {"title": "Ren-only market update", "summary": "A rate change", "url": "https://example.com/ren", "is_post": True}
+            {"title": "Ren-only market update", "summary": "A rate change", "url": "https://example.com/ren", "category": "economy_markets", "is_post": True}
         ], now=stamp)
         kira = build_prompt_context("kira", self.temp.name)
         ren = build_prompt_context("ren", self.temp.name)
@@ -142,6 +142,79 @@ class NewsFeedStoreTests(unittest.TestCase):
             local = {category for category, _query in service._queries("mika", service._settings())}
             self.assertIn("local_weather", local)
             self.assertIn("local_outbreak", local)
+
+    def test_character_news_domains_reject_cross_character_and_mika_war_politics(self):
+        self.assertTrue(is_relevant_character_news(
+            "mika", "medical_science", "واکسن جدید برای پیشگیری از آنفلوآنزا",
+            "پژوهش پزشکی درباره اثربخشی واکسن منتشر شد.",
+        ))
+        self.assertTrue(is_relevant_character_news(
+            "mika", "weather", "پیش‌بینی بارش باران در روزهای آینده",
+            "سازمان هواشناسی دما و بارندگی را اعلام کرد.",
+        ))
+        self.assertFalse(is_relevant_character_news(
+            "mika", "medical_science", "تشدید جنگ و حملات موشکی در منطقه",
+            "گزارش تازه از درگیری نظامی و تحولات جبهه.",
+        ))
+        self.assertFalse(is_relevant_character_news(
+            "mika", "public_health", "انتخابات و رقابت احزاب سیاسی",
+            "گزارش سیاسی درباره پارلمان و دیپلماسی.",
+        ))
+        self.assertFalse(is_relevant_character_news(
+            "mika", "economy_markets", "افزایش نرخ بهره در بازارها",
+            "گزارش اقتصادی.",
+        ))
+        self.assertTrue(is_relevant_character_news(
+            "ren", "economy_markets", "افزایش نرخ بهره توسط بانک مرکزی",
+            "تغییر تورم و شاخص بازار سهام.",
+        ))
+        self.assertFalse(is_relevant_character_news(
+            "ren", "digital_technology", "New PlayStation console announced",
+            "Gaming hardware update.",
+        ))
+        self.assertFalse(is_relevant_character_news(
+            "kira", "crypto", "Bitcoin price update", "Cryptocurrency market.",
+        ))
+
+    def test_mika_refresh_rejects_war_news_before_persistence(self):
+        sources = [
+            {
+                "title": "گزارش جنگ و حملات موشکی در منطقه",
+                "summary": "درگیری نظامی و تحولات جبهه ادامه دارد.",
+                "url": "https://example.com/war",
+                "category": "iran_health",
+                "source_label": "General News",
+            },
+            {
+                "title": "واکسن تازه برای پیشگیری از آنفلوآنزا",
+                "summary": "پژوهش پزشکی تازه درباره سلامت عمومی منتشر شد.",
+                "url": "https://example.com/vaccine",
+                "category": "iran_health",
+                "source_label": "Health News",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            service = NewsFeedService(lambda: {}, temp)
+            service._queries = lambda *_args: []
+            with (
+                patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])),
+                patch("kira.news_feed._commons_thumbnail", return_value=""),
+            ):
+                service._refresh_character("mika")
+
+            items = service.store.list_items("mika")
+            self.assertEqual([item["url"] for item in items], ["https://example.com/vaccine"])
+            self.assertEqual(service.store.list_posts("mika"), [])
+
+    def test_mika_off_domain_legacy_posts_are_hidden_from_the_feed(self):
+        self.store.upsert_items("mika", [{
+            "title": "جنگ و انتخابات در منطقه",
+            "summary": "سطح اطمینان: گزارش‌شده",
+            "url": "https://example.com/old-war",
+            "category": "iran_health",
+            "is_post": True,
+        }])
+        self.assertEqual(self.store.list_posts("mika"), [])
 
     def test_local_health_alerts_require_official_sources(self):
         self.assertTrue(is_official_health_source("https://www.who.int/news"))
