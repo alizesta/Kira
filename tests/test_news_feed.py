@@ -68,6 +68,19 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_items("mika", now=1_000 + 7 * day - 1)[0]["summary"], "Updated")
         self.assertEqual(self.store.list_items("mika", now=1_000 + 7 * day), [])
 
+    def test_image_metadata_survives_refreshes_without_being_erased(self):
+        now = time.time()
+        url = "https://example.com/image-story"
+        self.store.upsert_items("kira", [{
+            "title": "Image story", "summary": "Details", "url": url,
+            "image_url": "https://cdn.example.com/story.jpg",
+        }], now=now)
+        self.store.upsert_items("kira", [{
+            "title": "Image story", "summary": "Details updated", "url": url,
+        }], now=now + 60)
+        item = self.store.list_items("kira", now=now + 60)[0]
+        self.assertEqual(item["image_url"], "https://cdn.example.com/story.jpg")
+
     def test_rss_source_classification_survives_duplicate_search_results(self):
         stamp = time.time()
         url = "https://example.com/leak"
@@ -186,7 +199,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 columns = {
                     row["name"] for row in db.execute("PRAGMA table_info(news_items)")
                 }
-            self.assertTrue({"is_post", "processed"} <= columns)
+            self.assertTrue({"image_url", "is_post", "processed"} <= columns)
             self.assertEqual(migrated.list_posts("kira"), [])
             self.assertEqual(len(migrated.list_unprocessed_items("kira")), 1)
 
@@ -217,7 +230,7 @@ class NewsFeedStoreTests(unittest.TestCase):
     def test_generated_character_post_is_published_and_sources_are_consumed(self):
         with tempfile.TemporaryDirectory() as temp:
             sources = [
-                {"title": "Raw leak headline", "summary": "Possible release window", "url": "https://example.com/leak", "category": "gaming_rumor", "source_label": "X @insider"},
+                {"title": "Raw leak headline", "summary": "Possible release window", "url": "https://example.com/leak", "image_url": "https://cdn.example.com/leak.jpg", "category": "gaming_rumor", "source_label": "X @insider"},
                 {"title": "Raw reporter headline", "summary": "Independent corroboration", "url": "https://example.net/report", "category": "gaming_report", "source_label": "Reporter"},
             ]
             generator = lambda character, items, previous: [{
@@ -232,6 +245,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             posts = service.store.list_posts("kira")
             self.assertEqual(len(posts), 1)
             self.assertEqual(posts[0]["title"], "کیرا: این شایعه جدی‌تر شد؟")
+            self.assertEqual(posts[0]["image_url"], "https://cdn.example.com/leak.jpg")
             self.assertIn("سطح اطمینان: گزارش‌شده", posts[0]["summary"])
             self.assertIn("منابع تکمیلی:", posts[0]["summary"])
             self.assertEqual(service.store.list_unprocessed_items("kira"), [])
