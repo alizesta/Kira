@@ -169,6 +169,27 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         self.assertIn("character_service", CONTROLLER_ACCESS["character_settings"]["services"])
         self.assertNotIn("character_service", CONTROLLER_ACCESS["voice_settings"]["services"])
 
+    def test_news_profile_factory_does_not_use_voice_settings_context_in_worker(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        controller = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "VoiceSettingsController"
+        )
+        build = next(
+            node for node in controller.body
+            if isinstance(node, ast.FunctionDef) and node.name == "build_chat_tab"
+        )
+        factory = next(
+            node for node in build.body
+            if isinstance(node, ast.FunctionDef) and node.name == "news_profile_factory"
+        )
+        factory_source = ast.get_source_segment(source, factory)
+        self.assertIn("character_service.all_profiles", factory_source)
+        self.assertNotIn("self.context.services.character_service", factory_source)
+        self.assertIn('self.feature_controller("character_settings").context', ast.get_source_segment(source, build))
+
     def test_runtime_shutdown_can_clear_desktop_context_service(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS, SERVICE_FIELDS
 
