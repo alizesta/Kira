@@ -55,7 +55,7 @@ STYLE = """
 QWidget#chatPage { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #09050f, stop:1 #140a2b); }
 QScrollArea#dashLeftScroll, QWidget#dashLeft { background: transparent; border: none; }
 QLabel#dashBrand { color: #c4a6ff; font-size: 26px; font-weight: 800; letter-spacing: 2px; }
-QLabel#dashBrandSub { color: #9a86c9; font-size: 11px; }
+QLabel#dashBrandSub { color: #c9b8f5; font-size: 12px; font-weight: 500; padding: 0 2px 4px 2px; }
 QPushButton#navItem { background: transparent; color: #cbbcff; border: none; border-radius: 12px; padding: 10px 14px;
     text-align: %ALIGN%; font-size: 14px; }
 QPushButton#navItem:hover { background: #1a1038; }
@@ -495,7 +495,11 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     brand.addWidget(_icon_label("sparkle", 18, "#c4a6ff"), 0, Qt.AlignTop)
     brand.addStretch(1)
     layout.addLayout(brand)
-    layout.addWidget(_label("همراه هوشمند تو" if fa else "Your AI Companion", "dashBrandSub"))
+    brand_sub = _label("دستیار هوشمند تو" if fa else "Your AI Companion", "dashBrandSub")
+    brand_sub.setWordWrap(True)
+    brand_sub.setLayoutDirection(Qt.LeftToRight)
+    brand_sub.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    layout.addWidget(brand_sub)
     layout.addLayout(_build_nav(context, controller, parts, lang))
     parts["profile"] = _build_profile(context, parts, lang)     # the Kira/Online card is no longer shown; the conversation list takes its place
     sidebar.setMinimumWidth(0)
