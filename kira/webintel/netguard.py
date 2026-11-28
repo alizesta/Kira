@@ -25,7 +25,8 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 ALLOWED_PORTS = {80, 443, 8080, 8443}
 TEXT_TYPES = ("text/html", "application/xhtml", "text/plain", "text/markdown", "application/xml", "text/xml", "application/json",
               "application/rss", "application/atom", "application/pdf")
-IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
+IMAGE_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"})
+IMAGE_BINARY_TYPES = frozenset({"application/octet-stream", "binary/octet-stream"})
 BAD_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home", ".home.arpa", ".corp", ".intranet", ".localdomain")
 CENSOR_NET = ipaddress.ip_network("10.10.34.0/24")          # the address Iranian ISPs return for blocked sites
 
@@ -241,7 +242,9 @@ def fetch(url: str, *, timeout: float = 15.0, max_bytes: int = 3_000_000, max_re
                 raise GuardError(f"صفحه در دسترس نیست (HTTP {resp.status_code}: {hint}).")
             ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             content_type_allowed = any(ctype.startswith(t) for t in TEXT_TYPES)
-            if allow_images and ctype in IMAGE_TYPES:
+            if allow_images and (ctype in IMAGE_TYPES or ctype in IMAGE_BINARY_TYPES):
+                # Some CDNs label ordinary JPEG/PNG/WebP bytes as octet-stream.
+                # The UI validates the actual file signature before decoding.
                 content_type_allowed = True
             if ctype and not content_type_allowed:
                 resp.close()
