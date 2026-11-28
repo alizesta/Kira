@@ -181,23 +181,35 @@ class NewsFeedStoreTests(unittest.TestCase):
             self.assertEqual(_commons_thumbnail("Grand Theft Auto VI"), "")
 
     def test_missing_images_use_the_keyless_commons_fallback(self):
-        sources = [{
+        source = {
             "title": "Central bank publishes new rate outlook",
             "summary": "The central bank published its new outlook.",
             "url": "https://example.com/rates",
             "category": "economy_markets",
             "source_label": "Example Finance",
-        }]
+        }
         with tempfile.TemporaryDirectory() as temp:
             service = NewsFeedService(lambda: {}, temp)
+
+            def fake_search(_context, _query, kind="web", max_results=8):
+                if kind == "news":
+                    return {"results": [{
+                        "title": source["title"],
+                        "url": source["url"],
+                        "snippet": source["summary"],
+                        "date": "2026-11-28",
+                    }]}
+                return {"results": []}
+
             with (
-                patch("kira.webintel.engine.search", return_value={"results": []}),
-                patch("kira.news_sources.collect_character_feeds", return_value=([], [])),
+                patch("kira.webintel.engine.search", side_effect=fake_search),
                 patch("kira.news_feed._commons_thumbnail", return_value="https://upload.wikimedia.org/wikipedia/commons/rate.png") as commons,
             ):
-                service._queries = lambda *_args: []
+                service._queries = lambda *_args: [("economy_markets", "central bank rates")]
                 service._refresh_character("ren")
+
             stored = service.store.list_items("ren")
+            self.assertEqual(len(stored), 1)
             self.assertEqual(stored[0]["image_url"], "https://upload.wikimedia.org/wikipedia/commons/rate.png")
             commons.assert_called_once_with("Central bank publishes new rate outlook")
 
