@@ -348,16 +348,16 @@ def user_name() -> str:
         "nick": ("He likes to be called ", "کاربر را صدا کن ", "من را صدا کن "),
     }
     for item in identity_facts:
-        value = str(item.get("value") or "").strip()
+        label = str(item.get("text") or "").strip()
+        value = next((label[len(prefix):].strip() for prefix in prefixes[item["kind"]]
+                      if label.startswith(prefix)), "")
         if not value:
-            label = str(item.get("text") or "").strip()
-            value = next((label[len(prefix):].strip() for prefix in prefixes[item["kind"]]
-                          if label.startswith(prefix)), "")
+            value = str(item.get("value") or "").strip()
         value = value.strip(" \t\r\n،,.:؛!؟\"'«»")
         for suffix in (" است", " هست", " ـه"):
             if value.endswith(suffix):
                 value = value[:-len(suffix)].strip()
-        if 2 <= len(value) <= 40 and not any(char.isspace() for char in value):
+        if re.fullmatch(r"[\w\u200c-]{2,40}", value, flags=re.UNICODE):
             return value
     return ""
 
@@ -619,6 +619,8 @@ def update_item(item_id: str, text: str) -> bool:
                 raise RuntimeError("Persona-memory item changed while it was being edited")
             target["text"] = text
             target["id"] = new_id
+            if kind in ("name", "nick"):
+                target.pop("value", None)
             _save(data)
     except Exception:
         if sync_evidence and _evidence.enabled():
