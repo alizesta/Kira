@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 from .. import websearch
+from ..personas import is_broad_news_request, scope_news_search_query
 
 
 @dataclass(frozen=True)
@@ -141,21 +142,38 @@ class WebSearchApplicationService:
         query: str,
         history: Sequence[Mapping[str, Any]],
         client: Any,
+        *,
+        character_id: str | None = None,
+        request_text: str | None = None,
     ) -> WebSearchOptions:
         key = str(settings.get("tavily_api_key", "")).strip()
         fallback = bool(settings.get("web_fallback", True))
         gemini = self.gemini_credentials(settings)
+        original_text = str(request_text or query).strip()[:400]
+        scope_text = original_text if is_broad_news_request(original_text) else ""
+        followup = websearch.is_followup(query)
+        recent = list(history or [])[-6:]
+        if not scope_text and followup:
+            for message in reversed(recent[:-1]):
+                if not isinstance(message, Mapping) or message.get("role") != "user":
+                    continue
+                candidate = str(message.get("content") or "").strip()
+                if is_broad_news_request(candidate):
+                    scope_text = candidate
+                    break
+        scoped_query = scope_news_search_query(character_id or "", query, scope_text)
         rewrite = None
-        if websearch.is_followup(query):
-            recent = list(history or [])[-6:]
-            rewrite = lambda c=client, h=recent, q=query: self.make_search_query(h, q, c)
+        if followup:
+            rewrite = lambda c=client, h=recent, q=query, cid=character_id, scope=scope_text: scope_news_search_query(
+                cid or "", self.make_search_query(h, q, c), scope
+            )
         return WebSearchOptions(
-            query=query,
+            query=scoped_query,
             api_key=key,
             depth=str(settings.get("web_depth", "basic")),
             fallback=fallback,
             gemini=gemini,
-            user_text=query,
+            user_text=original_text,
             rewrite=rewrite,
         )
 
