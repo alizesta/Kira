@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlsplit
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 from ...news_feed import CATEGORY_LABELS, CHARACTER_IDS
@@ -28,8 +28,8 @@ QFrame#newsStoryCard {
     border-radius: 18px;
 }
 QLabel#newsCardCategory { color: #bda9f7; font-size: 11px; font-weight: 600; }
-QLabel#newsCardTitle { color: #f5f1ff; font-size: 17px; font-weight: 700; }
-QLabel#newsCardBody { color: #d8d0ed; font-size: 13px; line-height: 1.5; }
+QLabel#newsCardTitle { color: #f5f1ff; font-size: 14px; font-weight: 700; }
+QLabel#newsCardBody { color: #d8d0ed; font-size: 11px; line-height: 1.35; }
 QLabel#newsCardSource { color: #a995dc; font-size: 11px; }
 QLabel#newsCardCover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #382365, stop:1 #140f2e);
@@ -50,14 +50,14 @@ QPushButton#newsCardOpen {
 QPushButton#newsCardOpen:hover { background: rgba(112, 73, 196, 170); }
 QLabel#newsFeedEmptyTitle { color: #eee7ff; font-size: 20px; font-weight: 700; }
 QLabel#newsFeedEmptyBody { color: #b8a9d9; font-size: 13px; }
-QScrollBar:horizontal {
-    background: rgba(18, 12, 42, 150); height: 9px; border-radius: 4px; margin: 3px 10px;
+QScrollBar:vertical {
+    background: rgba(18, 12, 42, 150); width: 9px; border-radius: 4px; margin: 8px 3px;
 }
-QScrollBar::handle:horizontal {
-    background: #7950c7; min-width: 38px; border-radius: 4px;
+QScrollBar::handle:vertical {
+    background: #7950c7; min-height: 38px; border-radius: 4px;
 }
-QScrollBar::handle:horizontal:hover { background: #9c74ec; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QScrollBar::handle:vertical:hover { background: #9c74ec; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
 
@@ -151,8 +151,8 @@ class _CoverImageLabel(QLabel):
         self._original = QPixmap()
         self.setObjectName("newsCardCover")
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumHeight(170)
-        self.setFixedHeight(190)
+        self.setMinimumHeight(82)
+        self.setFixedHeight(82)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def set_cover(self, data: bytes):
@@ -180,7 +180,7 @@ class _CoverImageLabel(QLabel):
 
 
 class _SwipeScrollArea(QScrollArea):
-    """Horizontal carousel that can be dragged with the left mouse button."""
+    """Vertical news feed that can be dragged with the left mouse button."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -189,8 +189,8 @@ class _SwipeScrollArea(QScrollArea):
         self._dragging = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self.viewport().setCursor(Qt.OpenHandCursor)
 
@@ -203,18 +203,18 @@ class _SwipeScrollArea(QScrollArea):
         event_type = event.type()
         if event_type == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             self._drag_origin = event.globalPosition().toPoint()
-            self._scroll_origin = self.horizontalScrollBar().value()
+            self._scroll_origin = self.verticalScrollBar().value()
             self._dragging = False
             return False
         if event_type == QEvent.MouseMove and self._drag_origin is not None:
             if not (event.buttons() & Qt.LeftButton):
                 return False
             delta = event.globalPosition().toPoint() - self._drag_origin
-            if not self._dragging and abs(delta.x()) >= 7:
+            if not self._dragging and abs(delta.y()) >= 7:
                 self._dragging = True
                 self.viewport().setCursor(Qt.ClosedHandCursor)
             if self._dragging:
-                self.horizontalScrollBar().setValue(self._scroll_origin - delta.x())
+                self.verticalScrollBar().setValue(self._scroll_origin - delta.y())
                 return True
         if event_type == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
             was_dragging = self._dragging
@@ -231,13 +231,13 @@ class _NewsCard(QFrame):
         self.setObjectName("newsStoryCard")
         self.setStyleSheet(_CARD_STYLE)
         self.setMinimumWidth(0)
-        self.setMinimumHeight(440)
+        self.setMinimumHeight(0)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setLayoutDirection(Qt.RightToLeft)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(13, 13, 13, 13)
-        layout.setSpacing(9)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(5)
 
         self.cover = _CoverImageLabel(self)
         layout.addWidget(self.cover)
@@ -275,7 +275,7 @@ class _NewsCard(QFrame):
         body.setWordWrap(True)
         body.setAlignment(Qt.AlignRight | Qt.AlignTop)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body.setMaximumHeight(146)
+        body.setMaximumHeight(58)
         layout.addWidget(body)
         if confidence:
             confidence_label = QLabel(confidence, self)
@@ -290,6 +290,7 @@ class _NewsCard(QFrame):
         layout.addStretch(1)
         open_button = QPushButton("مشاهدهٔ گزارش اصلی  ↗", self)
         open_button.setObjectName("newsCardOpen")
+        open_button.setMaximumHeight(28)
         open_button.setCursor(Qt.PointingHandCursor)
         article_url = str(item.get("url") or "").strip()
         open_button.clicked.connect(lambda _checked=False, url=article_url: _open_source(url))
@@ -325,7 +326,7 @@ def _open_source(url: str):
 
 
 class NewsFeedPanel(QFrame):
-    """Full-size, character-scoped editorial feed with a mouse-draggable card carousel."""
+    """Character-scoped editorial feed with six compact cards visible in a 3x2 grid."""
 
     refresh_requested = Signal(str)
     location_detection_requested = Signal()
@@ -411,9 +412,10 @@ class NewsFeedPanel(QFrame):
         self.cards_container = QWidget()
         self.cards_container.setObjectName("newsCardsContainer")
         self.cards_container.setLayoutDirection(Qt.LeftToRight)
-        self.cards_layout = QHBoxLayout(self.cards_container)
+        self.cards_layout = QGridLayout(self.cards_container)
         self.cards_layout.setContentsMargins(7, 5, 7, 12)
-        self.cards_layout.setSpacing(15)
+        self.cards_layout.setHorizontalSpacing(12)
+        self.cards_layout.setVerticalSpacing(10)
         self.cards_scroll.setWidget(self.cards_container)
         self.feed_stack.addWidget(self.cards_scroll)
 
@@ -610,7 +612,7 @@ class NewsFeedPanel(QFrame):
                 )
 
     def _refresh_card_widths(self):
-        """Fit three complete stories into the visible feed area at every window size."""
+        """Fit three columns of compact stories into the visible feed area."""
         if not hasattr(self, "cards_scroll") or not hasattr(self, "cards_layout"):
             return
         margins = self.cards_layout.contentsMargins()
@@ -640,9 +642,10 @@ class NewsFeedPanel(QFrame):
         if not items:
             self.feed_stack.setCurrentWidget(self.empty_state)
             return
-        for item in items:
+        for index, item in enumerate(items):
             card = _NewsCard(item, self, self.cards_container)
-            self.cards_layout.addWidget(card)
+            card.setFixedHeight(270)
+            self.cards_layout.addWidget(card, index // 3, index % 3)
         self.cards_scroll.install_drag_targets(self.cards_container)
         self.feed_stack.setCurrentWidget(self.cards_scroll)
         self.cards_container.updateGeometry()
