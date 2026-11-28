@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QBoxLayout, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
     QToolButton, QVBoxLayout, QWidget,
@@ -203,7 +203,7 @@ class ChatShellTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             image_path = Path(temp) / "kira.png"
             image = QPixmap(64, 96)
-            image.fill(Qt.magenta)
+            image.fill(QColor("#ff00ff"))
             self.assertTrue(image.save(str(image_path)))
             with patch.object(chat_shell, "KIRA_PORTRAIT", image_path):
                 chat_shell._build_right(p.avatar_card, context, "en")
