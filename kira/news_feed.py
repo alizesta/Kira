@@ -714,6 +714,42 @@ class NewsFeedService:
                         collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
+            # RSS feeds and publisher pages frequently omit thumbnails. When a
+            # Tavily image key is configured, backfill only the first three
+            # missing story images from title-matched image searches. This is
+            # optional and never blocks editorial generation or the news feed.
+            if str(settings.get("tavily_api_key") or "").strip():
+                missing_images = [
+                    item for item in collected
+                    if isinstance(item, dict) and not _image_candidate(item.get("image_url"))
+                    and _clean(item.get("title"), 240)
+                ][:3]
+                for item in missing_images:
+                    image_query = " ".join(filter(None, (
+                        _clean(item.get("title"), 180),
+                        _clean(item.get("source_label") or item.get("source"), 80),
+                        "news article image",
+                    )))
+                    try:
+                        image_results = search(
+                            context, image_query, kind="images", max_results=4
+                        ).get("results") or []
+                        image_url = next(
+                            (
+                                candidate for result in image_results
+                                if isinstance(result, dict)
+                                and (candidate := _image_candidate(result.get("url")))
+                            ),
+                            "",
+                        )
+                        if image_url:
+                            item["image_url"] = image_url
+                    except Exception as exc:  # noqa: BLE001 - image discovery is optional
+                        _LOG.info(
+                            "News thumbnail search failed for %s: %s",
+                            character_id, type(exc).__name__,
+                        )
+
             if self._post_generator is None:
                 # Compatibility for isolated service tests and integrations that have not
                 # supplied a character model. Production composition always injects one.
