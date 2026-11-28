@@ -128,6 +128,11 @@ class ComposerTests(unittest.TestCase):
         p.surface.findChild(QToolButton, "emojiBtn").click()
         self.assertEqual(p.status.text(), "Coming soon")
 
+    def test_route_status_badge_has_no_dropdown_menu(self):
+        source = (Path(__file__).parents[1] / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
+        self.assertIn("self.route_badge.setMenu(None)", source)
+        self.assertNotIn("self.route_badge.setMenu(self.route_menu)", source)
+
 
 class HeaderTests(unittest.TestCase):
     def test_header_gets_the_today_chip_and_search_filter_icons(self):
@@ -143,6 +148,19 @@ class HeaderTests(unittest.TestCase):
         self.assertEqual(len(icons), 2)
         icons[0].click()
         self.assertEqual(status.text(), "Coming soon")
+
+    def test_model_chip_is_read_only_without_a_route_dropdown(self):
+        header = QFrame()
+        layout = QHBoxLayout(header)
+        title = QLabel("Project Kira", header)
+        badge = QLabel("● Connected · example-model")
+        badge.setToolTip("example-model")
+        layout.addWidget(title)
+        context, _status = context_with(title=title, route_badge=badge)
+        dashboard_chat._build_header(context, "en")
+        chip = header.findChild(QToolButton, "modelChip")
+        self.assertIsNotNone(chip)
+        self.assertIsNone(chip.menu())
 
 
 class PortraitTests(unittest.TestCase):
