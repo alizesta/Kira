@@ -313,14 +313,17 @@ def extract_facts(text: str) -> list[tuple[str, str]]:
     return [(d["kind"], d["label"]) for d in extract_facts_detailed(text)]
 
 
-def add_fact(kind: str, text: str, now=None):
+def add_fact(kind: str, text: str, now=None, *, value: str | None = None):
     now = time.time() if now is None else now
     with _lock:
         data = _load()
         facts = data["facts"]
         single = kind in ("name", "age", "job", "place", "nick", "pref_len")
         facts[:] = [f for f in facts if f["text"] != text and not (single and f.get("kind") == kind)]
-        facts.append({"kind": kind, "text": text, "ts": int(now), "id": _id(kind, text)})
+        item = {"kind": kind, "text": text, "ts": int(now), "id": _id(kind, text)}
+        if kind in ("name", "nick") and isinstance(value, str) and value.strip():
+            item["value"] = value.strip()[:40]
+        facts.append(item)
         notes = [f for f in facts if f.get("kind") == "note"]
         others = [f for f in facts if f.get("kind") != "note"]
         data["facts"] = (others[-(MAX_FACTS - min(len(notes), 15)):] + notes[-15:])
@@ -330,6 +333,33 @@ def add_fact(kind: str, text: str, now=None):
 def facts() -> list[str]:
     with _lock:
         return [f["text"] for f in _load()["facts"]]
+
+
+def user_name() -> str:
+    """Return the newest explicitly remembered name/nickname in the active character's memory."""
+    with _lock:
+        identity_facts = [
+            item for item in _load()["facts"]
+            if isinstance(item, dict) and item.get("kind") in ("name", "nick")
+        ]
+    identity_facts.sort(key=_memory_item_timestamp, reverse=True)
+    prefixes = {
+        "name": ("His name is ", "نام کاربر ", "اسم کاربر ", "نام من ", "اسم من "),
+        "nick": ("He likes to be called ", "کاربر را صدا کن ", "من را صدا کن "),
+    }
+    for item in identity_facts:
+        value = str(item.get("value") or "").strip()
+        if not value:
+            label = str(item.get("text") or "").strip()
+            value = next((label[len(prefix):].strip() for prefix in prefixes[item["kind"]]
+                          if label.startswith(prefix)), "")
+        value = value.strip(" \t\r\n،,.:؛!؟\"'«»")
+        for suffix in (" است", " هست", " ـه"):
+            if value.endswith(suffix):
+                value = value[:-len(suffix)].strip()
+        if 2 <= len(value) <= 40 and not any(char.isspace() for char in value):
+            return value
+    return ""
 
 
 def forget_facts():
@@ -437,7 +467,7 @@ def observe(role: str, content: str, now=None):
         elif role == "user":
             details = extract_facts_detailed(content)
             for d in details:
-                add_fact(d["kind"], d["label"], now)
+                add_fact(d["kind"], d["label"], now, value=d.get("value"))
                 d["persona_id"] = _id(d["kind"], d["label"])
             moments = extract_moments(content)
             moment_ids = []
