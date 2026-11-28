@@ -155,6 +155,21 @@ class NewsFeedPanel(QFrame):
         self.refresh_button.setEnabled(cid in CHARACTER_IDS)
         self.refresh_view()
 
+    def open_for_character(self, character_id: str):
+        """Show the selected character's feed and ensure its first refresh has started."""
+        self.set_character(character_id)
+        cid = self._character_id
+        if cid not in CHARACTER_IDS:
+            return
+        state = self._service.store.status(cid)
+        refreshing = self._service.is_refreshing(cid)
+        if not state.get("refreshed_at") and not refreshing:
+            started = self._service.refresh_character_async(cid)
+            if started:
+                self.show_refreshing(cid)
+        else:
+            self.refresh_view()
+
     def _request_refresh(self):
         if self._character_id not in CHARACTER_IDS:
             return
@@ -229,10 +244,15 @@ class NewsFeedPanel(QFrame):
                 self.status_label.setText("فید در حال آماده‌شدن است")
 
         if not items:
-            message = (
-                "در حال بررسی نخستین خبرها…" if refreshing
-                else "هنوز پستی آماده نیست؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
-            )
+            last_error = str(state.get("last_error") or "")
+            if refreshing:
+                message = "در حال بررسی نخستین خبرها…"
+            elif "Post generation" in last_error:
+                message = "منابع بررسی شدند، اما نوشتن پست برای این شخصیت ناموفق بود؛ دکمهٔ ↻ را بزن تا دوباره تلاش کند."
+            elif last_error:
+                message = "دریافت فید کامل نشد؛ دکمهٔ ↻ را بزن تا دوباره تلاش شود."
+            else:
+                message = "هنوز پستی آماده نیست؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
             self.feed_browser.setHtml(
                 "<html><body style='margin:4px'><span>" + html.escape(message) + "</span></body></html>"
             )
