@@ -230,9 +230,9 @@ class _NewsCard(QFrame):
         super().__init__(parent)
         self.setObjectName("newsStoryCard")
         self.setStyleSheet(_CARD_STYLE)
-        self.setFixedWidth(372)
+        self.setMinimumWidth(0)
         self.setMinimumHeight(440)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setLayoutDirection(Qt.RightToLeft)
 
         layout = QVBoxLayout(self)
@@ -609,6 +609,26 @@ class NewsFeedPanel(QFrame):
                     "خبر خام به‌جای شخصیت نمایش داده نمی‌شود. برای دریافت و روایت خبرها، «به‌روزرسانی» را بزن."
                 )
 
+    def _refresh_card_widths(self):
+        """Fit three complete stories into the visible feed area at every window size."""
+        if not hasattr(self, "cards_scroll") or not hasattr(self, "cards_layout"):
+            return
+        margins = self.cards_layout.contentsMargins()
+        available = (
+            self.cards_scroll.viewport().width()
+            - margins.left() - margins.right()
+            - 2 * self.cards_layout.spacing()
+        )
+        if available <= 0:
+            return
+        width = max(190, available // 3)
+        for card in self.cards_container.findChildren(_NewsCard):
+            card.setFixedWidth(width)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._refresh_card_widths)
+
     def _set_cards(self, items: list[dict]):
         while self.cards_layout.count():
             child = self.cards_layout.takeAt(0)
@@ -626,6 +646,7 @@ class NewsFeedPanel(QFrame):
         self.cards_scroll.install_drag_targets(self.cards_container)
         self.feed_stack.setCurrentWidget(self.cards_scroll)
         self.cards_container.updateGeometry()
+        QTimer.singleShot(0, self._refresh_card_widths)
 
     def _register_image(self, article_url: str, image_url: str, label: _CoverImageLabel):
         if not article_url:
@@ -728,6 +749,7 @@ class NewsFeedPanel(QFrame):
     def showEvent(self, event):
         super().showEvent(event)
         self.refresh_view()
+        QTimer.singleShot(0, self._refresh_card_widths)
 
     def closeEvent(self, event):
         self._timer.stop()
