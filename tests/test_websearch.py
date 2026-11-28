@@ -32,6 +32,15 @@ class PlanTests(unittest.TestCase):
         for text in ("قیمت دلار الان چنده؟", "latest news about Python", "آب و هوای تهران", "نتیجه بازی دیشب"):
             self.assertIsNotNone(ws.plan(text)[0], text)
 
+    def test_casual_voice_check_ins_do_not_trigger_web_search(self):
+        for text in (
+            "الو الان صدامو می‌شنوی؟",
+            "الان صدامو داری؟",
+            "الو صدای منو داری؟",
+            "هنوز گوش می‌دی؟",
+        ):
+            self.assertEqual(ws.plan(text), (None, False), text)
+
     def test_explicit_command_is_forced(self):
         self.assertEqual(ws.plan("/web تاریخ ایران"), ("تاریخ ایران", True))
 
