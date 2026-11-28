@@ -132,7 +132,13 @@ class WebSearchApplicationService:
         query, forced = websearch.plan(user_text)
 
         if query and not forced and tool_plan is not None:
-            if getattr(tool_plan, "strong", False) or getattr(tool_plan, "web", False):
+            # Broad "what's the news?" requests must use the character-scoped
+            # search path, even if the generic planner also proposes web research.
+            # Explicitly named topics retain the normal tool precedence.
+            if (
+                not is_broad_news_request(user_text)
+                and (getattr(tool_plan, "strong", False) or getattr(tool_plan, "web", False))
+            ):
                 return None, False
         return query, forced
 
