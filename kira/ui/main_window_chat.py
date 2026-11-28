@@ -330,7 +330,10 @@ class ChatController(WindowFeatureController):
             text, self.context.services.settings, self.context.session._tool_plan, force_web=force_web
         )
         if query:
-            self.begin_web_search(query, packed if packed else text, packed["images"] if packed else [])
+            self.begin_web_search(
+                query, packed if packed else text,
+                packed["images"] if packed else [], request_text=text,
+            )
             return
         self.begin_reply()
 
@@ -402,7 +405,7 @@ class ChatController(WindowFeatureController):
         self.context.session._search_worker.done.connect(self.context.state.cur.relay.search_done)
         self.context.session._search_worker.start()
 
-    def begin_web_search(self, query, base_text, images):
+    def begin_web_search(self, query, base_text, images, request_text=None):
         from .workers import SearchWorker
 
         if not self.context.services.web_search_service.can_search(self.context.services.settings):
@@ -419,7 +422,9 @@ class ChatController(WindowFeatureController):
             8, session_id=self.context.state.cur.cid, conversation_id=conversation_id
         )
         options = self.context.services.web_search_service.web_search_options(
-            self.context.services.settings, query, history, self.context.session.client
+            self.context.services.settings, query, history, self.context.session.client,
+            character_id=self.context.state.cur.cid,
+            request_text=request_text or query,
         )
         self.context.session._search_worker = SearchWorker(
             self.context.session._search_token,
