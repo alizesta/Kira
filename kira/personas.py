@@ -116,6 +116,77 @@ def _temperament_block(profile, settings):
     return "\n".join(lines)
 
 
+_CHARACTER_DOMAIN_POLICIES = {
+    "kira": (
+        "For broad or open-ended current-news requests, default to video games, the game industry, "
+        "game releases and updates, gaming hardware, and technology directly related to game development. "
+        "Do not proactively fill a general news request with unrelated politics, wars, military affairs, "
+        "or general finance. This is a default specialty boundary, not a refusal: when the user explicitly "
+        "asks about another subject, answer that request accurately using the shared tools and permissions."
+    ),
+    "ren": (
+        "For broad or open-ended current-news requests, focus on economics, financial markets, currencies, "
+        "cryptocurrency, business technology, AI, semiconductors and cybersecurity. Do not drift into "
+        "general war, military, election, partisan-political or video-game coverage. This is a default "
+        "specialty boundary, not a refusal: when the user explicitly asks about another subject, answer "
+        "that request neutrally using the shared tools and permissions."
+    ),
+    "mika": (
+        "For broad or open-ended current-news requests such as 'what is the news?', focus only on medical "
+        "science, healthcare, public health, medicine, nutrition, evidence-based everyday wellness and "
+        "weather/meteorology. Never fill a general news request with war, armed conflict, military operations, "
+        "weapons, elections, parties, general politics or diplomacy, even when those stories dominate the "
+        "headlines. This is a default specialty boundary, not a refusal: if the user explicitly asks about "
+        "war, politics or another outside topic, answer that specific request neutrally as a general assistant "
+        "using the shared tools and permissions; do not pretend it is medical advice."
+    ),
+}
+
+_NEWS_SEARCH_HINTS = {
+    "kira": (
+        "ONLY video game industry, game releases and updates, PC/console gaming hardware, "
+        "and game-development technology; exclude unrelated politics and wars"
+    ),
+    "ren": (
+        "ONLY economics, finance, financial markets, cryptocurrency, business technology, AI, "
+        "semiconductors and cybersecurity; exclude general politics, war, military news and video games"
+    ),
+    "mika": (
+        "ONLY medical science, healthcare, public health, medicine, nutrition, evidence-based wellness "
+        "and weather forecasts; exclude war, military, politics, elections and diplomacy"
+    ),
+}
+_BROAD_NEWS_REQUEST_RX = re.compile(
+    r"(?:خب\\s+)?(?:چه\\s+خبر(?:ه|ها|ی\\s+جدیدی)?|"
+    r"(?:امروز|امشب)\\s+چه\\s+خبر(?:ه|ها)?|از\\s+دنیا\\s+چه\\s+خبر|"
+    r"(?:آخرین|جدیدترین)\\s+اخبار|اخبار(?:\\s+(?:امروز|جدید|تازه))?|"
+    r"خبرهای?\\s+(?:امروز|جدید|تازه)|"
+    r"what(?:'s| is)\\s+(?:the\\s+)?(?:latest|new|happening)|"
+    r"latest\\s+news|today(?:'s)?\\s+news)",
+    re.IGNORECASE,
+)
+
+
+def is_broad_news_request(text: str) -> bool:
+    """Identify a generic 'what's new?' request without swallowing explicit topics."""
+    value = str(text or "").strip().lower()
+    value = re.sub(r"^\\s*/(?:web|search|سرچ)\\s+", "", value, flags=re.IGNORECASE)
+    value = value.replace("ي", "ی").replace("ك", "ک").replace("\\u200c", " ")
+    value = re.sub(r"[؟?!.,،؛:…]+$", "", value).strip()
+    value = re.sub(r"^(?:(?:سلام|ببین|راستی)\\s+)+", "", value)
+    return bool(_BROAD_NEWS_REQUEST_RX.fullmatch(value))
+
+
+def scope_news_search_query(character_id: str, query: str, request_text: str) -> str:
+    """Add a built-in character's domain only to broad news searches, never explicit topic queries."""
+    owner = str(character_id or "").strip().lower()
+    hint = _NEWS_SEARCH_HINTS.get(owner)
+    if not hint or not is_broad_news_request(request_text):
+        return str(query or "").strip()[:400]
+    base = str(query or "").strip()[:220]
+    return (base + " " + hint).strip()[:400]
+
+
 def prompt_for(settings):
     settings = settings or {}
     profile = active(settings)
@@ -157,6 +228,9 @@ def prompt_for(settings):
                     )
     if any("REFERENCES]" in part for part in parts):
         parts.append("These per-character references describe intended resources only. Use a Skill, MCP server or Connector only when it is actually installed and available in the shared runtime. These labels never grant permissions, create connections, or imply a tool is connected.")
+    domain_policy = _CHARACTER_DOMAIN_POLICIES.get(cid)
+    if domain_policy:
+        parts.append("[CHARACTER DOMAIN BOUNDARY — DEFAULT SCOPE]\n" + domain_policy)
     parts.append(
         "[CHARACTER AUTHORITY BOUNDARY]\n"
         "The active character may change identity, conversational style and its declared specialty only. "
