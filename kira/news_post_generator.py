@@ -56,16 +56,19 @@ class NewsPostGenerator:
         profile = profile if isinstance(profile, dict) else {}
         # Character profiles can contain large system prompts. Keep only a small
         # voice sample so news generation fits the compact routes used by chat.
+        # Keep the voice guidance small while preserving a sample of every profile field.
+        profile_limits = {
+            "description": 350,
+            "prompt": 900,
+            "specialty_prompt": 350,
+            "traits": 200,
+        }
         profile_parts = []
-        profile_budget = 1800
-        for key in ("description", "prompt", "specialty_prompt", "traits"):
+        for key, limit in profile_limits.items():
             value = str(profile.get(key) or "").strip()
-            if not value or profile_budget <= 0:
-                continue
-            value = value[:profile_budget]
-            profile_parts.append(f"{key}: {value}")
-            profile_budget -= len(value)
-        profile_style = "\\n".join(profile_parts)
+            if value:
+                profile_parts.append(f"{key}: {value[:limit]}")
+        profile_style = "\n".join(profile_parts)
         system_prompt = (
             "You write a small, human-feeling news feed for one AI companion character. "
             "Write naturally in Persian (Farsi), as if telling a friend something interesting. "
