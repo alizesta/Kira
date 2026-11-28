@@ -17,6 +17,11 @@ class PersonaMemoryService:
         with persona_memory.character_scope(character_id):
             return bool(persona_memory.add_note(text))
 
+    def user_name(self, character_id: str) -> str:
+        """Return only the selected character's explicitly remembered user name."""
+        with persona_memory.character_scope(character_id):
+            return persona_memory.user_name()
+
     def update_item(self, character_id: str, item_id: str, text: str) -> bool:
         with persona_memory.character_scope(character_id):
             return bool(persona_memory.update_item(item_id, text))
