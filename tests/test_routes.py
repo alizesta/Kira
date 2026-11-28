@@ -239,6 +239,12 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             routes.remove_route(s, "groq")
 
+    def test_add_route_normalizes_catalog_model_objects(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        added = routes.add_route(s, "groq", {"id": "example-model", "name": "Example Model"})
+        self.assertEqual(added["model"], "example-model")
+
     def test_add_route_refuses_case_insensitive_duplicate_model_ids(self):
         s = legacy_settings()
         routes.ensure_routes(s)
