@@ -467,6 +467,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             sources = [{
                 "title": "Raw source title", "summary": "Unprocessed source text",
                 "url": "https://example.com/source", "source_label": "Publisher",
+                "category": "gaming_news",
             }]
             service = NewsFeedService(
                 lambda: {}, temp,
