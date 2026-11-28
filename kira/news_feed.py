@@ -84,6 +84,25 @@ def _clean(value: object, limit: int) -> str:
     return " ".join(str(value or "").replace("\x00", " ").split())[:limit].strip()
 
 
+def _image_candidate(value: object) -> str:
+    """Normalize untrusted image metadata without treating it as a browsable link."""
+    if isinstance(value, (list, tuple)):
+        value = next((item for item in value if item), "")
+    if isinstance(value, dict):
+        value = next((
+            value.get(key) for key in ("url", "src", "image_url", "thumbnail_url", "uri")
+            if value.get(key)
+        ), "")
+    candidate = _clean(value, 1500)
+    try:
+        parts = urlsplit(candidate)
+        if parts.scheme.lower() in ("http", "https") and parts.hostname and not parts.username and not parts.password:
+            return candidate
+    except ValueError:
+        pass
+    return ""
+
+
 def _canonical_url(raw_url: object) -> tuple[str, str]:
     try:
         parts = urlsplit(str(raw_url or "").strip())
@@ -216,6 +235,7 @@ class NewsFeedStore:
                         summary TEXT NOT NULL,
                         source TEXT NOT NULL,
                         url TEXT NOT NULL,
+                        image_url TEXT NOT NULL DEFAULT '',
                         url_key TEXT NOT NULL,
                         published_at TEXT NOT NULL DEFAULT '',
                         first_seen_at REAL NOT NULL,
@@ -226,6 +246,8 @@ class NewsFeedStore:
                     )"""
                 )
                 columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(news_items)")}
+                if "image_url" not in columns:
+                    db.execute("ALTER TABLE news_items ADD COLUMN image_url TEXT NOT NULL DEFAULT ''")
                 if "is_post" not in columns:
                     db.execute("ALTER TABLE news_items ADD COLUMN is_post INTEGER NOT NULL DEFAULT 0")
                 if "processed" not in columns:
@@ -276,8 +298,10 @@ class NewsFeedStore:
             expires_at = stamp + RETENTION_SECONDS
             if published_epoch is not None:
                 expires_at = min(expires_at, published_epoch + RETENTION_SECONDS)
+            image_url = _image_candidate(item.get("image_url"))
             rows.append((
-                character_id, category, title, summary, _clean(item.get("source_label") or host, 100), url, url, published_at,
+                character_id, category, title, summary,
+                _clean(item.get("source_label") or host, 100), url, image_url, url, published_at,
                 stamp, expires_at, _clean(region, 220), is_post, processed,
             ))
         self.purge_expired(now=stamp)
@@ -286,9 +310,9 @@ class NewsFeedStore:
         with self._connection() as db:
             db.executemany(
                 """INSERT INTO news_items(
-                    character_id, category, title, summary, source, url, url_key,
+                    character_id, category, title, summary, source, url, image_url, url_key,
                     published_at, first_seen_at, expires_at, region, is_post, processed
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(character_id, url_key) DO UPDATE SET
                     category=CASE
                         WHEN news_items.is_post=1 AND excluded.is_post=0 THEN news_items.category
@@ -309,6 +333,7 @@ class NewsFeedStore:
                         ELSE excluded.source
                     END,
                     url=excluded.url,
+                    image_url=CASE WHEN excluded.image_url != '' THEN excluded.image_url ELSE news_items.image_url END,
                     published_at=CASE WHEN excluded.published_at != '' THEN excluded.published_at ELSE news_items.published_at END,
                     expires_at=MIN(news_items.expires_at, excluded.expires_at),
                     region=excluded.region,
@@ -337,7 +362,7 @@ class NewsFeedStore:
         self.purge_expired(now=now)
         with self._connection() as db:
             rows = db.execute(
-                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region,
+                """SELECT category, title, summary, source, url, image_url, published_at, first_seen_at, expires_at, region,
                           is_post, processed
                    FROM news_items WHERE character_id = ?
                    ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
@@ -360,7 +385,7 @@ class NewsFeedStore:
         self.purge_expired(now=now)
         with self._connection() as db:
             rows = db.execute(
-                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
+                """SELECT category, title, summary, source, url, image_url, published_at, first_seen_at, expires_at, region
                    FROM news_items WHERE character_id = ? AND is_post = 1
                    ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
                 (character_id, max(1, min(int(limit), 50))),
@@ -380,7 +405,7 @@ class NewsFeedStore:
         self.purge_expired()
         with self._connection() as db:
             rows = db.execute(
-                """SELECT category, title, summary, source, url, published_at, first_seen_at, expires_at, region
+                """SELECT category, title, summary, source, url, image_url, published_at, first_seen_at, expires_at, region
                    FROM news_items WHERE character_id = ? AND is_post = 0 AND processed = 0
                    ORDER BY first_seen_at DESC, id DESC LIMIT ?""",
                 (character_id, max(1, min(int(limit), 30))),
@@ -527,6 +552,13 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
             "title": title,
             "summary": summary[:900],
             "url": primary_url,
+            "image_url": next(
+                (
+                    image for _index, source in selected
+                    if (image := _image_candidate(source.get("image_url")))
+                ),
+                "",
+            ),
             "category": _clean(primary.get("category"), 48) or "general",
             "source_label": "، ".join(source_labels[:4]) or _clean(primary.get("source"), 100),
             "published_at": published,
@@ -675,6 +707,10 @@ class NewsFeedService:
                             or result.get("date") or ""
                         )
                         entry["summary"] = result.get("snippet") or result.get("text") or ""
+                        entry["image_url"] = _image_candidate(
+                            result.get("image_url") or result.get("thumbnail_url")
+                            or result.get("thumbnail") or result.get("image")
+                        )
                         collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
@@ -684,8 +720,8 @@ class NewsFeedService:
                 count = self.store.upsert_items(character_id, collected, region=region)
             else:
                 if collected:
-                    # Keep source evidence separately from authored posts so generation can retry;
-                    # the panel may label and show pending source links without calling them character posts.
+                    # Keep source evidence separately from authored posts so a failed editorial pass
+                    # remains retryable; the UI renders only model-authored character posts.
                     self.store.upsert_items(character_id, collected, region=region)
                 pending = self.store.list_unprocessed_items(character_id, limit=8)
                 count = 0

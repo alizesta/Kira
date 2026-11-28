@@ -32,6 +32,7 @@ class NewsSourceTests(unittest.TestCase):
           <item><title>خبر تازه درباره سلامت قلب</title>
             <link>https://example.ir/health/1</link>
             <description><![CDATA[پژوهش پزشکی جدید درباره سلامت قلب.]]></description>
+            <enclosure url="https://cdn.example.ir/heart.jpg" type="image/jpeg" />
             <pubDate>Fri, 27 Nov 2026 10:00:00 GMT</pubDate>
           </item>
           <item><title>نتیجه مسابقه فوتبال</title>
@@ -44,6 +45,7 @@ class NewsSourceTests(unittest.TestCase):
         self.assertEqual(items[0]["category"], "iran_health")
         self.assertEqual(items[0]["source_label"], "سلامت نیوز")
         self.assertIn("27 Nov 2026", items[0]["published_at"])
+        self.assertEqual(items[0]["image_url"], "https://cdn.example.ir/heart.jpg")
 
     def test_atom_links_and_html_summaries_are_supported(self):
         source = FeedSource("kira", "gaming_rumor", "X @example", "https://example.com/feed")
@@ -51,6 +53,7 @@ class NewsSourceTests(unittest.TestCase):
           <entry><title>Unconfirmed game leak</title>
             <link rel="alternate" href="https://example.com/post/1"/>
             <summary type="html">&lt;p&gt;A possible release date&lt;/p&gt;</summary>
+            <media:thumbnail xmlns:media="http://search.yahoo.com/mrss/" url="https://cdn.example.com/leak.webp" />
             <updated>2026-11-27T10:00:00Z</updated>
           </entry>
         </feed>"""
@@ -58,6 +61,17 @@ class NewsSourceTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["url"], "https://example.com/post/1")
         self.assertEqual(items[0]["summary"], "A possible release date")
+        self.assertEqual(items[0]["image_url"], "https://cdn.example.com/leak.webp")
+
+    def test_non_http_media_urls_are_ignored(self):
+        source = FeedSource("kira", "gaming_news", "Example", "https://example.com/feed")
+        xml = b"""<rss><channel><item>
+          <title>News</title><link>https://example.com/news</link>
+          <description>Details</description>
+          <enclosure url="file:///etc/passwd" type="image/jpeg" />
+        </item></channel></rss>"""
+        items = parse_feed(xml, source)
+        self.assertEqual(items[0]["image_url"], "")
 
     def test_dtd_and_entity_declarations_are_rejected(self):
         source = FeedSource("kira", "gaming_rumor", "bad", "https://example.com/feed")
