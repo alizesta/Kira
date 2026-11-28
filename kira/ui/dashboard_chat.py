@@ -479,63 +479,6 @@ def _hide_news(context) -> None:
 
 
 
-class _CharacterChatBackground(QWidget):
-    """Per-character chat backdrop loaded from the character profile."""
-
-    def __init__(self, page) -> None:
-        super().__init__(page)
-        self.setObjectName("characterChatBackground")
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self._pixmap = QPixmap()
-        page.installEventFilter(self)
-        self.setGeometry(page.rect())
-        self.lower()
-        self.hide()
-
-    def eventFilter(self, watched, event):  # noqa: N802 - Qt API
-        if watched is self.parentWidget() and event.type() == QEvent.Resize:
-            self.setGeometry(watched.rect())
-        return False
-
-    def sync(self, context) -> None:
-        try:
-            service = context.services.character_service
-            cid = _cid(context)
-            profile = service.all_profiles(context.services.settings).get(cid) or {}
-            resolver = getattr(service, "chat_background_file", None)
-            path = resolver(profile, ROOT) if callable(resolver) else None
-            pixmap = QPixmap(str(path)) if path else QPixmap()
-        except Exception:  # noqa: BLE001 - a missing optional backdrop must not break chat
-            _LOG.debug("Could not resolve the %s chat background", _cid(context), exc_info=True)
-            pixmap = QPixmap()
-        self._pixmap = pixmap
-        self.setVisible(not self._pixmap.isNull())
-        self.lower()
-        self.update()
-
-    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
-        if self._pixmap.isNull():
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-        scaled = self._pixmap.scaled(
-            self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
-        )
-        x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
-        painter.drawPixmap(x, y, scaled)
-        painter.fillRect(self.rect(), QColor(8, 4, 24, 112))
-
-
-def _sync_chat_background(context, page, parts) -> None:
-    backdrop = parts.get("background")
-    if backdrop is None:
-        backdrop = _CharacterChatBackground(page)
-        parts["background"] = backdrop
-    backdrop.sync(context)
-
-
 # ---------------------------------------------------------------- portrait
 
 class _Portrait(QFrame):
@@ -676,7 +619,6 @@ def _wrap_theme(context, controller, page, parts) -> None:
         dash_theme.retheme(page)
         if parts.get("portrait") is not None:
             _sync_portrait(context, parts["portrait"])       # a character switch calls this: show that character's picture
-        _sync_chat_background(context, page, parts)
         return result
 
     controller.apply_chat_theme = themed
@@ -758,7 +700,6 @@ def apply_dashboard_chat(context) -> bool:
     parts: dict = {}
     dash_theme.set_character(_cid(context))
     page.setStyleSheet(page.styleSheet() + dash_theme.css(STYLE))
-    _sync_chat_background(context, page, parts)
     steps = (
         ("composer", lambda: _build_composer(context, lang)),
         ("header", lambda: _build_header(context, lang)),
