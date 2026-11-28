@@ -463,8 +463,11 @@ class RouterRouteTests(unittest.TestCase):
     def test_duplicate_endpoint_model_credentials_are_not_retried_as_failover(self):
         s, r = make("groq", "cloudflare")
         groq_route = next(route for route in routes.get_routes(s) if route["provider"] == "groq")
-        duplicate = {**groq_route, "id": "groq-duplicate"}
-        s["routes"].insert(s["routes"].index(groq_route) + 1, duplicate)
+        mirror = "custom-groq-mirror"
+        s["providers"][mirror] = dict(s["providers"]["groq"])
+        s["providers"][mirror]["label"] = "Groq credential mirror"
+        s["providers"][mirror]["base_url"] = "https://api.groq.com/openai/v1"
+        routes.add_route(s, mirror, groq_route["model"], enabled=True)
         r = HybridRouter(s)
         f = dispatch({"groq": requests.ConnectionError("offline"), "cloudflare": ok_cloudflare("backup")})
         with mock.patch("requests.post", f):

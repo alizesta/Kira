@@ -463,6 +463,19 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         self.assertEqual((row["status"], row["accessible"]), ("invalid", 1))
         self.assertEqual(s["providers"]["groq"]["api_key"], GROQ_KEY)
 
+    def test_disabling_default_api_retargets_to_an_enabled_keyed_route(self):
+        s = fresh()
+        s["providers"]["groq"].update({"enabled": True, "api_key": GROQ_KEY})
+        s["providers"]["mistral"].update({"enabled": True, "api_key": MISTRAL_KEY})
+        for route in rm.get_routes(s):
+            if route["provider"] in ("groq", "mistral"):
+                route["enabled"] = True
+        s["default_route_id"] = "groq"
+        s["manual_route_id"] = "groq"
+        am.set_api_enabled(s, "groq", False)
+        self.assertEqual(s["manual_route_id"], "")
+        self.assertEqual(s["default_route_id"], "mistral")
+
     def test_enable_disable_api_gates_the_route_engine(self):
         from kira.hybrid_ai import HybridRouter
         s = fresh()

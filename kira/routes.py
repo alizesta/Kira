@@ -470,7 +470,7 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
     cfg = settings.get("providers", {}).get(provider)
     if provider not in BUILTIN and cfg is None:
         raise ValueError("Provider ناشناخته است.")
-    model = str(model or "").strip()
+    model = normalize_model_id(model)
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     model_key = model.casefold()
