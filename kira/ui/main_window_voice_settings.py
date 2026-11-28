@@ -765,7 +765,16 @@ class VoiceSettingsController(WindowFeatureController):
             manager = self.context.services.voice_application_service.asr_manager
             asr_state = manager.discover(settings)
             asr_model = str(asr_state.get("model_id") or settings.get("local_voice_asr_model") or "")
-            tts_model = str(settings.get("local_voice_tts_model") or "")
+            tts_model = str(settings.get("local_voice_tts_model") or "").strip()
+            selection_warning = ""
+            if tts_model and not local_voice.tts_model_files_ready(tts_model):
+                # A deleted model or a missing .onnx.json sidecar is not a
+                # selectable Piper voice. Repair the stale setting once and
+                # let Speaker use the bundled Mana default for future replies.
+                settings["local_voice_tts_model"] = ""
+                tts_model = ""
+                selection_warning = "مدل Piper قبلی ناقص یا حذف شده بود؛ صدای پیش‌فرض Mana انتخاب شد."
+                self.feature_controller("runtime").save_now()
             discovered = local_voice.discover_cached_models()
 
             page.asr_backend.blockSignals(True)
@@ -810,6 +819,8 @@ class VoiceSettingsController(WindowFeatureController):
             ))
             tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
+            if selection_warning:
+                tts += " · " + selection_warning
             if state.get("tts_error"):
                 tts += " · " + state["tts_error"]
             ezafe = state.get("tts_ezafe") or {}
