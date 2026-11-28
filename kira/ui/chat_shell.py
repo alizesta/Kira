@@ -206,49 +206,6 @@ class _Sparkline(QWidget):
         painter.drawPath(path)
 
 
-class _Portrait(QWidget):
-    """Kira's picture with her name over the bottom, like the right card of the reference."""
-
-    def __init__(self, path, caption: str, subtitle: str, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("kiraPortrait")
-        self._pixmap = QPixmap(str(path))
-        self._caption, self._subtitle = caption, subtitle
-        self.setMinimumSize(150, 190)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-    def update_content(self, path, caption: str, subtitle: str) -> None:
-        self._pixmap = QPixmap(str(path))
-        self._caption, self._subtitle = caption, subtitle
-        self.update()
-
-    def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-        clip = QPainterPath()
-        clip.addRoundedRect(QRectF(self.rect()), 18, 18)
-        painter.setClipPath(clip)
-        if not self._pixmap.isNull():
-            scaled = self._pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            painter.drawPixmap((self.width() - scaled.width()) // 2, 0, scaled)   # keep the face, crop the bottom
-        fade = QLinearGradient(0, self.height() * 0.6, 0, self.height())
-        fade.setColorAt(0, QColor(10, 6, 24, 0))
-        fade.setColorAt(1, QColor(10, 6, 24, 215))
-        painter.fillRect(self.rect(), fade)
-        painter.setPen(QColor("#ffffff"))
-        font = painter.font()
-        font.setPixelSize(26)
-        font.setWeight(font.Weight.DemiBold)
-        painter.setFont(font)
-        painter.drawText(16, self.height() - 38, self._caption)
-        font.setPixelSize(13)
-        font.setWeight(font.Weight.Normal)
-        painter.setFont(font)
-        painter.setPen(QColor("#c4b5fd"))
-        painter.drawText(16, self.height() - 16, self._subtitle)
-
-
 def greeting_text(lang: str, hour: int) -> str:
     part = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening" if 17 <= hour < 22 else "night"
     if lang == "fa":
@@ -777,28 +734,9 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
     if layout is None:
         return
     avatar_card.setLayoutDirection(Qt.LeftToRight)
-    if KIRA_PORTRAIT.is_file():
-        # Match by Qt objectName, not Python class identity: hot reloads can
-        # leave an older _Portrait class alive that isinstance() cannot see.
-        # Remove every previous portrait before constructing exactly one.
-        stale_portraits = [
-            widget for widget in avatar_card.findChildren(QWidget)
-            if widget.objectName() == "kiraPortrait" or type(widget).__name__ == "_Portrait"
-        ]
-        for duplicate in stale_portraits:
-            layout.removeWidget(duplicate)
-            duplicate.hide()
-            duplicate.setParent(None)
-            duplicate.deleteLater()
-        portrait = _Portrait(
-            KIRA_PORTRAIT,
-            "Kira ✦",
-            "همیشه اینجام برات" if fa else "Always here for you",
-            avatar_card,
-        )
-        layout.insertWidget(0, portrait, 1)
-        avatar_card.kira_portrait = portrait
-        _sync_portrait(context)
+    # Keep the original AvatarView created by VoiceSettingsController.
+    # Only remove the extra static portrait injected by the earlier skin.
+    _sync_portrait(context)
     actions = _frame("dashActions")
     actions_row = QHBoxLayout(actions)
     actions_row.setContentsMargins(8, 8, 8, 8)
@@ -839,20 +777,27 @@ def _hide_tagline(avatar_card) -> None:
 
 
 def _sync_portrait(context) -> None:
-    """Kira shows her picture; the other characters keep their own full-body avatar."""
+    """Remove the added static portrait and keep the original animated AvatarView."""
     views = context.views
-    portrait = getattr(getattr(views, "avatar_card", None), "kira_portrait", None)
+    avatar_card = getattr(views, "avatar_card", None)
+    if avatar_card is not None:
+        layout = avatar_card.layout()
+        stale_portraits = [
+            widget for widget in avatar_card.findChildren(QWidget)
+            if widget.objectName() == "kiraPortrait" or type(widget).__name__ == "_Portrait"
+        ]
+        for duplicate in stale_portraits:
+            if layout is not None:
+                layout.removeWidget(duplicate)
+            duplicate.hide()
+            duplicate.setParent(None)
+            duplicate.deleteLater()
+        if hasattr(avatar_card, "kira_portrait"):
+            delattr(avatar_card, "kira_portrait")
+
     avatar = getattr(views, "avatar", None)
-    if portrait is None or avatar is None:
-        return
-    try:
-        cid = str(context.services.character_service.active_id(context.services.settings) or "kira")
-    except Exception:                                          # noqa: BLE001 - retain a safe UI fallback for test/legacy hosts
-        session = getattr(context.state, "cur", None) or getattr(context.state, "front", None)
-        cid = str(getattr(session, "cid", "") or "kira")
-    own = cid == "kira"
-    portrait.setVisible(own)
-    avatar.setVisible(not own)
+    if avatar is not None:
+        avatar.show()
 
 
 def resize_chat_shell(context, available_width=None) -> None:
