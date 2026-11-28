@@ -1617,10 +1617,11 @@ class SessionController(WindowFeatureController):
         for action, (name, _tab_index) in zip(getattr(self.context.state, "_menu_actions", []), getattr(self.context.state, "_nav_icon_map", [])):
             action.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
+        # The route chip is intentionally read-only. Re-adding a chevron here
+        # makes it look like a dropdown each time the active character changes.
         badge = getattr(self.context.views, "route_badge", None)
         if badge is not None:
-            badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
-                                    checked=palette["main"], disabled="#52617B"))
+            badge.setMenu(None)
         self.context.adapters.appearance_runtime._refresh_icon_glow()
 
 
