@@ -84,8 +84,8 @@ class NewsPostGenerator:
                 profile_parts.append(f"{key}: {value[:limit]}")
         profile_style = "\n".join(profile_parts)
         remembered_name_context = (
-            f"Remembered user name (personal context, never news evidence): «{user_name}».\\n"
-            if user_name else "No remembered user name is available; never guess one.\\n"
+            f"Remembered user name (personal context, never news evidence): «{user_name}».\n"
+            if user_name else "No remembered user name is available; never guess one.\n"
         )
         address_guidance = (
             f"When a direct address fits, use the user's remembered first name «{user_name}» naturally and occasionally "
