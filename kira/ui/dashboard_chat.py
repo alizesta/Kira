@@ -296,6 +296,7 @@ def _build_header(context, lang) -> None:
     layout.insertStretch(0, 1)
     layout.insertWidget(1, chip)
     layout.insertStretch(2, 1)
+    _add_model_chip(context, header, layout)
     for icon in ("search", "sliders"):                       # search and filter of the reference, as neon icons (display only)
         button = _display_tool(context, lang, "", "headerIcon", header)
         button.setIcon(make_icon(icon, normal="#b9a2ff", hover="#ffffff"))
@@ -363,7 +364,7 @@ def _build_composer(context, lang) -> None:
     pill.addWidget(field, 1)
     pill.addWidget(emoji)
     if send is not None:                                     # neon send button: white neon plane on a glowing violet disc
-        send.setIcon(make_icon("send", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
+        send.setIcon(make_icon("send_centered", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
         send.setIconSize(QSize(26, 26))
         send.setStyleSheet("QToolButton { background: rgba(139,92,246,0.14); border: 1px solid #8b6de0; border-radius: 22px; } QToolButton:hover { background: rgba(167,139,250,0.28); border-color: #d8c8ff; }")
     if attach is not None:
@@ -594,6 +595,39 @@ def _wrap_theme(context, controller, page, parts) -> None:
         return result
 
     controller.apply_chat_theme = themed
+
+
+def _add_model_chip(context, header, layout) -> None:
+    """The current model/route stays visible on the main page: a chip in the chat header opens the same route menu as the tray."""
+    views = context.views
+    badge, menu = getattr(views, "route_badge", None), getattr(views, "route_menu", None)
+    if badge is None or menu is None:
+        return
+    chip = QToolButton(header)
+    chip.setObjectName("modelChip")
+    chip.setCursor(Qt.PointingHandCursor)
+    chip.setFocusPolicy(Qt.NoFocus)
+    chip.setPopupMode(QToolButton.InstantPopup)
+    chip.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+    chip.setIcon(make_icon("sparkle", normal="#c4a6ff", hover="#ffffff"))
+    chip.setIconSize(QSize(14, 14))
+    chip.setMenu(menu)
+    chip.setMaximumWidth(240)
+    chip.setStyleSheet("QToolButton#modelChip { color: #d9ccff; background: rgba(139,92,246,0.12); border: 1px solid #5b3fb0; border-radius: 14px; padding: 4px 12px; font-size: 12px; }"
+                       "QToolButton#modelChip:hover { background: rgba(167,139,250,0.26); border-color: #c4b5fd; }"
+                       "QToolButton#modelChip::menu-indicator { image: none; }")
+
+    def sync() -> None:
+        text = str(badge.text() or "").replace("●", "").strip()
+        chip.setText(text or "Model")
+        chip.setToolTip(badge.toolTip())
+
+    sync()
+    timer = QTimer(chip)
+    timer.setInterval(1500)
+    timer.timeout.connect(sync)
+    timer.start()
+    layout.addWidget(chip)
 
 
 def _pin_violet_icons(context) -> None:
