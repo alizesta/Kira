@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QTabBar, QTextBrowser, QVBoxLayout, QWidget,
 )
 
-from ...news_feed import CATEGORY_LABELS
+from ...news_feed import CATEGORY_LABELS, is_relevant_character_news
 
 
 class NewsFeedPage(QWidget):
@@ -137,7 +137,12 @@ class NewsFeedPage(QWidget):
         self.region_status.setText(f"موقعیت تأییدشده و ذخیره‌شده: {city}, {country}")
 
     def refresh_view(self):
-        items = self._service.store.list_items(self._character_id, limit=25)
+        items = [
+            item for item in self._service.store.list_items(self._character_id, limit=25)
+            if is_relevant_character_news(
+                self._character_id, item.get("category"), item.get("title"), item.get("summary")
+            )
+        ]
         state = self._service.store.status(self._character_id)
         if self._service.is_refreshing(self._character_id):
             self.status_label.setText("در حال بروزرسانی… خبرهای قبلی تا پایان دریافت حفظ می‌شوند.")
