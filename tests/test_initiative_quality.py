@@ -432,8 +432,8 @@ class InitiativePersistenceRecoveryTests(unittest.TestCase):
         persistence.recent_message_records.return_value = expected
         service = object.__new__(SqliteChatHistoryService)
         service._persistence = persistence
-        self.assertIs(service.recent_message_records(50, "ren"), expected)
-        persistence.recent_message_records.assert_called_once_with(50, "ren")
+        self.assertIs(service.recent_message_records(50, "ren", "conversation-ren"), expected)
+        persistence.recent_message_records.assert_called_once_with(50, "ren", "conversation-ren")
 
     def test_persisted_checkin_message_recovers_after_interrupted_settings_write(self):
         now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc).timestamp()
