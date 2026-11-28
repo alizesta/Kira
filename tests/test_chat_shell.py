@@ -165,8 +165,8 @@ class ChatShellTests(unittest.TestCase):
         chat_shell.apply_chat_shell(context)
         p.calls.mood = {"emotion": "happy", "behavior": "energetic"}
         p.session.update_mood_indicator()
-        self.assertIn("Happy", texts(p.area))
-        self.assertIn("Energetic", texts(p.area))
+        self.assertIn("Happy", texts(p.avatar_card))
+        self.assertIn("Energetic", texts(p.avatar_card))
 
     def test_applying_twice_changes_nothing(self):
         context, p = build()
