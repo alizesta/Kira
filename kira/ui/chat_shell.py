@@ -392,7 +392,7 @@ def apply_chat_shell(context) -> bool:
     parts = {}
     steps = (
         ("layout", lambda: _build_layout(context, controller, parts, lang)),
-        ("right column", lambda: _build_right(avatar_card, context, lang)),
+        ("right column", lambda: _build_right(avatar_card, context, lang, parts)),
         ("tagline", lambda: _hide_tagline(avatar_card)),
         ("avatar side", lambda: _avatar_on_the_right(page, avatar_card, lang)),
         ("style survives theme changes", lambda: _wrap_theme(controller, page, style)),
@@ -450,9 +450,7 @@ def _build_layout(context, controller, parts, lang) -> None:
     center_layout.setContentsMargins(0, 0, 0, 0)
     center_layout.setSpacing(12)
     center_layout.addWidget(_build_greeting(context, lang))
-    stats = _build_stats(context, parts, lang)
-    stats.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    center_layout.addWidget(stats)
+    parts["mood_card"] = _build_mood_card(context, parts, lang)      # lives under Kira's picture; Our Bond / Today's Vibe are gone
     center_layout.addWidget(chat_card, 1)
     parts["chat_card"] = chat_card
     panel = getattr(views, "news_feed_panel", None)
@@ -718,24 +716,16 @@ def _stat_card(title_icon, title, with_arrow) -> tuple[QFrame, QVBoxLayout, QHBo
     return card, texts, body
 
 
-def _build_stats(context, parts, lang) -> QWidget:
+def _build_mood_card(context, parts, lang) -> QFrame:
     fa = lang == "fa"
     try:
         name = str(context.services.character_service.display_name(context.services.settings))
     except Exception:                                      # noqa: BLE001
         name = "Kira"
-    box = QWidget()
-    row = QHBoxLayout(box)
-    row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(10)
-
-    bond, texts, body = _stat_card("heart", "پیوند ما" if fa else "Our Bond", False)
-    texts.addWidget(_label("سطح ۱۲" if fa else "Level 12", "statValue"))
-    texts.addWidget(_label("متصل" if fa else "Connected", "statSub"))
-    body.addWidget(_Ring(72))
-    row.addWidget(bond, 1)
-
-    mood, texts, body = _stat_card("", f"حال {name}" if fa else f"{name}'s Mood", True)
+    mood, texts, body = _stat_card("", f"حال {name}" if fa else f"{name}'s Mood", False)
+    mood.setMinimumHeight(0)
+    mood.setFixedHeight(104)
+    mood.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)     # follows the picture column's width (200-300 px)
     face = getattr(context.views, "mood_emotion_icon", None)
     if face is not None:                                    # the cat face stands before the title (the old static emoji is gone)
         face.setParent(None)
@@ -750,18 +740,12 @@ def _build_stats(context, parts, lang) -> QWidget:
     texts.addWidget(parts["mood_title"])
     texts.addWidget(parts["mood_sub"])
     parts["sparkline"] = _Sparkline()
+    parts["sparkline"].setMinimumWidth(60)
     body.addWidget(parts["sparkline"])
-    row.addWidget(mood, 1)
-
-    vibe, texts, body = _stat_card("star", "حال‌وهوای امروز" if fa else "Today's Vibe", True)
-    texts.addWidget(_label("شب بارونی،" if fa else "Rainy night,", "statValue"))
-    texts.addWidget(_label("مناسب حرف‌های عمیق." if fa else "perfect for deep talks.", "statSub"))
-    body.addWidget(_icon_label("cloud_rain", 38, "#a78bfa"))
-    row.addWidget(vibe, 1)
-    return box
+    return mood
 
 
-def _build_right(avatar_card, context, lang) -> None:
+def _build_right(avatar_card, context, lang, parts=None) -> None:
     fa = lang == "fa"
     layout = avatar_card.layout()
     if layout is None:
@@ -783,24 +767,9 @@ def _build_right(avatar_card, context, lang) -> None:
         actions_row.addWidget(button)
     layout.addWidget(actions)
 
-    playlist = _frame("dashPlaylist")
-    row = QHBoxLayout(playlist)
-    row.setContentsMargins(10, 8, 10, 8)
-    row.setSpacing(10)
-    cover = _label("", "dashCover")
-    cover.setFixedSize(44, 44)
-    texts = QVBoxLayout()
-    texts.setSpacing(1)
-    texts.addWidget(_label("پلی‌لیست کیرا" if fa else "Kira's Playlist", "dashTrackSub"))
-    texts.addWidget(_label("افکار نیمه‌شب" if fa else "Midnight Thoughts", "dashTrackTitle"))
-    texts.addWidget(_Waveform())
-    row.addWidget(cover)
-    row.addLayout(texts, 1)
-    play = _display_button(context, lang, "", "dashPlay", playlist)
-    play.setIcon(make_icon("play", normal="#ffffff", hover="#ffffff"))
-    play.setIconSize(QSize(14, 14))
-    row.addWidget(play)
-    layout.addWidget(playlist)
+    mood = (parts or {}).get("mood_card")
+    if mood is not None:
+        layout.addWidget(mood)                              # Kira's Mood sits where the playlist used to be
 
     quote = _frame("dashQuote")
     quote_layout = QVBoxLayout(quote)
