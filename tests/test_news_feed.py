@@ -12,6 +12,8 @@ from kira.news_feed import (
     is_official_health_source, is_official_weather_source, is_gaming_news,
     _prepare_character_posts, _commons_thumbnail,
 )
+from kira.webintel import engine as webintel_engine
+from kira.webintel import netguard as webintel_netguard
 
 
 class NewsFeedStoreTests(unittest.TestCase):
@@ -162,7 +164,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             b'"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/game.jpg/640px-game.jpg"}]}}}}'
         )
         response = type("Fetched", (), {"body": payload})()
-        with patch("kira.webintel.netguard.fetch", return_value=response) as fetch:
+        with patch.object(webintel_netguard, "fetch", return_value=response) as fetch:
             image = _commons_thumbnail("Grand Theft Auto VI")
         self.assertEqual(
             image,
@@ -202,7 +204,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 return {"results": []}
 
             with (
-                patch("kira.webintel.engine.search", side_effect=fake_search),
+                patch.object(webintel_engine, "search", side_effect=fake_search),
                 patch("kira.news_feed._commons_thumbnail", return_value="https://upload.wikimedia.org/wikipedia/commons/rate.png") as commons,
             ):
                 service._queries = lambda *_args: [("economy_markets", "central bank rates")]
@@ -234,7 +236,7 @@ class NewsFeedStoreTests(unittest.TestCase):
 
             with (
                 patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])),
-                patch("kira.webintel.engine.search", side_effect=fake_search) as search,
+                patch.object(webintel_engine, "search", side_effect=fake_search) as search,
             ):
                 service._refresh_character("kira")
 
@@ -250,7 +252,7 @@ class NewsFeedStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             service = NewsFeedService(lambda: {}, temp)
             with patch("kira.news_sources.collect_character_feeds", side_effect=RuntimeError("feed parser failed")), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}) as search:
+                 patch.object(webintel_engine, "search", return_value={"results": []}) as search:
                 service._refresh_character("kira")
             self.assertEqual(search.call_count, len(CHARACTER_QUERIES["kira"]))
             self.assertIn("RSS collector: RuntimeError", service.store.status("kira")["last_error"])
@@ -330,7 +332,7 @@ class NewsFeedStoreTests(unittest.TestCase):
             }]
             service = NewsFeedService(lambda: {}, temp, post_generator=generator)
             with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                 patch.object(webintel_engine, "search", return_value={"results": []}):
                 service._refresh_character("kira")
             posts = service.store.list_posts("kira")
             self.assertEqual(len(posts), 1)
@@ -364,7 +366,7 @@ class NewsFeedStoreTests(unittest.TestCase):
                 post_generator=lambda *_args: (_ for _ in ()).throw(RuntimeError("model offline")),
             )
             with patch("kira.news_sources.collect_character_feeds", return_value=(sources, [])), \
-                 patch("kira.webintel.engine.search", return_value={"results": []}):
+                 patch.object(webintel_engine, "search", return_value={"results": []}):
                 service._refresh_character("kira")
             self.assertEqual(service.store.list_posts("kira"), [])
             self.assertEqual(len(service.store.list_unprocessed_items("kira")), 1)
