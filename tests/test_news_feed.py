@@ -250,7 +250,10 @@ class NewsFeedStoreTests(unittest.TestCase):
 
     def test_ren_feed_rejects_game_industry_stories(self):
         self.assertTrue(is_gaming_news("New PlayStation console announced", "Gaming industry report"))
+        self.assertTrue(is_gaming_news("عرضهٔ بازی جدید", "بازی‌های ویدیویی"))
         self.assertFalse(is_gaming_news("Central bank holds interest rates", "Currency market update"))
+        self.assertFalse(is_gaming_news("بازیابی رشد بازار پس از افت قیمت", "Economic recovery"))
+        self.assertFalse(is_gaming_news("بازیگر جدید به تیم مدیریتی شرکت پیوست", "Business update"))
 
     def test_commons_thumbnail_uses_only_wikimedia_raster_assets(self):
         payload = (
