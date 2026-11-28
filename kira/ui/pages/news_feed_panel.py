@@ -457,7 +457,7 @@ class NewsFeedPanel(QFrame):
             part = part.strip()
             if part.startswith("Post generation:"):
                 return part.partition(":")[2].strip() or part
-        return error[:260]
+        return ""
 
     def refresh_view(self):
         cid = self._character_id
@@ -491,6 +491,8 @@ class NewsFeedPanel(QFrame):
         self.refresh_button.setEnabled(not refreshing)
         signature = (
             cid,
+            error,
+            bool(refreshing),
             tuple(
                 (
                     str(item.get("url") or ""),
@@ -515,6 +517,11 @@ class NewsFeedPanel(QFrame):
             elif refreshing:
                 self.empty_title.setText("در حال آماده‌کردن روایت‌ها…")
                 self.empty_body.setText("خبر خام نمایش داده نمی‌شود؛ به‌محض آماده‌شدن، روایت‌های خود شخصیت اینجا می‌آیند.")
+            elif state.get("last_error"):
+                self.empty_title.setText("دریافت خبر به مشکل خورد")
+                self.empty_body.setText(
+                    f"خطای دریافت: {str(state.get('last_error'))[:260]}\\nبرای تلاش دوباره «به‌روزرسانی» را بزن."
+                )
             else:
                 self.empty_title.setText("هنوز روایتی آماده نشده")
                 self.empty_body.setText(
@@ -535,7 +542,7 @@ class NewsFeedPanel(QFrame):
         for item in items:
             card = _NewsCard(item, self, self.cards_container)
             self.cards_layout.addWidget(card)
-            self.cards_scroll.install_drag_targets(card)
+        self.cards_scroll.install_drag_targets(self.cards_container)
         self.feed_stack.setCurrentWidget(self.cards_scroll)
         self.cards_container.updateGeometry()
 
