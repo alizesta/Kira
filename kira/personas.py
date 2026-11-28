@@ -157,12 +157,12 @@ _NEWS_SEARCH_HINTS = {
     ),
 }
 _BROAD_NEWS_REQUEST_RX = re.compile(
-    r"(?:خب\\s+)?(?:چه\\s+خبر(?:ه|ها|ی\\s+جدیدی)?|"
-    r"(?:امروز|امشب)\\s+چه\\s+خبر(?:ه|ها)?|از\\s+دنیا\\s+چه\\s+خبر|"
-    r"(?:آخرین|جدیدترین)\\s+اخبار|اخبار(?:\\s+(?:امروز|جدید|تازه))?|"
-    r"خبرهای?\\s+(?:امروز|جدید|تازه)|"
-    r"what(?:'s| is)\\s+(?:the\\s+)?(?:latest|new|happening)|"
-    r"latest\\s+news|today(?:'s)?\\s+news)",
+    r"(?:خب\s+)?(?:چه\s+خبر(?:ه|ها|ی\s+جدیدی)?|"
+    r"(?:امروز|امشب)\s+چه\s+خبر(?:ه|ها)?|از\s+دنیا\s+چه\s+خبر|"
+    r"(?:آخرین|جدیدترین)\s+اخبار|اخبار(?:\s+(?:امروز|جدید|تازه))?|"
+    r"خبرهای?\s+(?:امروز|جدید|تازه)|"
+    r"what(?:'s| is)\s+(?:the\s+)?(?:latest|new|happening)|"
+    r"latest\s+news|today(?:'s)?\s+news)",
     re.IGNORECASE,
 )
 
@@ -170,12 +170,11 @@ _BROAD_NEWS_REQUEST_RX = re.compile(
 def is_broad_news_request(text: str) -> bool:
     """Identify a generic 'what's new?' request without swallowing explicit topics."""
     value = str(text or "").strip().lower()
-    value = re.sub(r"^\\s*/(?:web|search|سرچ)\\s+", "", value, flags=re.IGNORECASE)
-    value = value.replace("ي", "ی").replace("ك", "ک").replace("\\u200c", " ")
+    value = re.sub(r"^\s*/(?:web|search|سرچ)\s+", "", value, flags=re.IGNORECASE)
+    value = value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
     value = re.sub(r"[؟?!.,،؛:…]+$", "", value).strip()
-    value = re.sub(r"^(?:(?:سلام|ببین|راستی)\\s+)+", "", value)
+    value = re.sub(r"^(?:(?:سلام|ببین|راستی)\s+)+", "", value)
     return bool(_BROAD_NEWS_REQUEST_RX.fullmatch(value))
-
 
 def scope_news_search_query(character_id: str, query: str, request_text: str) -> str:
     """Add a built-in character's domain only to broad news searches, never explicit topic queries."""
