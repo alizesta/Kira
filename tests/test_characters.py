@@ -48,7 +48,10 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertIn("if the user explicitly asks about war, politics or another outside topic", mika)
 
     def test_broad_news_detection_does_not_capture_explicit_topics(self):
-        for text in ("چه خبر؟", "خب چه خبر", "سلام، چه خبر؟", "الان چه خبره؟", "/web چه خبر؟", "latest news"):
+        for text in (
+            "چه خبر؟", "خب چه خبر", "سلام، چه خبر؟", "الان چه خبره؟",
+            "میکا چه خبر؟", "سلام میکا جان، چه خبر؟", "/web چه خبر؟", "latest news",
+        ):
             with self.subTest(text=text):
                 self.assertTrue(is_broad_news_request(text))
 
