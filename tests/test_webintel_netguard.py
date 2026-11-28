@@ -108,7 +108,7 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
 
     def test_raster_images_require_explicit_opt_in(self):
         url = "https://cdn.example.com/cover.jpg"
-        image = b"\\xff\\xd8\\xff" + b"jpeg"
+        image = bytes.fromhex("ffd8ff") + b"jpeg"
         response = _Response(url, 200, {"Content-Type": "image/jpeg"}, image)
         session = mock.Mock()
         session.get.return_value = response
