@@ -49,13 +49,13 @@ def _asset_name(name):
     return value
 
 
-_CAT_HEAD = ('<path d="M4.5 11.5C4.5 8 5 5.2 5.6 3.6c.2-.5.8-.6 1.2-.3L10 5.6a9 9 0 0 1 4 0l3.2-2.3c.4-.3 1-.2 1.2.3.6 1.6 1.1 4.4 1.1 7.9 '
-             'a7.5 7.5 0 0 1-15 0z"/><path d="M6.8 6.4l1.6 1.2M17.2 6.4l-1.6 1.2" opacity=".55"/><path d="M2.5 13.5l3 .6M2.8 16.2l2.9-.9M21.5 13.5l-3 .6M21.2 16.2l-2.9-.9" opacity=".6"/>')
+_CAT_HEAD = '<path d="M4.2 11.4V4.2c0-.8.9-1.1 1.4-.6l3.6 2.6c1.7-.5 3.7-.5 5.6 0l3.6-2.6c.5-.5 1.4-.2 1.4.6v7.2c0 4.5-3.3 8-7.8 8s-7.8-3.5-7.8-8z"/><path d="M6.4 7.4V5.6l1.7 1.2M17.6 7.4V5.6l-1.7 1.2" opacity=".6"/><path d="M1.4 12.4l2.8.6M1.7 15.4l2.6-.8M22.6 12.4l-2.8.6M22.3 15.4l-2.6-.8" opacity=".65"/>'
 
 
 def _cat_face(source):
     """Mood faces are cat faces: the round head of the SVG becomes a head with two pointed ears (same eyes and mouth)."""
-    return source.replace('<circle cx="12" cy="12" r="9"/>', _CAT_HEAD, 1)
+    # bigger, friendlier eyes than the plain round faces
+    return source.replace('<circle cx="12" cy="12" r="9"/>', _CAT_HEAD, 1).replace('r=".8"', 'r="1.15"')
 
 
 def _svg_text(name):

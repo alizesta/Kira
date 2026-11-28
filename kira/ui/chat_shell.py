@@ -358,6 +358,16 @@ class _BellButton(QPushButton):
         painter.drawEllipse(self.width() - 14, 6, 8, 8)
 
 
+def _surprise(context, lang) -> None:
+    """Surprise: Kira drops a short line, idea or tiny fact into the chat (offline, no model call)."""
+    from .surprises import next_surprise
+    controller = _session_controller(context)
+    try:
+        controller.add_chat("assistant", next_surprise(lang))
+    except Exception:                                      # noqa: BLE001 - a skin problem must never break the app
+        _LOG.exception("Surprise could not be shown")
+
+
 def _display_button(context, lang, text, name, parent) -> QPushButton:
     button = QPushButton(text, parent)
     button.setObjectName(name)
@@ -761,7 +771,14 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
     actions_row.setContentsMargins(8, 8, 8, 8)
     actions_row.setSpacing(6)
     for icon, english, persian in (("phone", "Call", "تماس"), ("waveform", "Voice", "صدا"), ("gift", "Surprise", "سورپرایز")):
-        button = _display_button(context, lang, persian if fa else english, "dashAction", actions)
+        if icon == "gift":
+            button = QPushButton(persian if fa else english, actions)
+            button.setObjectName("dashAction")
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(lambda checked=False: _surprise(context, lang))
+        else:
+            button = _display_button(context, lang, persian if fa else english, "dashAction", actions)
         button.setIcon(make_icon(icon, normal="#b18aff", hover="#ffffff"))
         button.setIconSize(QSize(20, 20))
         actions_row.addWidget(button)
