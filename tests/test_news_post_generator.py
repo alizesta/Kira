@@ -36,6 +36,7 @@ class NewsPostGeneratorTests(unittest.TestCase):
                 "specialty_prompt": "Compare independent sources and mark speculation.",
                 "traits": {"playfulness": 0.8, "warmth": 0.9},
             } if owner == "kira" else {},
+            user_name_factory=lambda _owner: "",
         )
         result = generator("kira", [{
             "title": "Possible game release leak",
@@ -74,6 +75,7 @@ class NewsPostGeneratorTests(unittest.TestCase):
         generator = NewsPostGenerator(
             lambda _owner: router,
             profile_factory=lambda _owner: profile,
+            user_name_factory=lambda _owner: "",
         )
         generator("kira", [{
             "title": "Source headline",
@@ -87,6 +89,47 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertIn("specialty_prompt: " + ("S" * 350), chat_call[2])
         self.assertIn("traits: " + ("T" * 200), chat_call[2])
         self.assertNotIn("D" * 351, chat_call[2])
+
+    def test_uses_remembered_user_name_for_one_to_one_caption_openings(self):
+        router = FakeRouter(
+            '{"posts":[{"source_ids":[0],"title":"خبر سلامت",'
+            '"body":"این پژوهش پزشکی تازه می‌تواند به پیشگیری از بیماری کمک کند.",'
+            '"confidence":"reported"}]}'
+        )
+        requested_names = []
+        generator = NewsPostGenerator(
+            lambda _owner: router,
+            user_name_factory=lambda owner: requested_names.append(owner) or "علیرضا",
+        )
+        generator("mika", [{
+            "title": "New medical study",
+            "summary": "Researchers published a new medical study.",
+            "url": "https://example.com/medical-study",
+        }])
+        prompt = next(call for call in router.calls if call[0] == "chat")[2]
+        self.assertEqual(requested_names, ["mika"])
+        self.assertIn("Remembered user name", prompt)
+        self.assertIn("علیرضا", prompt)
+        self.assertIn("علیرضا، ...", prompt)
+        self.assertIn("Write to exactly one person", prompt)
+
+    def test_missing_remembered_name_is_not_guessed_or_fabricated(self):
+        router = FakeRouter(
+            '{"posts":[{"source_ids":[0],"title":"خبر",'
+            '"body":"گزارش تازه‌ای از سلامت منتشر شده است.",'
+            '"confidence":"reported"}]}'
+        )
+        generator = NewsPostGenerator(
+            lambda _owner: router,
+            user_name_factory=lambda _owner: "",
+        )
+        generator("mika", [{
+            "title": "Health report", "summary": "A health report.",
+            "url": "https://example.com/health-report",
+        }])
+        prompt = next(call for call in router.calls if call[0] == "chat")[2]
+        self.assertIn("No remembered user name is available", prompt)
+        self.assertIn("never guess one", prompt)
 
     def test_invalid_model_output_is_rejected(self):
         generator = NewsPostGenerator(lambda _owner: FakeRouter("not json"))
