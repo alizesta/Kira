@@ -5,7 +5,7 @@ Qt styles. On supported Windows 11 builds, Acrylic/Mica is supplied by DWM.
 """
 STYLE = r"""
 QMainWindow { background: #0A0A1C; }
-QWidget { background: transparent; color: #EAF2FF; font-family: "Segoe UI", "Vazirmatn", Tahoma; font-size: 10pt; }
+QWidget { background: transparent; color: #EAF2FF; font-family: "Vazirmatn", "Segoe UI", Tahoma; font-size: 10pt; }
 QLabel, QCheckBox, QRadioButton, QSlider, QToolButton { background: transparent; }
 
 /* Neon Shooter-inspired navigation rail: compact, glassy and readable. */

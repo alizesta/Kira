@@ -28,7 +28,7 @@ from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QSizePolicy,
-    QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
 from ..config import ROOT
@@ -509,6 +509,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     new_chat = getattr(context.views, "new_chat_btn", None)
     if new_chat is not None:
         new_chat.hide()                                    # the Chat item above already starts a conversation view
+    _add_new_chat_plus(context, sidebar, new_chat, fa)
     layout.addWidget(sidebar, 1)
     if tabs_frame is not None:
         layout.addWidget(_label("افراد سریع" if fa else "Quick People", "dashSection"))
@@ -529,6 +530,32 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     holder_layout.setSpacing(6)
     holder_layout.addWidget(scroll, 1)
     return holder
+
+
+def _add_new_chat_plus(context, sidebar, new_chat, fa) -> None:
+    """A "+" icon at the end of the Conversations title row starts a new chat (the old wide button is hidden)."""
+    title = getattr(context.views, "conversation_list_title", None)
+    box = sidebar.layout() if sidebar is not None else None
+    if title is None or box is None or new_chat is None or box.indexOf(title) < 0:
+        return
+    plus = QToolButton(sidebar)
+    plus.setObjectName("newChatPlus")
+    plus.setCursor(Qt.PointingHandCursor)
+    plus.setFocusPolicy(Qt.NoFocus)
+    plus.setToolTip("چت جدید" if fa else "New chat")
+    plus.setIcon(make_icon("plus", normal="#c4a6ff", hover="#ffffff"))
+    plus.setIconSize(QSize(18, 18))
+    plus.setFixedSize(28, 28)
+    plus.setStyleSheet("QToolButton#newChatPlus { background: rgba(139,92,246,0.14); border: 1px solid #6d4bc2; border-radius: 14px; }"
+                       "QToolButton#newChatPlus:hover { background: rgba(167,139,250,0.30); border-color: #c4b5fd; }")
+    plus.clicked.connect(lambda checked=False: new_chat.click())
+    index = box.indexOf(title)
+    box.removeWidget(title)
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 4, 0)
+    row.addWidget(title, 1)
+    row.addWidget(plus, 0, Qt.AlignVCenter)
+    box.insertLayout(index, row)
 
 
 def _settings_button(context, lang) -> QPushButton:
@@ -837,7 +864,7 @@ def _picture_tabs(context) -> None:
     for character_id, button in dict(getattr(context.views, "char_tab_buttons", {}) or {}).items():
         lines = button.text().splitlines()
         display_name = lines[0].split("  ")[0].strip() if lines else button.text().strip()
-        button.setText(f"{display_name}\n● {'آنلاین' if _is_fa(context) else 'Online'}")
+        button.setText(f"{display_name}\n\u200e● {'آنلاین' if _is_fa(context) else 'Online'}")
         badge = button.findChild(QLabel, "quickPeopleBadge")
         if badge is None:
             badge = QLabel(button)

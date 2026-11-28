@@ -145,6 +145,14 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             app.setWindowIcon(QIcon(str(icon_path)))
     except Exception:                                       # noqa: BLE001 - an icon must never block start-up
         pass
+    try:                                                    # Vazirmatn (SIL OFL): calm, readable Persian/Latin text for long chats
+        from PySide6.QtGui import QFont, QFontDatabase
+        fonts_dir = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+        loaded = [QFontDatabase.addApplicationFont(str(f)) for f in sorted(fonts_dir.glob("Vazirmatn-*.ttf"))]
+        if any(index >= 0 for index in loaded):
+            app.setFont(QFont("Vazirmatn", 10))
+    except Exception:                                       # noqa: BLE001 - a font must never block start-up
+        pass
     started_at = perf_counter()
     previous_mark = started_at
     phases: dict[str, dict[str, float]] = {}
