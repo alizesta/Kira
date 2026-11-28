@@ -552,7 +552,13 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
             "title": title,
             "summary": summary[:900],
             "url": primary_url,
-            "image_url": _image_candidate(primary.get("image_url")),
+            "image_url": next(
+                (
+                    image for _index, source in selected
+                    if (image := _image_candidate(source.get("image_url")))
+                ),
+                "",
+            ),
             "category": _clean(primary.get("category"), 48) or "general",
             "source_label": "، ".join(source_labels[:4]) or _clean(primary.get("source"), 100),
             "published_at": published,
