@@ -132,7 +132,7 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(24000)
-            audio.writeframes(b"\\x00\\x00" * 32)
+            audio.writeframes(bytes(64))
 
         speaker = Speaker.__new__(Speaker)
         speaker.settings = {"local_voice_tts": True, "voice_rate": 0, "tts_engine": "piper"}
