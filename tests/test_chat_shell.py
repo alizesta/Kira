@@ -143,18 +143,18 @@ class ChatShellTests(unittest.TestCase):
         buttons["Memories"].click()
         self.assertEqual(p.status.text(), "Coming soon")
 
-    def test_journal_opens_the_feed_for_the_active_character(self):
+    def test_aiwu_opens_the_feed_for_the_active_character(self):
         context, p = build()
         panel = _FeedPanel(p.avatar_card)
         p.avatar_card.layout().addWidget(panel)
         context.views.news_feed_panel = panel
         chat_shell.apply_chat_shell(context)
         buttons = {b.text().strip(): b for b in p.page.findChildren(QPushButton, "navItem")}
-        buttons["Journal"].click()
+        buttons["AIWU"].click()
         self.assertEqual(panel.opened_for, ["kira"])
         self.assertFalse(panel.isHidden())
         self.assertTrue(p.chat_card.isHidden())
-        self.assertTrue(buttons["Journal"].isChecked())
+        self.assertTrue(buttons["AIWU"].isChecked())
 
     def test_display_only_widgets_say_coming_soon(self):
         context, p = build()
@@ -251,15 +251,15 @@ class ChatShellTests(unittest.TestCase):
         self.assertIsNotNone(left)
         self.assertLess(left.maximumWidth(), 250)
         self.assertGreaterEqual(history_panel.minimumWidth(), 90)
-        self.assertLessEqual(history_panel.maximumWidth(), 154)
+        self.assertLessEqual(history_panel.maximumWidth(), left.maximumWidth())
 
         chat_shell.resize_chat_shell(context, 1100)
         self.assertFalse(p.avatar_card.isHidden())
         self.assertEqual(p.avatar_card.minimumWidth(), 250)
         self.assertEqual(p.avatar_card.maximumWidth(), 250)
         self.assertEqual(left.maximumWidth(), 250)
-        self.assertEqual(history_panel.minimumWidth(), 154)
-        self.assertEqual(history_panel.maximumWidth(), 154)
+        self.assertEqual(history_panel.minimumWidth(), 234)
+        self.assertEqual(history_panel.maximumWidth(), 234)
 
     def test_applying_twice_changes_nothing(self):
         context, p = build()
