@@ -619,7 +619,7 @@ class NewsFeedPanel(QFrame):
         available = (
             self.cards_scroll.viewport().width()
             - margins.left() - margins.right()
-            - 2 * self.cards_layout.spacing()
+            - 2 * self.cards_layout.horizontalSpacing()
         )
         if available <= 0:
             return
