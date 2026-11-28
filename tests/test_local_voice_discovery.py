@@ -9,6 +9,33 @@ from kira import local_voice
 
 
 class LocalVoiceDiscoveryTests(unittest.TestCase):
+    def test_incomplete_piper_onnx_without_sidecar_is_not_listed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cache = Path(temp)
+            snapshot = (
+                cache / "models--Example--Broken-Piper"
+                / "snapshots" / "incomplete"
+            )
+            snapshot.mkdir(parents=True)
+            broken = snapshot / "broken-voice.onnx"
+            broken.write_bytes(b"test model")
+
+            valid_snapshot = (
+                cache / "models--Example--Valid-Piper"
+                / "snapshots" / "complete"
+            )
+            valid_snapshot.mkdir(parents=True)
+            valid = valid_snapshot / "valid-voice.onnx"
+            valid.write_bytes(b"test model")
+            Path(str(valid) + ".json").write_text("{}", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"HF_HUB_CACHE": str(cache)}):
+                discovered = local_voice.discover_cached_models()
+
+            paths = {item["path"] for item in discovered["tts"]}
+            self.assertNotIn(str(broken), paths)
+            self.assertIn(str(valid), paths)
+
     def test_mana_piper_snapshot_is_listed_with_snapshot_path(self):
         with tempfile.TemporaryDirectory() as temp:
             cache = Path(temp)
