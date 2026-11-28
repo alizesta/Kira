@@ -18,6 +18,7 @@ from ..ui_icons import make_icon
 # main: hue (degrees) that replaces violet; second: hue that replaces cyan; ticks: colour of the double tick
 PALETTES = {
     "ren": {"main": 354.0, "second": 146.0, "ticks": "#35d07f"},
+    "mika": {"main": 326.0, "second": 312.0, "ticks": "#ff8acb"},
 }
 _STATE = {"cid": "kira"}
 _HEX = re.compile(r"#([0-9a-fA-F]{6})\b")
