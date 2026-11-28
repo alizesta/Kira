@@ -132,6 +132,10 @@ QLabel#statValue { color: #f4f0ff; font-size: 15px; font-weight: 600; }
 QLabel#statSub { color: #8f7bc0; font-size: 11px; }
 QPushButton#dashAction { background: #170d33; border: 1px solid #2a1a52; border-radius: 12px; color: #e9e3ff; padding: 8px 6px; }
 QPushButton#dashAction:hover { background: #24144d; }
+QPushButton#dashAction:checked { background: #2c1a63; border: 1px solid #8b5cf6; }
+QPushButton#dashAction[compact="true"] { padding: 6px 3px; font-size: 11px; }
+QPushButton#charTab[compact="true"] { padding: 3px 6px; }
+QPushButton#navItem[compact="true"] { padding: 2px 14px; }
 QLabel#dashCover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5b2fd6, stop:1 #1b0f3f); border-radius: 10px; }
 QLabel#dashTrackTitle { color: #f4f0ff; font-size: 13px; font-weight: 600; }
 QLabel#dashTrackSub { color: #9a86c9; font-size: 11px; }
@@ -231,7 +235,14 @@ class _Sparkline(QWidget):
             y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 3) * envelope
             y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * self._amp * 3 * envelope
             path.moveTo(x, y) if x == 0 else path.lineTo(x, y)
-        painter.setPen(QPen(dash_theme.second("#8b5cf6"), 2))
+        base = dash_theme.second("#a78bfa")                  # neon heartbeat line: soft bloom passes, then a bright core
+        for width, alpha in ((9, 26), (6, 52), (3.6, 110)):
+            glow = QColor(base)
+            glow.setAlpha(alpha)
+            painter.setPen(QPen(glow, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+        core = QColor(base).lighter(135)
+        painter.setPen(QPen(core, 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
 
 
@@ -402,6 +413,61 @@ class _BellButton(QPushButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(dash_theme.qcolor("#ff4d8d"))
         painter.drawEllipse(self.width() - 14, 6, 8, 8)
+
+
+def _bind_call(context, button, fa) -> None:
+    """Call = a live Gemini Live voice conversation (the Voice page's live toggle), shown as pressed while the call is on."""
+    page = getattr(context.views, "voice_page", None)
+    toggle = getattr(page, "live_toggle", None)
+    if toggle is None:
+        button.clicked.connect(lambda checked=False: _soon(context, "fa" if fa else "en"))
+        return
+    button.setCheckable(True)
+    button.setToolTip("تماس زنده با Gemini Live" if fa else "Live call with Gemini Live")
+    idle, active = ("تماس", "پایان") if fa else ("Call", "End")
+    button.setChecked(toggle.isChecked())
+    button.setText(active if toggle.isChecked() else idle)
+    button.clicked.connect(lambda checked=False: toggle.setChecked(bool(checked)))
+
+    def mirror(on) -> None:
+        button.blockSignals(True)
+        button.setChecked(bool(on))
+        button.setText(active if on else idle)
+        button.blockSignals(False)
+
+    toggle.toggled.connect(mirror)
+
+
+def _bind_voice(context, button, fa) -> None:
+    """Voice = read Kira's replies aloud (the composer's speaker toggle); pressing it on also reads the last reply."""
+    speaker = getattr(context.views, "voice_btn", None)
+    if speaker is None:
+        button.clicked.connect(lambda checked=False: _soon(context, "fa" if fa else "en"))
+        return
+    button.setCheckable(True)
+    button.setToolTip("خواندن پاسخ‌ها با صدا" if fa else "Read replies aloud")
+    button.setChecked(speaker.isChecked())
+
+    def pressed(checked=False) -> None:
+        if speaker.isChecked() != bool(checked):
+            speaker.click()                                # same path as the composer's speaker button
+        if checked:
+            _speak_last_reply(context)
+
+    button.clicked.connect(pressed)
+    speaker.toggled.connect(lambda on: (button.blockSignals(True), button.setChecked(bool(on)), button.blockSignals(False)))
+
+
+def _speak_last_reply(context) -> None:
+    try:
+        current = context.state.cur
+        history = context.services.chat_application_service.recent_messages(
+            8, character_id=current.cid, conversation_id=current.conversation_id)
+        last = next((str(m.get("content") or "") for m in reversed(history) if m.get("role") == "assistant"), "")
+        if last.strip():
+            context.services.voice_application_service.speak(last)
+    except Exception:                                      # noqa: BLE001 - reading aloud is optional
+        _LOG.debug("Could not read the last reply aloud", exc_info=True)
 
 
 def _surprise(context, lang) -> None:
@@ -837,12 +903,17 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
     actions_row.setContentsMargins(8, 8, 8, 8)
     actions_row.setSpacing(6)
     for icon, english, persian in (("phone", "Call", "تماس"), ("waveform", "Voice", "صدا"), ("gift", "Surprise", "سورپرایز")):
-        if icon == "gift":
+        if icon in ("gift", "phone", "waveform"):
             button = QPushButton(persian if fa else english, actions)
             button.setObjectName("dashAction")
             button.setCursor(Qt.PointingHandCursor)
             button.setFocusPolicy(Qt.NoFocus)
-            button.clicked.connect(lambda checked=False: _surprise(context, lang))
+            if icon == "gift":
+                button.clicked.connect(lambda checked=False: _surprise(context, lang))
+            elif icon == "phone":
+                _bind_call(context, button, fa)
+            else:
+                _bind_voice(context, button, fa)
         else:
             button = _display_button(context, lang, persian if fa else english, "dashAction", actions)
         dash_theme.set_icon(button, icon, 20, normal="#b18aff", hover="#ffffff")
@@ -899,6 +970,42 @@ def _active_cid(context) -> str:
         return str(getattr(session, "cid", "") or "kira").strip().lower()
 
 
+def _compact_for_size(context, page, avatar_card) -> None:
+    """In a window that is not maximised the cards shrink instead of running into each other."""
+    height = page.height()
+    short, tiny = height < 820, height < 690
+    nav_height = 30 if tiny else 35 if short else 40
+    for button in page.findChildren(QPushButton, "navItem"):
+        button.setFixedHeight(nav_height)
+        button.setIconSize(QSize(18, 18) if tiny else QSize(20, 20) if short else QSize(22, 22))
+        button.setProperty("compact", "true" if short else "false")
+        button.style().unpolish(button)
+        button.style().polish(button)
+    sidebar = getattr(context.views, "conversation_list", None)
+    while sidebar is not None and sidebar.parentWidget() is not None and sidebar.parentWidget().objectName() != "dashLeft":
+        sidebar = sidebar.parentWidget()                   # climb to the column's direct child: the whole history block
+    if sidebar is not None and sidebar.parentWidget() is not None:
+        sidebar.setMinimumHeight(0)
+        sidebar.setMaximumHeight(16777215 if not short else 150)
+    tab_icon = 30 if tiny else 36 if short else 48
+    for button in dict(getattr(context.views, "char_tab_buttons", {}) or {}).values():
+        button.setIconSize(QSize(tab_icon, tab_icon))
+        button.setMinimumHeight(tab_icon + 6)
+        button.setMaximumHeight(tab_icon + 14)
+        button.setProperty("compact", "true" if short else "false")
+        button.style().unpolish(button)
+        button.style().polish(button)
+    narrow = avatar_card is not None and avatar_card.width() < 285
+    for button in page.findChildren(QPushButton, "dashAction"):
+        button.setProperty("compact", "true" if narrow else "false")
+        button.setIconSize(QSize(16, 16) if narrow else QSize(20, 20))
+        button.style().unpolish(button)
+        button.style().polish(button)
+    mood = page.findChild(QFrame, "statCard")
+    if mood is not None:
+        mood.setFixedHeight(84 if short else 104)
+
+
 def resize_chat_shell(context, available_width=None) -> None:
     """Reflow the chat shell using the chat page's width, not the whole window width."""
     views = getattr(context, "views", None)
@@ -940,6 +1047,8 @@ def resize_chat_shell(context, available_width=None) -> None:
         history_panel.setMinimumWidth(0)
         history_panel.setMaximumWidth(history_width)
         history_panel.setMinimumWidth(history_width)
+
+    _compact_for_size(context, page, avatar_card)
 
     center = page.findChild(QWidget, "dashCenter")
     if center is not None:

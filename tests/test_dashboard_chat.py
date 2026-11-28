@@ -116,14 +116,22 @@ class ComposerTests(unittest.TestCase):
         self.assertIs(p.expand.parentWidget(), tray)
         self.assertTrue(p.expand_host.isHidden())
 
-    def test_spark_button_opens_the_tray_and_emoji_is_display_only(self):
+    def test_eye_button_toggles_eye_vision_and_right_click_opens_the_tray(self):
         context, p = self.build()
         dashboard_chat._build_composer(context, "en")
         tray = p.surface.findChild(QWidget, "composerTray")
         spark = p.surface.findChild(QToolButton, "sparkBtn")
-        spark.setChecked(True)
+        game_mode = p.buttons["game_mode_btn"]
+        game_mode.setCheckable(True)
+        spark.click()                                      # the eye switches Eye Vision on, it does not open the tray
+        self.assertTrue(game_mode.isChecked())
+        self.assertTrue(spark.isChecked())
+        self.assertTrue(tray.isHidden())
+        spark.click()
+        self.assertFalse(game_mode.isChecked())
+        spark.customContextMenuRequested.emit(spark.rect().center())      # right-click shows the tool tray
         self.assertFalse(tray.isHidden())
-        spark.setChecked(False)
+        spark.customContextMenuRequested.emit(spark.rect().center())
         self.assertTrue(tray.isHidden())
         p.surface.findChild(QToolButton, "emojiBtn").click()
         self.assertEqual(p.status.text(), "Coming soon")

@@ -349,7 +349,16 @@ def _build_composer(context, lang) -> None:
         expand_host.hide()
     tray_layout.addStretch(1)
     tray.hide()
-    spark.toggled.connect(tray.setVisible)
+    game_mode = getattr(views, "game_mode_btn", None)
+    if game_mode is not None:                                # the eye switches Eye Vision on and off; right-click opens the tool tray
+        spark.setToolTip("Eye Vision" if lang != "fa" else "بینایی چشم (Eye Vision)")
+        spark.setChecked(game_mode.isChecked())
+        spark.clicked.connect(lambda checked=False: game_mode.click())
+        game_mode.toggled.connect(lambda on: (spark.blockSignals(True), spark.setChecked(bool(on)), spark.blockSignals(False)))
+        spark.setContextMenuPolicy(Qt.CustomContextMenu)
+        spark.customContextMenuRequested.connect(lambda _pos: tray.setVisible(tray.isHidden()))
+    else:
+        spark.toggled.connect(tray.setVisible)
 
     field = views.input
     layout.removeWidget(field)
