@@ -125,6 +125,20 @@ class WebSearchApplicationServiceTests(unittest.TestCase):
             )
             self.assertEqual(planner.call_count, 3)
 
+    def test_broad_news_request_uses_character_scoped_search_ahead_of_generic_tool_plans(self):
+        with patch(
+            "kira.app.web_search.websearch.plan",
+            return_value=("چه خبر", False),
+        ):
+            self.assertEqual(
+                self.service.plan_request(
+                    "چه خبر؟",
+                    {"web_search": True},
+                    SimpleNamespace(strong=True, web=True),
+                ),
+                ("چه خبر", False),
+            )
+
     def test_plan_request_obeys_disabled_and_slash_command_rules(self):
         with patch(
             "kira.app.web_search.websearch.plan",
