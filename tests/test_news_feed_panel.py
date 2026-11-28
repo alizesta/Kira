@@ -1,42 +1,43 @@
-"""Qt smoke tests for the embedded character news panel."""
+"""Qt regression tests for the character-authored news-card carousel."""
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QFrame, QLabel
 
-from kira.ui.pages.news_feed_panel import NewsFeedPanel
+from kira.ui.pages.news_feed_panel import NewsFeedPanel, _SwipeScrollArea
 
 
 _APP = QApplication.instance() or QApplication([])
 
 
 class _Store:
-    def list_posts(self, character_id, limit=4):
+    def list_posts(self, character_id, limit=12):
         if character_id == "kira":
             return [{
                 "category": "gaming_industry",
-                "title": "Visible headline for Kira",
-                "summary": "Game industry story",
+                "title": "Visible character-written headline for Kira",
+                "summary": "این روایت خود کیراست؛ خبر را از چند زاویه بررسی کرده و توضیح داده چرا برای بازیکن‌ها اهمیت دارد.",
                 "source": "example.com",
                 "url": "https://example.com/kira",
+                "image_url": "https://cdn.example.com/kira.jpg",
                 "published_at": "2026-11-27T00:00:00Z",
                 "first_seen_at": 1_000,
             }]
         if character_id == "ren":
             return [{
                 "category": "economy_markets",
-                "title": "Visible market headline for Ren",
-                "summary": "Central bank story",
+                "title": "Visible market analysis written by Ren",
+                "summary": "رن توضیح می‌دهد که داده‌های منتشرشده چه معنایی دارند و کدام بخش هنوز قطعی نیست.",
                 "source": "example.com",
                 "url": "https://example.com/ren",
+                "image_url": "https://cdn.example.com/ren.webp",
                 "published_at": "2026-11-27T00:00:00Z",
                 "first_seen_at": 1_000,
             }]
-        return []
-
-    def list_unprocessed_items(self, _character_id, limit=12):
         return []
 
     def status(self, _character_id):
@@ -66,19 +67,71 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.panel.deleteLater()
         _APP.processEvents()
 
-    def test_kira_headline_is_visible_in_the_chat_panel(self):
+    def test_kira_character_authored_post_is_visible_as_a_large_card(self):
         self.panel.set_character("kira")
-        self.panel.refresh_view()
         _APP.processEvents()
-        self.assertIn("Visible headline for Kira", self.panel.feed_browser.toPlainText())
+        text = self.panel.rendered_text()
+        self.assertIn("Visible character-written headline for Kira", text)
+        self.assertIn("این روایت خود کیراست", text)
+        cards = self.panel.cards_container.findChildren(QFrame, "newsStoryCard")
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0].width(), 372)
+        cover = cards[0].findChild(QLabel, "newsCardCover")
+        self.assertIsNotNone(cover)
+        self.assertGreaterEqual(cover.height(), 170)
 
-    def test_switching_character_changes_the_visible_feed(self):
+    def test_switching_character_changes_authored_cards_and_keeps_them_isolated(self):
         self.panel.set_character("ren")
-        self.panel.refresh_view()
+        text = self.panel.rendered_text()
+        self.assertIn("Visible market analysis written by Ren", text)
+        self.assertNotIn("Visible character-written headline for Kira", text)
+
+    def test_feed_uses_a_horizontal_scroll_area_for_mouse_swipe(self):
+        class ManyPostsStore(_Store):
+            def list_posts(self, character_id, limit=12):
+                if character_id != "kira":
+                    return []
+                return [{
+                    "category": "gaming_industry",
+                    "title": f"روایت شماره {index}",
+                    "summary": "متن روایت‌شده توسط کیرا.",
+                    "source": "Example",
+                    "url": f"https://example.com/{index}",
+                    "published_at": "2026-11-27T00:00:00Z",
+                } for index in range(6)]
+
+        service = type("Service", (), {
+            "store": ManyPostsStore(),
+            "is_refreshing": staticmethod(lambda _character_id: False),
+        })()
+        panel = NewsFeedPanel(service, {})
+        self.addCleanup(panel.close)
+        panel.resize(460, 520)
+        panel.show()
+        panel.set_character("kira")
         _APP.processEvents()
-        content = self.panel.feed_browser.toPlainText()
-        self.assertIn("Visible market headline for Ren", content)
-        self.assertNotIn("Visible headline for Kira", content)
+
+        self.assertIsInstance(panel.cards_scroll, _SwipeScrollArea)
+        bar = panel.cards_scroll.horizontalScrollBar()
+        self.assertGreater(bar.maximum(), 0)
+
+        target = panel.cards_container
+        press = QMouseEvent(
+            QEvent.MouseButtonPress, QPointF(220, 100), QPointF(220, 100),
+            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+        )
+        move = QMouseEvent(
+            QEvent.MouseMove, QPointF(110, 100), QPointF(110, 100),
+            Qt.NoButton, Qt.LeftButton, Qt.NoModifier,
+        )
+        release = QMouseEvent(
+            QEvent.MouseButtonRelease, QPointF(110, 100), QPointF(110, 100),
+            Qt.LeftButton, Qt.NoButton, Qt.NoModifier,
+        )
+        _APP.sendEvent(target, press)
+        _APP.sendEvent(target, move)
+        self.assertGreater(bar.value(), 0)
+        _APP.sendEvent(target, release)
 
     def test_mika_region_controls_are_only_shown_for_mika(self):
         self.panel.set_character("kira")
@@ -89,7 +142,7 @@ class NewsFeedPanelTests(unittest.TestCase):
     def test_opening_journal_starts_the_first_refresh_for_the_selected_character(self):
         class EmptyStore:
             @staticmethod
-            def list_posts(_character_id, limit=4):
+            def list_posts(_character_id, limit=12):
                 return []
 
             @staticmethod
@@ -116,21 +169,10 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertEqual(EmptyService.started, ["ren"])
         self.assertIn("در حال بررسی", panel.status_label.text())
 
-    def test_pending_source_headlines_are_visible_when_model_generation_fails(self):
+    def test_failed_generation_never_displays_raw_source_headlines(self):
         class PendingStore(_Store):
-            def list_posts(self, _character_id, limit=4):
+            def list_posts(self, _character_id, limit=12):
                 return []
-
-            def list_unprocessed_items(self, _character_id, limit=12):
-                return [{
-                    "category": "gaming_hardware",
-                    "title": "Pending GPU launch report",
-                    "summary": "Publisher reports a new graphics card announcement.",
-                    "source": "Example Hardware",
-                    "url": "https://example.com/gpu-launch",
-                    "published_at": "2026-11-28T08:00:00Z",
-                    "first_seen_at": 1_000,
-                }]
 
             def status(self, _character_id):
                 return {
@@ -145,19 +187,18 @@ class NewsFeedPanelTests(unittest.TestCase):
         panel = NewsFeedPanel(service, {})
         self.addCleanup(panel.close)
         panel.set_character("kira")
-        panel.refresh_view()
-        content = panel.feed_browser.toPlainText()
-        self.assertIn("خبرهای دریافت‌شده", content)
-        self.assertIn("هنوز توسط شخصیت روایت نشده‌اند", content)
-        self.assertIn("Pending GPU launch report", content)
+        content = panel.rendered_text()
+        self.assertIn("شخصیت نتوانست خبرها را روایت کند", content)
         self.assertIn("model offline", content)
-        self.assertIn("Example Hardware", content)
-        self.assertIn("خبر دریافتی", panel.status_label.text())
+        self.assertNotIn("Pending GPU launch report", content)
+        self.assertNotIn("Example Hardware", content)
+        self.assertNotIn("هنوز توسط شخصیت روایت نشده‌اند", content)
 
-    def test_empty_feed_still_displays_refresh_guidance(self):
+    def test_empty_feed_explains_that_raw_news_is_not_published_as_character_posts(self):
         self.panel.set_character("mika")
-        self.panel.refresh_view()
-        self.assertIn("هنوز خبری دریافت نشده", self.panel.feed_browser.toPlainText())
+        content = self.panel.rendered_text()
+        self.assertIn("هنوز روایتی آماده نشده", content)
+        self.assertIn("خبر خام به‌جای شخصیت نمایش داده نمی‌شود", content)
 
 
 if __name__ == "__main__":
