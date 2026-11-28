@@ -436,15 +436,37 @@ def apply_chain_probe(settings, pid, rows, *, capabilities: DetectedCapabilities
 
 
 # ---------------- actions on a registered API ----------------
+def _replacement_default_route(settings, excluded_provider):
+    providers = settings.get("providers", {})
+    for route in route_model.get_routes(settings):
+        provider = route.get("provider")
+        cfg = providers.get(provider) or {}
+        if provider == excluded_provider or not route.get("enabled", True):
+            continue
+        if not cfg.get("enabled", provider == "ollama"):
+            continue
+        if route_model.requires_key(provider, cfg) and not str(cfg.get("api_key") or "").strip():
+            continue
+        return route.get("id") or ""
+    return ""
+
+
 def set_api_enabled(settings, pid, enabled):
     if pid not in settings.get("providers", {}):
         raise KeyError(pid)
     settings["providers"][pid]["enabled"] = bool(enabled)
+    if not enabled:
+        manual = route_model.find_route(settings, settings.get("manual_route_id") or "")
+        if manual and manual.get("provider") == pid:
+            settings["manual_route_id"] = ""
+        default = route_model.find_route(settings, settings.get("default_route_id") or "")
+        if default and default.get("provider") == pid:
+            settings["default_route_id"] = _replacement_default_route(settings, pid)
 
 
 def set_model_enabled(settings, pid, model, enabled, *, capabilities: DetectedCapabilities):
     """Switch one model on/off. Turning on a listed model that has no route yet creates it (at the end of the priority list)."""
-    model = str(model or "").strip()
+    model = route_model.normalize_model_id(model)
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     for r in route_model.get_routes(settings):

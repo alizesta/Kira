@@ -155,6 +155,14 @@ def test_eye_mode_eye_icon_asset_exists():
     assert '<circle cx="12" cy="12" r="3"/>' in source
 
 
+def test_live_video_telemetry_reports_effective_rate_and_bandwidth():
+    source = read("kira/vision_runtime_services.py")
+    assert "effective_per_minute = min(configured_per_minute, int(60.0 / min_interval), 60)" in source
+    assert "effective_max_fps=round(effective_fps, 4)" in source
+    assert "approx_kib_per_second=" in source
+    assert "gate_max_fps=1" not in source
+
+
 def test_live_reuses_the_captured_frame_and_preserves_live_resolution_limit():
     source = read("kira/ui/main_window_attachments_vision.py")
     live = source.split("def _maybe_stream_gemini_live_frame", 1)[1].split(

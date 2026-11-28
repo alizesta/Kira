@@ -563,9 +563,19 @@ class HybridRouter:
                     continue
                 info = self.route_info(route)
                 route_cfg = self._provider_cfg(route)
-                endpoint = str(route_cfg.get("base_url") or route.get("provider") or "").strip().rstrip("/").casefold()
+                default_endpoints = {
+                    "groq": "https://api.groq.com/openai/v1",
+                    "mistral": "https://api.mistral.ai/v1",
+                    "openrouter": "https://openrouter.ai/api/v1",
+                }
+                endpoint = str(
+                    route_cfg.get("base_url")
+                    or default_endpoints.get(route.get("provider"))
+                    or route.get("provider")
+                    or ""
+                ).strip().rstrip("/").casefold()
                 target_key = (endpoint, str(route.get("model") or "").strip().casefold(),
-                              str(route_cfg.get("api_key") or ""))
+                              str(route_cfg.get("api_key") or "").strip())
                 if target_key in attempted_route_targets:
                     failures.append(f"{rid}: همین endpoint/model/credential در این درخواست قبلاً امتحان شد؛ تکرار حذف شد.")
                     self.last_attempts.append({"provider": route["provider"], "route_id": rid,
