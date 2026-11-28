@@ -131,7 +131,7 @@ class ComposerTests(unittest.TestCase):
     def test_route_status_badge_has_no_dropdown_menu(self):
         source = (Path(__file__).parents[1] / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
         self.assertIn("self.route_badge.setMenu(None)", source)
-        self.assertIn("self.route_badge.setPopupMode(QToolButton.NoPopup)", source)
+        self.assertNotIn("self.route_badge.setPopupMode(", source)
         self.assertNotIn("self.route_badge.setMenu(self.route_menu)", source)
 
 
