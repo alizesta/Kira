@@ -194,33 +194,28 @@ class ChatShellTests(unittest.TestCase):
         self.assertIn("Happy", texts(p.avatar_card))
         self.assertIn("Energetic", texts(p.avatar_card))
 
-    def test_rebuilding_right_column_removes_portraits_from_stale_class_definitions(self):
+    def test_right_column_keeps_original_avatar_and_removes_added_static_portraits(self):
         context, p = build("en")
-        avatar = QWidget(p.avatar_card)
-        p.avatar_card.layout().addWidget(avatar)
-        context.views.avatar = avatar
-        stale_portrait = QLabel("old portrait", p.avatar_card)
+        original_avatar = QWidget(p.avatar_card)
+        p.avatar_card.layout().addWidget(original_avatar)
+        context.views.avatar = original_avatar
+
+        stale_portrait = QLabel("extra static Kira image", p.avatar_card)
         stale_portrait.setObjectName("kiraPortrait")
         legacy_portrait_type = type("_Portrait", (QLabel,), {})
-        legacy_portrait = legacy_portrait_type("legacy portrait without objectName", p.avatar_card)
+        legacy_portrait = legacy_portrait_type("legacy extra image", p.avatar_card)
         p.avatar_card.layout().insertWidget(0, stale_portrait)
         p.avatar_card.layout().insertWidget(1, legacy_portrait)
+        p.avatar_card.kira_portrait = stale_portrait
 
-        with tempfile.TemporaryDirectory() as temp:
-            image_path = Path(temp) / "kira.png"
-            image = QPixmap(64, 96)
-            image.fill(QColor("#ff00ff"))
-            self.assertTrue(image.save(str(image_path)))
-            with patch.object(chat_shell, "KIRA_PORTRAIT", image_path):
-                chat_shell._build_right(p.avatar_card, context, "fa")
-                portrait_widgets = p.avatar_card.findChildren(QWidget, "kiraPortrait")
+        chat_shell._build_right(p.avatar_card, context, "fa")
 
-        self.assertEqual(len(portrait_widgets), 1)
-        self.assertIsInstance(portrait_widgets[0], chat_shell._Portrait)
-        self.assertEqual(portrait_widgets[0]._subtitle, "همیشه اینجام برات")
-        self.assertTrue(avatar.isHidden())
+        self.assertIs(original_avatar.parent(), p.avatar_card)
+        self.assertFalse(original_avatar.isHidden())
         self.assertIsNone(stale_portrait.parent())
         self.assertIsNone(legacy_portrait.parent())
+        self.assertFalse(hasattr(p.avatar_card, "kira_portrait"))
+        self.assertEqual(p.avatar_card.findChildren(QWidget, "kiraPortrait"), [])
 
     def test_chat_shell_reflows_columns_when_window_is_not_maximized(self):
         context, p = build()
