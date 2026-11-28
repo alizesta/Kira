@@ -95,20 +95,23 @@ class NewsFeedPanelTests(unittest.TestCase):
 
         class EmptyService:
             store = EmptyStore()
+            started = []
 
             @staticmethod
             def is_refreshing(_character_id):
                 return False
 
-            @staticmethod
-            def refresh_character_async(_character_id):
+            @classmethod
+            def refresh_character_async(cls, character_id):
+                cls.started.append(character_id)
                 return True
 
         panel = NewsFeedPanel(EmptyService(), {})
         self.addCleanup(panel.close)
         panel.open_for_character("ren")
         self.assertEqual(panel._character_id, "ren")
-        self.assertIn("در حال بررسی", panel.feed_browser.toPlainText())
+        self.assertEqual(EmptyService.started, ["ren"])
+        self.assertIn("در حال بررسی", panel.status_label.text())
 
     def test_empty_feed_still_displays_refresh_guidance(self):
         self.panel.set_character("mika")
