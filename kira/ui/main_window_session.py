@@ -77,7 +77,8 @@ class SessionController(WindowFeatureController):
 
     def retranslate(self):
         lang = self.context.services.settings.get("ui_lang", "en")
-        QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+        # Locale changes text direction, never application-wide widget geometry.
+        QApplication.setLayoutDirection(Qt.LeftToRight)
         new_chat_button = getattr(self.context.views, "new_chat_btn", None)
         if new_chat_button is not None:
             new_chat_button.setText("چت جدید" if lang == "fa" else "New chat")
@@ -365,7 +366,7 @@ class SessionController(WindowFeatureController):
                 open_button.setMinimumWidth(0)
                 open_button.setFixedHeight(32)
                 open_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                open_button.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+                open_button.setLayoutDirection(Qt.LeftToRight)
                 open_button.setCursor(Qt.PointingHandCursor)
                 open_button.setToolTip(date_tooltip)
                 open_button.clicked.connect(
@@ -399,7 +400,7 @@ class SessionController(WindowFeatureController):
                 )
 
                 menu = QMenu(more_button)
-                menu.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+                menu.setLayoutDirection(Qt.LeftToRight)
                 rename_action = menu.addAction("تغییر نام" if lang == "fa" else "Rename")
                 share_action = menu.addAction(
                     "اشتراک‌گذاری (کپی متن)" if lang == "fa" else "Share (copy text)"
@@ -755,7 +756,12 @@ class SessionController(WindowFeatureController):
             else:
                 continue
             if str(text).strip():
-                self.add_chat(role, text)
+                previous_timestamp = getattr(self, "_history_message_created_at", None)
+                self._history_message_created_at = str(item.get("created_at") or "")
+                try:
+                    self.add_chat(role, text)
+                finally:
+                    self._history_message_created_at = previous_timestamp
                 shown += 1
         if shown:
             self.add_chat("system", self.t("history_restored"))
@@ -1134,9 +1140,19 @@ class SessionController(WindowFeatureController):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
             self._ensure_session_conversation(self.context.state.cur)
-            history = self.context.services.chat_application_service.recent_messages(
-                limit, character_id=self.context.state.cur.cid, conversation_id=self.context.state.cur.conversation_id
+            history_reader = getattr(
+                self.context.services.chat_application_service, "recent_message_records", None
             )
+            if callable(history_reader):
+                history = history_reader(
+                    limit, character_id=self.context.state.cur.cid,
+                    conversation_id=self.context.state.cur.conversation_id,
+                )
+            else:
+                history = self.context.services.chat_application_service.recent_messages(
+                    limit, character_id=self.context.state.cur.cid,
+                    conversation_id=self.context.state.cur.conversation_id,
+                )
         except Exception:
             # Leave the Session unloaded so the next synchronization retries history.
             _log.exception("Could not restore persisted chat history")
@@ -1400,12 +1416,12 @@ class SessionController(WindowFeatureController):
         self.context.state._chat_action_texts[key] = str(text)
         if kind == "user":
             self.context.state._chat_action_texts["__last_user"] = str(text)
-        actions = [("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی")]
+        actions = [("copy", "copy", "⧉", "#C4A6FF", "#241744", "#8B6DE0", "کپی")]
         if kind == "assistant":      # Kira's replies are regenerated, never edited
-            actions.append(("regenerate", "regenerate", "↻", "#E0C8FF", "#30214F", "#B18AFF", "تولید دوباره"))
-            actions.append(("speak", "speaker", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+            actions.append(("regenerate", "regenerate", "↻", "#C4A6FF", "#241744", "#8B6DE0", "تولید دوباره"))
+            actions.append(("speak", "speaker", "♫", "#D8C8FF", "#30214F", "#A78BFA", "خواندن"))
         else:
-            actions.append(("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"))
+            actions.append(("edit", "pencil", "✎", "#C4A6FF", "#241744", "#8B6DE0", "ویرایش"))
 
         view = getattr(self.context.session, "view", None)
         cells = []

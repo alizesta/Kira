@@ -628,7 +628,7 @@ class SqliteChatRepository:
                         (conversation_id is None or row[3] == str(conversation_id))]
                 return [{"role": row[0], "content": row[1]} for row in kept[-limit:]]
 
-    def recent_message_records(self, limit=2000, character_id=None):
+    def recent_message_records(self, limit=2000, character_id=None, conversation_id=None):
         """Return recent persisted records with metadata for crash-safe recovery policies."""
         try:
             page_size = max(0, min(int(limit), 5000))
@@ -644,6 +644,9 @@ class SqliteChatRepository:
                     if character_id is not None:
                         where.append("character_id=?")
                         args.append(_character_id(character_id))
+                    if conversation_id is not None:
+                        where.append("conversation_id=?")
+                        args.append(str(conversation_id))
                     clause = " WHERE " + " AND ".join(where) if where else ""
                     rows = con.execute(
                         "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "

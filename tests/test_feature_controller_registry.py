@@ -170,7 +170,8 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             "desktop_context_application_service",
             CONTROLLER_ACCESS["runtime"]["services"],
         )
-\n    def test_runtime_shutdown_resources_are_all_declared_capabilities(self):
+
+    def test_runtime_shutdown_resources_are_all_declared_capabilities(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS
         shutdown_resources = {
             "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",

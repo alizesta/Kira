@@ -59,9 +59,11 @@ class SqliteChatHistoryService:
     ) -> list[dict[str, str]]:
         return self._persistence.recent_messages(limit, character_id, conversation_id)
 
-    def recent_message_records(self, limit: int = 2000, character_id: str | None = None):
-        """Expose bounded durable message metadata for crash-recovery policies."""
-        return self._persistence.recent_message_records(limit, character_id)
+    def recent_message_records(
+        self, limit: int = 2000, character_id: str | None = None, conversation_id: str | None = None
+    ):
+        """Expose bounded durable message metadata for recovery and timestamped history rendering."""
+        return self._persistence.recent_message_records(limit, character_id, conversation_id)
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         return self._persistence.get_messages(limit, character_id, conversation_id, after_id)

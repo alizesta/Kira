@@ -263,6 +263,10 @@ class ChatOrganizationService:
                 organization["folder_id"] = folder or DEFAULT_FOLDER_ID
 
             updated = self._mutate_record(conversation_id, mutation)
+            if folder != DEFAULT_FOLDER_ID:
+                # The assignment is now durable; do not retain a process-local
+                # definition that could outlive deletion by another instance.
+                self._known_folders.pop(folder, None)
         organization = organization_metadata(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 

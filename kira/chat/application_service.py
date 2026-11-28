@@ -1003,8 +1003,11 @@ class ChatApplicationService:
             limit, character_id, conversation_id, after_id
         )
 
-    def recent_message_records(self, limit: int = 2000, character_id: str | None = None):
-        return self._history.recent_message_records(limit, character_id)
+    def recent_message_records(
+        self, limit: int = 2000, character_id: str | None = None,
+        conversation_id: str | None = None,
+    ):
+        return self._history.recent_message_records(limit, character_id, conversation_id)
 
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,

@@ -333,7 +333,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertIsNone(engine.select_candidate([], now=100_000, exclude_ids=object()))
 
     def test_settings_and_runtime_events_share_one_daily_count(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         state = initiative_history_state(
             [{"at": now - 10, "memory_id": "event-1"}],
             [{"name": "proactive_check_in", "at": now - 10, "detail": "event-1"}],
@@ -345,7 +345,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["excluded_ids"], {"event-1"})
 
     def test_mirrored_history_with_small_timestamp_drift_counts_once(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         state = initiative_history_state(
             [{"at": now - 10, "memory_id": "same"}],
             [{"name": "proactive_check_in", "at": now - 9.2, "detail": "same"}],
@@ -354,7 +354,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["sent_today"], 1)
 
     def test_distinct_sends_of_the_same_memory_still_count_separately(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         state = initiative_history_state(
             [{"at": now - 100, "memory_id": "same"}, {"at": now - 50, "memory_id": "same"}],
             now=now,
@@ -362,7 +362,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["sent_today"], 2)
 
     def test_recent_history_and_runtime_marker_enforce_daily_cap(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         state = initiative_history_state(
             [{"at": now - 100, "memory_id": "one"}],
             [{"name": "proactive_check_in", "at": now - 50, "detail": "two"}],
@@ -374,7 +374,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["excluded_ids"], {"one", "two"})
 
     def test_expired_malformed_and_unrelated_events_are_ignored(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         state = initiative_history_state(
             [
                 {"at": now - 11 * DAY, "memory_id": "expired"},
@@ -392,7 +392,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["excluded_ids"], {"valid"})
 
     def test_previous_local_day_does_not_consume_today_limit(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         yesterday = now - DAY
         state = initiative_history_state(
             [{"at": yesterday, "memory_id": "yesterday"}],
@@ -402,7 +402,7 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertIn("yesterday", state["excluded_ids"])
 
     def test_same_memory_sent_at_two_different_times_counts_as_two_checkins(self):
-        now = 20 * DAY
+        now = 20 * DAY + 12 * 3600
         first = now - 100
         second = now - 50
         state = initiative_history_state(
@@ -432,8 +432,8 @@ class InitiativePersistenceRecoveryTests(unittest.TestCase):
         persistence.recent_message_records.return_value = expected
         service = object.__new__(SqliteChatHistoryService)
         service._persistence = persistence
-        self.assertIs(service.recent_message_records(50, "ren"), expected)
-        persistence.recent_message_records.assert_called_once_with(50, "ren")
+        self.assertIs(service.recent_message_records(50, "ren", "conversation-ren"), expected)
+        persistence.recent_message_records.assert_called_once_with(50, "ren", "conversation-ren")
 
     def test_persisted_checkin_message_recovers_after_interrupted_settings_write(self):
         now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc).timestamp()

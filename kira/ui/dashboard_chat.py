@@ -43,14 +43,14 @@ AVATAR_SIZE = 52
 LEFT_RATIO, RIGHT_RATIO = 0.166, 0.257                 # column widths of the reference (255 and 395 of 1536 px)
 
 STYLE = """
-QFrame#chatInputSurface { background: #120a26; border: 1px solid #3b2380; border-radius: 26px; min-height: 62px; }
+QFrame#chatInputSurface { background: rgba(18, 10, 38, 190); border: 1px solid #6d4bc2; border-radius: 26px; min-height: 62px; }
 QWidget#composerTray { background: transparent; }
 QToolButton#sparkBtn { background: #1a1038; border: 2px solid #5b2fd6; border-radius: 22px; color: #c4a6ff; font-size: 18px;
     min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px; }
 QToolButton#sparkBtn:checked { background: #3b2380; color: #ffffff; }
 QToolButton#emojiBtn { background: transparent; border: none; color: #cbbcff; font-size: 20px; }
 QToolButton#sendBtn:hover { background: rgba(139, 92, 246, 0.22); border-color: #c4b5fd; }
-QToolButton#sendBtn { background: transparent; border: 2px solid #8b5cf6;
+QToolButton#sendBtn { background: rgba(139, 92, 246, 0.14); border: 2px solid #9b7aff;
     border-radius: 22px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; }
 QLabel#todayChip { background: #150c2e; border: 1px solid #2a1a52; border-radius: 12px; color: #cbbcff; padding: 4px 16px; }
 QToolButton#headerIcon { background: transparent; border: none; color: #cbbcff; font-size: 16px; padding: 4px; }
@@ -100,7 +100,17 @@ def _character_name(context, fallback="Kira") -> str:
 
 # ---------------------------------------------------------------- bubbles
 
-def clock_text(moment: datetime) -> str:
+def clock_text(moment: datetime | str) -> str:
+    if isinstance(moment, str):
+        value = moment.strip()
+        if not value:
+            return ""
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return ""
+    if moment.tzinfo is not None:
+        moment = moment.astimezone()
     return moment.strftime("%I:%M %p").lstrip("0")
 
 
@@ -108,12 +118,12 @@ def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", ava
     """User and assistant bubbles of the reference design. The tables are transparent: _BubbleUnderlay paints the rounded shapes."""
     body = chat_render.rich_body_html(text, TEXT, ui_dir) if str(text or "").strip() else ""
     ticks = f' <span style="color:{TICKS};">✓✓</span>' if (kind == "user" and stamp) else ""
-    stamp_html = f'<span style="color:{META};font-size:8pt;">{stamp}{ticks}</span>' if stamp else ""
+    stamp_html = f'<span style="color:#c4b5fd;font-size:9pt;font-weight:600;">{stamp}{ticks}</span>' if stamp else ""
     # one row under the text: the time on the left, the action icons completely on the right
     if footer_html or stamp_html:
         cells = re.search(r"<tr>(.*)</tr>", footer_html or "", re.S)
         icons = cells.group(1) if cells else ""
-        meta = (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin-top:6px;"><tr>'
+        meta = (f'<table width="100%" cellspacing="0" cellpadding="0" style="margin-top:7px; direction:ltr;"><tr>'
                 f'<td align="left" valign="middle" style="white-space:nowrap;">{stamp_html}</td><td width="100%">&nbsp;&nbsp;</td>{icons}</tr></table>')
     else:
         meta = ""
@@ -210,7 +220,10 @@ def _install_bubbles(controller) -> None:
         if kind not in ("user", "assistant"):
             return original(kind, name, text, ui_dir, extra_html, footer_html, accent)
         restoring = bool(getattr(controller, "_suppress_conversation_refresh", False))   # set while history is painted
-        stamp = "" if restoring else clock_text(datetime.now())
+        if restoring:
+            stamp = clock_text(getattr(controller, "_history_message_created_at", "") or "")
+        else:
+            stamp = clock_text(datetime.now())
         return bubble_html(kind, text, ui_dir, extra_html, footer_html, stamp, AVATAR_URL if kind == "assistant" else "")
 
     wrapped._kira_dashboard = True
@@ -349,8 +362,13 @@ def _build_composer(context, lang) -> None:
     pill.addWidget(field, 1)
     pill.addWidget(emoji)
     if send is not None:                                     # neon send button: white neon plane on a glowing violet disc
-        send.setIcon(make_icon("send", normal="#b18aff", hover="#ffffff", disabled="#5b4b9a"))
+        send.setIcon(make_icon("send", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
         send.setIconSize(QSize(26, 26))
+        send.setStyleSheet("QToolButton { background: rgba(139,92,246,0.14); border: 1px solid #8b6de0; border-radius: 22px; } QToolButton:hover { background: rgba(167,139,250,0.28); border-color: #d8c8ff; }")
+    if attach is not None:
+        attach.setIcon(make_icon("paperclip", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
+        attach.setIconSize(QSize(21, 21))
+        attach.setStyleSheet("QToolButton { color: #c4a6ff; background: rgba(139,92,246,0.10); border: 1px solid rgba(139,92,246,0.42); border-radius: 18px; } QToolButton:hover { background: rgba(167,139,250,0.24); border-color: #c4a6ff; }")
     for widget in (attach, stop, send):
         _detach(bar, widget)
         if widget is not None:

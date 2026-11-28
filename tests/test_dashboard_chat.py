@@ -30,6 +30,7 @@ class BubbleTests(unittest.TestCase):
         html = dashboard_chat.bubble_html("user", "Hey Kira", "ltr", stamp="8:18 PM")
         self.assertIn('align="right"', html)
         self.assertIn("✓✓", html)
+        self.assertIn("#c4b5fd", html)
 
     def test_message_without_a_time_shows_no_time_and_no_tick(self):
         html = dashboard_chat.bubble_html("user", "old message", "ltr", stamp="")
@@ -40,8 +41,10 @@ class BubbleTests(unittest.TestCase):
 
     def test_clock_text(self):
         self.assertEqual(dashboard_chat.clock_text(datetime(2026, 11, 27, 20, 18)), "8:18 PM")
+        self.assertEqual(dashboard_chat.clock_text("2026-11-27T20:18:00"), "8:18 PM")
+        self.assertEqual(dashboard_chat.clock_text(""), "")
 
-    def test_installed_message_html_skips_the_time_while_history_is_painted(self):
+    def test_installed_message_html_keeps_persisted_time_while_history_is_painted(self):
         from kira.ui import main_window_session as session_module
 
         calls = []
@@ -50,12 +53,15 @@ class BubbleTests(unittest.TestCase):
             calls.append(args)
             return "ORIGINAL"
 
-        controller = SimpleNamespace(_suppress_conversation_refresh=True)
+        controller = SimpleNamespace(
+            _suppress_conversation_refresh=True,
+            _history_message_created_at="2026-11-27T20:18:00",
+        )
         with mock.patch.object(session_module, "message_html", original):
             dashboard_chat._install_bubbles(controller)
             installed = session_module.message_html
             self.assertEqual(installed("system", "", "hi", "ltr"), "ORIGINAL")      # system/error keep the old look
-            self.assertNotIn("✓✓", installed("user", "", "old", "ltr"))
+            self.assertIn("8:18 PM", installed("user", "", "old", "ltr"))
             controller._suppress_conversation_refresh = False
             self.assertIn("✓✓", installed("user", "", "new", "ltr"))
             self.assertIn(dashboard_chat.AVATAR_URL, installed("assistant", "", "reply", "ltr"))
@@ -124,7 +130,7 @@ class ComposerTests(unittest.TestCase):
 
 
 class HeaderTests(unittest.TestCase):
-    def test_header_gets_the_today_chip_and_display_icons(self):
+    def test_header_gets_the_today_chip_and_search_filter_icons(self):
         header = QFrame()
         layout = QHBoxLayout(header)
         title = QLabel("Project Kira", header)
@@ -174,6 +180,48 @@ class PortraitTests(unittest.TestCase):
         dashboard_chat._build_portrait(context, parts)
         self.assertFalse(parts["portrait"].isHidden())
         self.assertTrue(avatar.isHidden())
+
+
+class TypingAndBubbleRenderTests(unittest.TestCase):
+    def test_typing_indicator_is_hidden_until_active_and_stops_cleanly(self):
+        host = QFrame()
+        host_layout = QVBoxLayout(host)
+        composer = QFrame(host)
+        host_layout.addWidget(composer)
+        context, _status = context_with(chat_composer=composer)
+        parts = {}
+
+        dashboard_chat._build_typing(context, "fa", parts)
+        typing = parts["typing"]
+        self.assertTrue(typing.isHidden())
+
+        typing.set_active(True)
+        self.assertFalse(typing.isHidden())
+        self.assertTrue(typing._timer.isActive())
+
+        typing.set_active(False)
+        self.assertTrue(typing.isHidden())
+        self.assertFalse(typing._timer.isActive())
+
+    def test_bubble_underlay_installs_and_paints_rounded_message_tables(self):
+        view = QTextBrowser()
+        view.resize(640, 480)
+        dashboard_chat._install_underlay(view)
+        view.setHtml(dashboard_chat.bubble_html(
+            "user", "سلام کیرا", "rtl", stamp="8:18 PM"
+        ))
+        view.show()
+        _APP.processEvents()
+
+        tables = list(dashboard_chat._bubble_tables(view.document().rootFrame()))
+        self.assertEqual(len(tables), 1)
+        self.assertIsNotNone(dashboard_chat._content_rect(
+            view.document(), view.document().documentLayout(), tables[0]
+        ))
+        self.assertIsNotNone(view._kira_underlay)
+        view.repaint()
+        _APP.processEvents()
+        view.close()
 
 
 class DateChipTests(unittest.TestCase):

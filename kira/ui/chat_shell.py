@@ -55,15 +55,15 @@ STYLE = """
 QWidget#chatPage { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #09050f, stop:1 #140a2b); }
 QScrollArea#dashLeftScroll, QWidget#dashLeft { background: transparent; border: none; }
 QLabel#dashBrand { color: #c4a6ff; font-size: 26px; font-weight: 800; letter-spacing: 2px; }
-QLabel#dashBrandSub { color: #9a86c9; font-size: 11px; }
+QLabel#dashBrandSub { color: #c9b8f5; font-size: 12px; font-weight: 500; padding: 0 2px 4px 2px; }
 QPushButton#navItem { background: transparent; color: #cbbcff; border: none; border-radius: 12px; padding: 10px 14px;
     text-align: %ALIGN%; font-size: 14px; }
 QPushButton#navItem:hover { background: #1a1038; }
 QPushButton#navItem:checked { color: #ffffff; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4b2bb8, stop:1 #6d3fe0); }
 QFrame#dashProfile, QFrame#dashPlaylist, QFrame#dashQuote, QFrame#statCard, QFrame#dashActions {
-    background: #120a26; border: 1px solid #2a1a52; border-radius: 16px; }
-QFrame#avatarCard { background: #0f0824; border: 1px solid #2a1a52; border-radius: 20px; }
-QFrame#chatCard { border: 1px solid #241548; border-radius: 20px; }
+    background: rgba(18, 10, 38, 178); border: 1px solid rgba(91, 63, 150, 150); border-radius: 16px; }
+QFrame#avatarCard { background: rgba(15, 8, 36, 168); border: 1px solid rgba(91, 63, 150, 150); border-radius: 20px; }
+QFrame#chatCard { background: rgba(18, 10, 38, 92); border: 1px solid rgba(91, 63, 150, 135); border-radius: 20px; }
 QLabel#dashSection { color: #9a86c9; font-size: 12px; padding: 2px 6px; }
 QLabel#dashName { color: #f4f0ff; font-size: 15px; font-weight: 600; }
 QLabel#dashOnline { color: #46e08a; font-size: 11px; }
@@ -272,7 +272,7 @@ def _icon_label(icon_name: str, size: int, colour: str = "#b9a2ff") -> QLabel:
     return label
 
 
-_BADGES = {"kira": "✦", "ren": "🔥", "mika": "🌸"}
+_BADGES = {"kira": "star", "ren": "flame", "mika": "flower-2"}
 
 
 def _is_fa(context) -> bool:
@@ -384,7 +384,7 @@ def apply_chat_shell(context) -> bool:
     if not hasattr(settings, "get"):
         settings = {}
     lang = str(settings.get("ui_lang", "en"))
-    style = STYLE.replace("%ALIGN%", "right" if lang == "fa" else "left")
+    style = STYLE.replace("%ALIGN%", "left")
     if not page.objectName():
         page.setObjectName("chatPage")
     page.setStyleSheet(page.styleSheet() + style)
@@ -430,7 +430,10 @@ def _build_layout(context, controller, parts, lang) -> None:
                       if area_layout.itemAt(i).widget() not in (None, sidebar)), None)
     if chat_card is None:
         return
-    rtl = Qt.RightToLeft if lang == "fa" else Qt.LeftToRight
+    rtl = Qt.LeftToRight
+    area_layout.setDirection(QBoxLayout.Direction.LeftToRight)
+    page.setLayoutDirection(Qt.LeftToRight)
+    sidebar.setLayoutDirection(Qt.LeftToRight)
     area_layout.removeWidget(sidebar)
     area_layout.removeWidget(chat_card)
 
@@ -480,7 +483,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     scroll.viewport().setAutoFillBackground(False)
     column = QWidget()
     column.setObjectName("dashLeft")
-    column.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
+    column.setLayoutDirection(Qt.LeftToRight)
     layout = QVBoxLayout(column)
     layout.setContentsMargins(8, 8, 8, 8)
     layout.setSpacing(6)
@@ -492,7 +495,11 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     brand.addWidget(_icon_label("sparkle", 18, "#c4a6ff"), 0, Qt.AlignTop)
     brand.addStretch(1)
     layout.addLayout(brand)
-    layout.addWidget(_label("همراه هوشمند تو" if fa else "Your AI Companion", "dashBrandSub"))
+    brand_sub = _label("دستیار هوشمند تو" if fa else "Your AI Companion", "dashBrandSub")
+    brand_sub.setWordWrap(True)
+    brand_sub.setLayoutDirection(Qt.LeftToRight)
+    brand_sub.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    layout.addWidget(brand_sub)
     layout.addLayout(_build_nav(context, controller, parts, lang))
     parts["profile"] = _build_profile(context, parts, lang)     # the Kira/Online card is no longer shown; the conversation list takes its place
     sidebar.setMinimumWidth(0)
@@ -506,6 +513,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     if tabs_frame is not None:
         layout.addWidget(_label("افراد سریع" if fa else "Quick People", "dashSection"))
         tabs_frame.setMinimumWidth(0)
+        tabs_frame.setLayoutDirection(Qt.LeftToRight)
         if tabs_row is not None:
             tabs_row.setDirection(QBoxLayout.Direction.TopToBottom)     # one character per row, like the reference
         layout.addWidget(tabs_frame)
@@ -515,7 +523,7 @@ def _build_left(context, controller, parts, sidebar, tabs_frame, tabs_row, lang)
     holder = QWidget()
     holder.setObjectName("dashLeftHolder")
     holder.setFixedWidth(LEFT_WIDTH + 5)
-    holder.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
+    holder.setLayoutDirection(Qt.LeftToRight)
     holder_layout = QVBoxLayout(holder)
     holder_layout.setContentsMargins(0, 0, 0, 8)
     holder_layout.setSpacing(6)
@@ -587,7 +595,7 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
         button.setFixedHeight(40)
-        button.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)   # icon sits before the text in either language
+        button.setLayoutDirection(Qt.LeftToRight)   # shell controls remain LTR in every locale
         if glyph in _ICONS:
             button.setIcon(make_icon(glyph, normal="#b9a2ff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
             button.setIconSize(QSize(22, 22))
@@ -654,19 +662,8 @@ def _build_greeting(context, lang) -> QWidget:
     texts.addLayout(title_row)
     texts.addWidget(_label("امیدوارم روزت مهربان بوده باشه." if fa else "Hope your day was kind to you.", "dashGreetingSub"))
     row.addLayout(texts, 1)
-    for glyph in ("♫", "☾", "🔔"):
-        if glyph == "🔔":
-            button = _BellButton(glyph, box)
-            button.setObjectName("roundIcon")
-            button.setCursor(Qt.PointingHandCursor)
-            button.setFocusPolicy(Qt.NoFocus)
-            button.clicked.connect(lambda checked=False: _soon(context, lang))
-        else:
-            button = _display_button(context, lang, glyph, "roundIcon", box)
-        button.setText("")
-        button.setIcon(make_icon({"♫": "music", "☾": "moon", "🔔": "bell"}[glyph], normal="#b9a2ff", hover="#ffffff"))
-        button.setIconSize(QSize(20, 20))
-        row.addWidget(button)
+    # The chat header is intentionally quiet: no bell, music or moon controls.
+
     return box
 
 
@@ -742,7 +739,7 @@ def _build_right(avatar_card, context, lang) -> None:
     layout = avatar_card.layout()
     if layout is None:
         return
-    avatar_card.setLayoutDirection(Qt.RightToLeft if fa else Qt.LeftToRight)
+    avatar_card.setLayoutDirection(Qt.LeftToRight)
     if KIRA_PORTRAIT.is_file():
         portrait = _Portrait(KIRA_PORTRAIT, "Kira ✦", "همیشه اینجام برات" if fa else "Always here for you", avatar_card)
         layout.insertWidget(0, portrait, 1)
@@ -809,8 +806,8 @@ def _sync_portrait(context) -> None:
 
 
 def _avatar_on_the_right(page, avatar_card, lang) -> None:
-    """In the Persian (right-to-left) layout the character panel is already on the right; in English it must go last."""
-    if lang == "fa" or page.layout() is None:
+    """Keep the character panel on the physical right in every locale."""
+    if page.layout() is None:
         return
     outer = page.layout()
     for index in range(outer.count()):
@@ -838,15 +835,25 @@ def _wrap_theme(controller, page, style) -> None:
 
 def _picture_tabs(context) -> None:
     for character_id, button in dict(getattr(context.views, "char_tab_buttons", {}) or {}).items():
-        if "\n" not in button.text():
-            badge = _BADGES.get(character_id, "")
-            button.setText(f"{button.text().strip()}{' ' + badge if badge else ''}\n● {'آنلاین' if _is_fa(context) else 'Online'}")
-        if not button.icon().isNull():
-            continue
-        pixmap = _character_pixmap(context, character_id, 48)
-        if pixmap is not None:
-            button.setIcon(QIcon(pixmap))
-            button.setIconSize(QSize(48, 48))
+        lines = button.text().splitlines()
+        display_name = lines[0].split("  ")[0].strip() if lines else button.text().strip()
+        button.setText(f"{display_name}\n● {'آنلاین' if _is_fa(context) else 'Online'}")
+        badge = button.findChild(QLabel, "quickPeopleBadge")
+        if badge is None:
+            badge = QLabel(button)
+            badge.setObjectName("quickPeopleBadge")
+            badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        icon_name = _BADGES.get(character_id, "star")
+        colour = "#60a5fa" if character_id == "ren" else "#f472b6" if character_id == "mika" else "#c4a6ff"
+        badge.setPixmap(make_icon(icon_name, normal=colour, hover="#ffffff").pixmap(18, 18))
+        badge.setFixedSize(18, 18)
+        badge.move(35, 2)
+        badge.raise_()
+        if button.icon().isNull():
+            pixmap = _character_pixmap(context, character_id, 48)
+            if pixmap is not None:
+                button.setIcon(QIcon(pixmap))
+                button.setIconSize(QSize(48, 48))
 
 
 def _wrap_tabs(context, controller) -> None:
