@@ -539,13 +539,6 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
             selected.append((index, sources[index]))
         title = _clean(candidate.get("title"), 180)
         body = _clean(candidate.get("body"), 220)
-        # Captions are standalone news items, not a group greeting or chat message.
-        body = re.sub(
-            r"^(?:سلام(?:[ \u200c]+(?:بچه[ \u200c]?ها|دوستان|به[ \u200c]+همه))?)(?=$|[\s،,:؛!؟\-—])[\s،,:؛!؟\-—]*",
-            "",
-            body,
-            flags=re.IGNORECASE,
-        ).strip()
         if len(body) > 180:
             body = body[:180].rsplit(" ", 1)[0].rstrip(" ،؛:") + "…"
         if not selected or not title or not body:
