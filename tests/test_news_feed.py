@@ -416,6 +416,19 @@ class NewsFeedStoreTests(unittest.TestCase):
             self.assertEqual(service.store.list_unprocessed_items("kira"), [])
             self.assertEqual(service.store.status("kira")["item_count"], 1)
 
+    def test_personalized_caption_opening_is_preserved_without_greeting_cleanup(self):
+        sources = [{
+            "title": "Game update", "summary": "A new patch is announced.",
+            "url": "https://example.com/game-update", "category": "gaming_news",
+        }]
+        posts = _prepare_character_posts(sources, [{
+            "source_ids": [0], "title": "خبر تازهٔ بازی",
+            "body": "علیرضا، این آپدیت تازه چند قابلیت مهم به بازی اضافه می‌کند.",
+            "confidence": "reported",
+        }])
+        self.assertEqual(len(posts), 1)
+        self.assertTrue(posts[0]["summary"].startswith("علیرضا،"))
+
     def test_rumor_only_sources_cannot_be_promoted_to_confirmed(self):
         sources = [{
             "title": "Possible console leak", "url": "https://x.example/post",
