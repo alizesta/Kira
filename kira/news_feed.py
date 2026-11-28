@@ -203,8 +203,9 @@ def is_official_weather_source(raw_url: object) -> bool:
 
 
 _GAME_NEWS_RX = re.compile(
-    r"\b(?:gaming|video games?|game industry|game studios?|esports?|steam|playstation|xbox|nintendo|epic games|valve)\b"
-    r"|بازی(?:[\s‌-]?(?:ویدیویی|رایانه.?ای))?|گیم(?:ینگ)?|کنسول|پلی[\s‌-]?استیشن|"
+    r"\b(?:gaming|game|games|video games?|game industry|game studios?|esports?|steam|playstation|xbox|nintendo|epic games|valve)\b"
+    r"|(?<!\w)بازی(?:‌?های)?(?:[\s‌-]?(?:ویدیویی|رایانه.?ای))?(?!\w)|"
+    r"(?<!\w)گیم(?:ینگ)?(?!\w)|کنسول|پلی[\s‌-]?استیشن|"
     r"ایکس[\s‌-]?باکس|نینتندو|استیم|اپیک[\s‌-]?گیمز|والو",
     re.I,
 )
