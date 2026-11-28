@@ -882,6 +882,10 @@ class LiveSessionManager:
         self.selector.commit(sample)
         if frame_context is not None:
             self._vision.commit_frame_budget(frame_context)
+        min_interval = max(1.0, float(self.selector.policy.min_interval_seconds or 1.0))
+        configured_per_minute = max(1, int(self.selector.policy.max_frames_per_minute or 1))
+        effective_per_minute = min(configured_per_minute, int(60.0 / min_interval), 60)
+        effective_fps = min(1.0, 1.0 / min_interval, effective_per_minute / 60.0)
         self._trace(
             "live_video_frame_queued",
             source=source,
@@ -899,10 +903,10 @@ class LiveSessionManager:
             jpeg_bytes=len(encoded.jpeg),
             jpeg_kib=round(len(encoded.jpeg) / 1024.0, 2),
             max_bytes=max_bytes,
-            gate_max_fps=1,
-            min_interval_seconds=self.selector.policy.min_interval_seconds,
-            max_frames_per_minute=self.selector.policy.max_frames_per_minute,
-            approx_kib_per_frame=round(len(encoded.jpeg) / 1024.0, 2),
+            min_interval_seconds=min_interval,
+            max_frames_per_minute=effective_per_minute,
+            effective_max_fps=round(effective_fps, 4),
+            approx_kib_per_second=round((len(encoded.jpeg) / 1024.0) * effective_fps, 2),
             color_levels=16,
             palette_colors=16 ** 3,
         )
