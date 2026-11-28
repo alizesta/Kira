@@ -76,7 +76,7 @@ NAV = (
     ("call", "mic", "Voice Call", "تماس صوتی", None),
     ("memories", "heart", "Memories", "خاطرات", None),
     ("gallery", "image", "Gallery", "گالری", None),
-    ("journal", "book", "Journal", "دفتر خاطرات", None),
+    ("journal", "book", "AIWU", "AIWU", None),
     ("settings", "settings", "Settings", "تنظیمات", "tab_general"),
 )
 
@@ -195,7 +195,7 @@ class _Sparkline(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(90, 34)
+        self.setMinimumSize(120, 34)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setFixedHeight(40)
         self._shape = wave_shape("calm", 40)
@@ -232,17 +232,17 @@ class _Sparkline(QWidget):
         for x in range(0, w + 1, 2):
             t = x / max(1, w)
             envelope = math.sin(math.pi * t) ** 0.6          # calm at both ends like a pulse line
-            y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 3) * envelope
+            y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 8) * envelope
             y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * self._amp * 3 * envelope
             path.moveTo(x, y) if x == 0 else path.lineTo(x, y)
-        base = dash_theme.second("#a78bfa")                  # neon heartbeat line: soft bloom passes, then a bright core
-        for width, alpha in ((9, 26), (6, 52), (3.6, 110)):
+        base = dash_theme.second("#a78bfa")                  # neon heartbeat line: wide soft bloom passes, then a bright core
+        for width, alpha in ((12, 30), (9, 52), (6, 96), (3.8, 170)):
             glow = QColor(base)
             glow.setAlpha(alpha)
             painter.setPen(QPen(glow, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(path)
-        core = QColor(base).lighter(135)
-        painter.setPen(QPen(core, 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        core = QColor(base).lighter(160)
+        painter.setPen(QPen(core, 2.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
 
 
@@ -872,8 +872,9 @@ def _build_mood_card(context, parts, lang) -> QFrame:
     texts.addWidget(parts["mood_title"])
     texts.addWidget(parts["mood_sub"])
     parts["sparkline"] = _Sparkline()
-    parts["sparkline"].setMinimumWidth(60)
-    body.addWidget(parts["sparkline"])
+    parts["sparkline"].setMinimumWidth(120)
+    body.setStretch(0, 0)                                   # the texts take only what they need; the neon wave gets the rest of the card
+    body.addWidget(parts["sparkline"], 1)
     return mood
 
 
@@ -1039,11 +1040,11 @@ def resize_chat_shell(context, available_width=None) -> None:
     if left_holder is not None:
         left_holder.setFixedWidth(left_width + 5)
 
-    # Keep history narrower than the available width; chat receives the rest.
+    # The conversation list fills its column (8 px margins on each side); chat receives the rest.
     conversation_list = getattr(views, "conversation_list", None)
     history_panel = conversation_list.parentWidget() if conversation_list is not None else None
     if history_panel is not None:
-        history_width = max(90, min(154, int(width * 0.14)))
+        history_width = max(90, left_width - 16)             # the list fills its column (8 px margins on each side)
         history_panel.setMinimumWidth(0)
         history_panel.setMaximumWidth(history_width)
         history_panel.setMinimumWidth(history_width)
