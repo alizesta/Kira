@@ -1499,13 +1499,10 @@ class SessionController(WindowFeatureController):
         if page is not None:
             # The global navigation is outside chat_page. Defer until Qt has
             # assigned the page its new geometry, then reflow against that width.
+            from .chat_shell import resize_chat_shell
+
             context = self.context
-            QTimer.singleShot(
-                0,
-                lambda: __import__(
-                    "kira.ui.chat_shell", fromlist=["resize_chat_shell"]
-                ).resize_chat_shell(context, page.width()),
-            )
+            QTimer.singleShot(0, lambda: resize_chat_shell(context, page.width()))
 
     # ---------- UI building ----------
 
