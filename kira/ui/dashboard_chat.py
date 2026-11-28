@@ -595,6 +595,31 @@ def _wrap_theme(context, controller, page, parts) -> None:
     controller.apply_chat_theme = themed
 
 
+def _pin_violet_icons(context) -> None:
+    """Keep the chat page's icon buttons violet: the theme refresh recolours every `kiraIconName` button with the character's cyan accent."""
+    page = getattr(getattr(context, "views", None), "chat_page", None)
+    if page is None:
+        return
+    for button in page.findChildren(QToolButton):
+        name = button.property("kiraIconName")
+        if not name:
+            continue
+        button.setIcon(make_icon(str(name), normal="#c4a6ff", hover="#ffffff", checked="#ffffff", disabled="#62558a"))
+        button.setProperty("kiraIconName", None)
+
+
+def _left_align_text(context) -> None:
+    """Persian labels in the dashboard chrome stay on the left (absolute); only the chat text and the composer follow the text direction."""
+    page = getattr(getattr(context, "views", None), "chat_page", None)
+    if page is None:
+        return
+    for label in page.findChildren(QLabel):
+        if label.objectName() in ("dashBrandSub", "dashGreeting", "dashGreetingSub", "dashSection", "dashName", "dashOnline",
+                                  "dashQuoteText", "conversationListTitle", "statTitle", "statValue", "statSub",
+                                  "dashTrackTitle", "dashTrackSub"):
+            label.setAlignment(Qt.AlignLeft | Qt.AlignAbsolute | Qt.AlignVCenter)
+
+
 def apply_dashboard_chat(context) -> bool:
     """Apply the chat surfaces once per chat page. Call after chat_shell.apply_chat_shell()."""
     views = getattr(context, "views", None)
@@ -620,6 +645,8 @@ def apply_dashboard_chat(context) -> bool:
         ("avatar pictures and bubble shapes", lambda: _wrap_session_views(context, controller)),
         ("column widths", lambda: _wrap_resize(context, controller)),
         ("style survives theme changes", lambda: _wrap_theme(context, controller, page, parts)),
+        ("violet icons", lambda: _pin_violet_icons(context)),
+        ("left-aligned labels", lambda: _left_align_text(context)),
     )
     for name, step in steps:
         try:
