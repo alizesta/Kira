@@ -683,5 +683,28 @@ class GuiTests(unittest.TestCase):
             w.character_combo.setCurrentIndex(w.character_combo.findData("kira"))
 
 
+    def test_interface_language_selector_applies_and_persists_immediately(self):
+        from PySide6.QtCore import Qt
+
+        window = self.win
+        self.assertTrue(window._ensure_settings_tab(4))
+        views = window.presentation_context.views
+        selector = views.ui_lang
+
+        # Exercise both directions so the test proves this is a live selector,
+        # not merely a one-time startup default.
+        for language, direction in (("fa", Qt.RightToLeft), ("en", Qt.LeftToRight)):
+            with self.subTest(language=language):
+                index = selector.findData(language)
+                self.assertGreaterEqual(index, 0)
+                selector.setCurrentIndex(index)
+                APP.processEvents()
+
+                self.assertEqual(window.presentation_context.services.settings["ui_lang"], language)
+                self.assertEqual(config.load_settings()["ui_lang"], language)
+                self.assertEqual(APP.layoutDirection(), direction)
+
+
+
 if __name__ == "__main__":
     unittest.main()

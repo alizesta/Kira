@@ -409,6 +409,9 @@ class CharacterSettingsController(WindowFeatureController):
         ):
             setattr(self.context.views, name, getattr(self.context.views.preferences_page, name))
 
+        self.context.views.preferences_page.ui_language_changed.connect(
+            self.feature_controller("lifecycle").apply_ui_language
+        )
         self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
         self.context.views.preferences_page.ui_design_guidance_changed.connect(self._save_ui_design_guidance)
         self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
