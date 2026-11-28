@@ -184,6 +184,20 @@ def avatar_file(profile, root):
         return None
     return path if path.is_file() else None
 
+def portrait_file(profile, root):
+    """Return a safe, existing portrait image configured by this character profile."""
+    name = str((profile or {}).get("image") or "").strip()
+    if not name:
+        return None
+    root_path = Path(root).resolve()
+    path = (root_path / name).resolve()
+    try:
+        path.relative_to(root_path)
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
 def chat_background_file(profile, root):
     """Return a safe, existing per-character chat background or None."""
     name = str((profile or {}).get("chat_background") or "").strip()

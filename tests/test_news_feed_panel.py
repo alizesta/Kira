@@ -13,7 +13,7 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class _Store:
-    def list_items(self, character_id, limit=4):
+    def list_posts(self, character_id, limit=4):
         if character_id == "kira":
             return [{
                 "category": "gaming_industry",
@@ -42,10 +42,16 @@ class _Store:
 
 class _Service:
     store = _Store()
+    refreshes = []
 
     @staticmethod
     def is_refreshing(_character_id):
         return False
+
+    @classmethod
+    def refresh_character_async(cls, character_id):
+        cls.refreshes.append(character_id)
+        return True
 
 
 class NewsFeedPanelTests(unittest.TestCase):
@@ -76,6 +82,36 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertTrue(self.panel.region_row.isHidden())
         self.panel.set_character("mika")
         self.assertFalse(self.panel.region_row.isHidden())
+
+    def test_opening_journal_starts_the_first_refresh_for_the_selected_character(self):
+        class EmptyStore:
+            @staticmethod
+            def list_posts(_character_id, limit=4):
+                return []
+
+            @staticmethod
+            def status(_character_id):
+                return {"refreshed_at": 0, "last_error": ""}
+
+        class EmptyService:
+            store = EmptyStore()
+            started = []
+
+            @staticmethod
+            def is_refreshing(_character_id):
+                return False
+
+            @classmethod
+            def refresh_character_async(cls, character_id):
+                cls.started.append(character_id)
+                return True
+
+        panel = NewsFeedPanel(EmptyService(), {})
+        self.addCleanup(panel.close)
+        panel.open_for_character("ren")
+        self.assertEqual(panel._character_id, "ren")
+        self.assertEqual(EmptyService.started, ["ren"])
+        self.assertIn("در حال بررسی", panel.status_label.text())
 
     def test_empty_feed_still_displays_refresh_guidance(self):
         self.panel.set_character("mika")

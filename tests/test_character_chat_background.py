@@ -20,6 +20,18 @@ class MikaChatBackgroundTests(unittest.TestCase):
             self.assertEqual(chat_background_file(CHARACTERS["kira"], root), kira_image.resolve())
             self.assertIsNone(chat_background_file(CHARACTERS["ren"], root))
 
+    def test_profile_portrait_resolver_uses_the_character_image_and_rejects_path_escape(self):
+        from kira.personas import portrait_file
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            portrait = root / CHARACTERS["ren"]["image"]
+            portrait.parent.mkdir(parents=True)
+            portrait.write_bytes(b"portrait")
+            self.assertEqual(portrait_file(CHARACTERS["ren"], root), portrait.resolve())
+            unsafe = {**CHARACTERS["ren"], "image": "../../outside.jpg"}
+            self.assertIsNone(portrait_file(unsafe, root))
+
     def test_background_paths_cannot_escape_the_asset_root(self):
         with tempfile.TemporaryDirectory() as temp:
             profile = {**CHARACTERS["mika"], "chat_background": "../../outside.jpg"}

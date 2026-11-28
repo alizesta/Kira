@@ -485,8 +485,14 @@ class _Portrait(QFrame):
         self._pixmap = QPixmap()
         self._name = ""
 
-    def show_character(self, character_id: str, name: str) -> bool:
-        path = Path(ROOT) / "assets" / "dashboard" / f"{character_id}_portrait.png"
+    def show_character(self, character_id: str, name: str, image_path=None) -> bool:
+        # Character profile artwork is the source of truth. Keep the old dashboard
+        # portrait as a compatibility fallback for installations with legacy assets.
+        path = Path(image_path) if image_path else Path(ROOT) / "assets" / "dashboard" / f"{character_id}_portrait.png"
+        if not path.is_file() and character_id == "kira":
+            legacy_jpg = Path(ROOT) / "assets" / "dashboard" / "kira_portrait.jpg"
+            if legacy_jpg.is_file():
+                path = legacy_jpg
         self._pixmap = QPixmap(str(path)) if path.is_file() else QPixmap()
         self._name = name
         self.update()
@@ -523,7 +529,18 @@ def _sync_portrait(context, portrait) -> None:
     state = getattr(context, "state", None)
     session = getattr(state, "front", None) or getattr(state, "cur", None)
     cid = str(getattr(session, "cid", "") or "kira")
-    has_picture = portrait.show_character(cid, _character_name(context, cid.capitalize()))
+    image_path = None
+    try:
+        service = context.services.character_service
+        profile = service.all_profiles(context.services.settings).get(cid) or {}
+        resolver = getattr(service, "portrait_file", None)
+        if callable(resolver):
+            image_path = resolver(profile, ROOT)
+    except Exception:                                      # noqa: BLE001 - optional artwork must not break switching
+        _LOG.debug("Could not resolve the %s profile portrait", cid, exc_info=True)
+    has_picture = portrait.show_character(
+        cid, _character_name(context, cid.capitalize()), image_path=image_path
+    )
     portrait.setVisible(has_picture)
     avatar = getattr(context.views, "avatar", None)
     if avatar is None:

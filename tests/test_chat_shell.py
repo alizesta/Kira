@@ -90,6 +90,15 @@ def texts(widget):
     return [label.text() for label in widget.findChildren(QLabel)]
 
 
+class _FeedPanel(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.opened_for = []
+
+    def open_for_character(self, character_id):
+        self.opened_for.append(character_id)
+
+
 class ChatShellTests(unittest.TestCase):
     def test_missing_chat_page_is_a_no_op(self):
         context = SimpleNamespace(views=SimpleNamespace(), services=SimpleNamespace(settings={}), controllers=None)
@@ -129,6 +138,19 @@ class ChatShellTests(unittest.TestCase):
         self.assertTrue(buttons["Chat"].isChecked())           # the chat page stays the current page
         buttons["Memories"].click()
         self.assertEqual(p.status.text(), "Coming soon")
+
+    def test_journal_opens_the_feed_for_the_active_character(self):
+        context, p = build()
+        panel = _FeedPanel(p.avatar_card)
+        p.avatar_card.layout().addWidget(panel)
+        context.views.news_feed_panel = panel
+        chat_shell.apply_chat_shell(context)
+        buttons = {b.text().strip(): b for b in p.page.findChildren(QPushButton, "navItem")}
+        buttons["Journal"].click()
+        self.assertEqual(panel.opened_for, ["kira"])
+        self.assertFalse(panel.isHidden())
+        self.assertTrue(p.chat_card.isHidden())
+        self.assertTrue(buttons["Journal"].isChecked())
 
     def test_display_only_widgets_say_coming_soon(self):
         context, p = build()

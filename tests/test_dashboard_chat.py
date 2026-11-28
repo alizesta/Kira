@@ -131,10 +131,18 @@ class ComposerTests(unittest.TestCase):
     def test_route_status_badge_has_no_dropdown_menu(self):
         source = (Path(__file__).parents[1] / "kira" / "ui" / "components" / "chat_composer.py").read_text(encoding="utf-8")
         self.assertIn("self.route_badge.setMenu(None)", source)
+        self.assertIn("self.route_badge.setPopupMode(QToolButton.NoPopup)", source)
         self.assertNotIn("self.route_badge.setMenu(self.route_menu)", source)
 
 
 class HeaderTests(unittest.TestCase):
+    def test_character_switch_cannot_restore_the_route_dropdown_chevron(self):
+        source = (Path(__file__).parents[1] / "kira" / "ui" / "main_window_session.py").read_text(encoding="utf-8")
+        method = source.split("    def refresh_navigation_icons(self):", 1)[1].split("\n    # ----------", 1)[0]
+        self.assertNotIn("chevron_up", method)
+        self.assertIn("badge.setMenu(None)", method)
+
+
     def test_header_gets_the_today_chip_and_search_filter_icons(self):
         header = QFrame()
         layout = QHBoxLayout(header)
@@ -186,6 +194,29 @@ class PortraitTests(unittest.TestCase):
         self.assertIs(card.layout().itemAt(0).widget(), parts["portrait"])
         self.assertTrue(parts["portrait"].isHidden())
         self.assertFalse(avatar.isHidden())
+
+    def test_profile_portrait_is_used_for_the_character_dashboard_card(self):
+        from kira.personas import portrait_file
+
+        folder = Path(self.tmp.name) / "assets" / "characters"
+        folder.mkdir(parents=True)
+        picture_path = folder / "ren_portrait.jpg"
+        picture = QPixmap(60, 80)
+        picture.fill()
+        self.assertTrue(picture.save(str(picture_path), "JPG"))
+        context, card, avatar = self.build()
+        context.state.front.cid = "ren"
+        context.state.cur.cid = "ren"
+        profile = {"image": "assets/characters/ren_portrait.jpg"}
+        context.services.character_service = SimpleNamespace(
+            display_name=lambda settings: "Ren",
+            all_profiles=lambda settings: {"ren": profile},
+            portrait_file=portrait_file,
+        )
+        parts = {}
+        dashboard_chat._build_portrait(context, parts)
+        self.assertFalse(parts["portrait"].isHidden())
+        self.assertTrue(avatar.isHidden())
 
     def test_with_a_picture_the_portrait_replaces_the_animated_avatar(self):
         folder = Path(self.tmp.name) / "assets" / "dashboard"

@@ -614,6 +614,14 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
             card.setVisible(not journal)
             panel.setVisible(journal)
             if journal:
+                session = getattr(context.state, "front", None) or getattr(context.state, "cur", None)
+                character_id = str(getattr(session, "cid", "") or "kira")
+                open_for_character = getattr(panel, "open_for_character", None)
+                if callable(open_for_character):
+                    open_for_character(character_id)
+                else:
+                    panel.set_character(character_id)
+                    panel.refresh_view()
                 buttons["journal"].setChecked(True)
                 return
         if tab_key is None:
