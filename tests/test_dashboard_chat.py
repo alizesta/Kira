@@ -116,14 +116,22 @@ class ComposerTests(unittest.TestCase):
         self.assertIs(p.expand.parentWidget(), tray)
         self.assertTrue(p.expand_host.isHidden())
 
-    def test_spark_button_opens_the_tray_and_emoji_is_display_only(self):
+    def test_eye_button_toggles_eye_vision_and_right_click_opens_the_tray(self):
         context, p = self.build()
         dashboard_chat._build_composer(context, "en")
         tray = p.surface.findChild(QWidget, "composerTray")
         spark = p.surface.findChild(QToolButton, "sparkBtn")
-        spark.setChecked(True)
+        game_mode = p.buttons["game_mode_btn"]
+        game_mode.setCheckable(True)
+        spark.click()                                      # the eye switches Eye Vision on, it does not open the tray
+        self.assertTrue(game_mode.isChecked())
+        self.assertTrue(spark.isChecked())
+        self.assertTrue(tray.isHidden())
+        spark.click()
+        self.assertFalse(game_mode.isChecked())
+        spark.customContextMenuRequested.emit(spark.rect().center())      # right-click shows the tool tray
         self.assertFalse(tray.isHidden())
-        spark.setChecked(False)
+        spark.customContextMenuRequested.emit(spark.rect().center())
         self.assertTrue(tray.isHidden())
         p.surface.findChild(QToolButton, "emojiBtn").click()
         self.assertEqual(p.status.text(), "Coming soon")
@@ -172,12 +180,7 @@ class HeaderTests(unittest.TestCase):
 
 
 class PortraitTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        patcher = mock.patch.object(dashboard_chat, "ROOT", self.tmp.name)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+    """chat_shell owns the big picture; the dashboard skin must never add a second one (the portrait appeared twice)."""
 
     def build(self):
         card = QFrame()
@@ -187,48 +190,20 @@ class PortraitTests(unittest.TestCase):
         context, _status = context_with(avatar_card=card, avatar=avatar)
         return context, card, avatar
 
-    def test_without_a_picture_the_animated_avatar_stays(self):
+    def test_the_dashboard_skin_adds_no_portrait_and_leaves_the_avatar_alone(self):
         context, card, avatar = self.build()
         parts = {}
         dashboard_chat._build_portrait(context, parts)
-        self.assertIs(card.layout().itemAt(0).widget(), parts["portrait"])
-        self.assertTrue(parts["portrait"].isHidden())
+        self.assertNotIn("portrait", parts)
+        self.assertEqual(card.findChildren(dashboard_chat._Portrait), [])
         self.assertFalse(avatar.isHidden())
 
-    def test_profile_portrait_is_used_for_the_character_dashboard_card(self):
-        from kira.personas import portrait_file
-
-        folder = Path(self.tmp.name) / "assets" / "characters"
-        folder.mkdir(parents=True)
-        picture_path = folder / "ren_portrait.jpg"
-        picture = QPixmap(60, 80)
-        picture.fill()
-        self.assertTrue(picture.save(str(picture_path), "JPG"))
+    def test_a_stale_dashboard_portrait_is_removed(self):
         context, card, avatar = self.build()
-        context.state.front.cid = "ren"
-        context.state.cur.cid = "ren"
-        profile = {"image": "assets/characters/ren_portrait.jpg"}
-        context.services.character_service = SimpleNamespace(
-            display_name=lambda settings: "Ren",
-            all_profiles=lambda settings: {"ren": profile},
-            portrait_file=portrait_file,
-        )
-        parts = {}
-        dashboard_chat._build_portrait(context, parts)
-        self.assertFalse(parts["portrait"].isHidden())
-        self.assertTrue(avatar.isHidden())
-
-    def test_with_a_picture_the_portrait_replaces_the_animated_avatar(self):
-        folder = Path(self.tmp.name) / "assets" / "dashboard"
-        folder.mkdir(parents=True)
-        picture = QPixmap(40, 60)
-        picture.fill()
-        self.assertTrue(picture.save(str(folder / "kira_portrait.png")))
-        context, card, avatar = self.build()
-        parts = {}
-        dashboard_chat._build_portrait(context, parts)
-        self.assertFalse(parts["portrait"].isHidden())
-        self.assertTrue(avatar.isHidden())
+        stale = dashboard_chat._Portrait(card)
+        card.layout().insertWidget(0, stale)
+        dashboard_chat._build_portrait(context, {})
+        self.assertEqual(card.findChildren(dashboard_chat._Portrait), [])
 
 
 class TypingAndBubbleRenderTests(unittest.TestCase):

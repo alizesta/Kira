@@ -32,6 +32,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QToolBut
 from .. import chat_render
 from ..config import ROOT
 from ..ui_icons import make_icon
+from . import dash_theme
 
 _LOG = logging.getLogger("kira.ui")
 AVATAR_URL = "kira-avatar://self"
@@ -116,9 +117,9 @@ def clock_text(moment: datetime | str) -> str:
 
 def bubble_html(kind, text, ui_dir, extra_html="", footer_html="", stamp="", avatar_url="") -> str:
     """User and assistant bubbles of the reference design. The tables are transparent: _BubbleUnderlay paints the rounded shapes."""
-    body = chat_render.rich_body_html(text, TEXT, ui_dir) if str(text or "").strip() else ""
-    ticks = f' <span style="color:{TICKS};">✓✓</span>' if (kind == "user" and stamp) else ""
-    stamp_html = f'<span style="color:#c4b5fd;font-size:9pt;font-weight:600;">{stamp}{ticks}</span>' if stamp else ""
+    body = chat_render.rich_body_html(text, dash_theme.tone(TEXT), ui_dir) if str(text or "").strip() else ""
+    ticks = f' <span style="color:{dash_theme.ticks_colour(TICKS)};">✓✓</span>' if (kind == "user" and stamp) else ""
+    stamp_html = f'<span style="color:{dash_theme.tone("#c4b5fd")};font-size:9pt;font-weight:600;">{stamp}{ticks}</span>' if stamp else ""
     # one row under the text: the time on the left, the action icons completely on the right
     if footer_html or stamp_html:
         cells = re.search(r"<tr>(.*)</tr>", footer_html or "", re.S)
@@ -188,7 +189,7 @@ class _BubbleUnderlay(QObject):
         visible = QRectF(viewport.rect())
         painter = QPainter(viewport)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor(BUBBLE_BORDER), 1))
+        painter.setPen(QPen(dash_theme.qcolor(BUBBLE_BORDER), 1))
         for table in _bubble_tables(view.document().rootFrame()):
             frame = layout.frameBoundingRect(table)
             rect = _content_rect(view.document(), layout, table)
@@ -199,7 +200,7 @@ class _BubbleUnderlay(QObject):
             rect = rect.adjusted(-BUBBLE_PAD_X, -BUBBLE_PAD_TOP, BUBBLE_PAD_X, BUBBLE_PAD_BOTTOM).translated(dx, dy)
             if not rect.intersects(visible):
                 continue
-            painter.setBrush(QColor(USER_BUBBLE if round(table.format().cellPadding()) == USER_PAD else ASSISTANT_BUBBLE))
+            painter.setBrush(dash_theme.qcolor(USER_BUBBLE if round(table.format().cellPadding()) == USER_PAD else ASSISTANT_BUBBLE))
             painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), BUBBLE_RADIUS, BUBBLE_RADIUS)
         painter.end()
 
@@ -241,7 +242,7 @@ def _avatar_for_view(context, session) -> None:
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor("#3b2380"))
+        painter.setBrush(dash_theme.qcolor("#3b2380"))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(0, 0, pixmap.width(), pixmap.height())
         painter.end()
@@ -299,8 +300,7 @@ def _build_header(context, lang) -> None:
     _add_model_chip(context, header, layout)
     for icon in ("search", "sliders"):                       # search and filter of the reference, as neon icons (display only)
         button = _display_tool(context, lang, "", "headerIcon", header)
-        button.setIcon(make_icon(icon, normal="#b9a2ff", hover="#ffffff"))
-        button.setIconSize(QSize(22, 22))
+        dash_theme.set_icon(button, icon, 22, normal="#b9a2ff", hover="#ffffff")
         layout.addWidget(button)
 
 
@@ -323,15 +323,13 @@ def _build_composer(context, lang) -> None:
 
     spark = QToolButton(surface)
     spark.setObjectName("sparkBtn")
-    spark.setIcon(make_icon("eye", normal="#c4b5fd", hover="#ffffff", checked="#ffffff"))   # Eye Vision
-    spark.setIconSize(QSize(22, 22))
+    dash_theme.set_icon(spark, "eye", 22, normal="#c4b5fd", hover="#ffffff", checked="#ffffff")   # Eye Vision
     spark.setCheckable(True)
     spark.setCursor(Qt.PointingHandCursor)
     spark.setFocusPolicy(Qt.NoFocus)
     spark.setToolTip("ابزارها" if lang == "fa" else "Tools")
     emoji = _display_tool(context, lang, "", "emojiBtn", surface)
-    emoji.setIcon(make_icon("smile", normal="#b18aff", hover="#ffffff"))
-    emoji.setIconSize(QSize(24, 24))
+    dash_theme.set_icon(emoji, "smile", 24, normal="#b18aff", hover="#ffffff")
 
     tray = QWidget(surface)
     tray.setObjectName("composerTray")
@@ -351,7 +349,16 @@ def _build_composer(context, lang) -> None:
         expand_host.hide()
     tray_layout.addStretch(1)
     tray.hide()
-    spark.toggled.connect(tray.setVisible)
+    game_mode = getattr(views, "game_mode_btn", None)
+    if game_mode is not None:                                # the eye switches Eye Vision on and off; right-click opens the tool tray
+        spark.setToolTip("Eye Vision" if lang != "fa" else "بینایی چشم (Eye Vision)")
+        spark.setChecked(game_mode.isChecked())
+        spark.clicked.connect(lambda checked=False: game_mode.click())
+        game_mode.toggled.connect(lambda on: (spark.blockSignals(True), spark.setChecked(bool(on)), spark.blockSignals(False)))
+        spark.setContextMenuPolicy(Qt.CustomContextMenu)
+        spark.customContextMenuRequested.connect(lambda _pos: tray.setVisible(tray.isHidden()))
+    else:
+        spark.toggled.connect(tray.setVisible)
 
     field = views.input
     layout.removeWidget(field)
@@ -364,13 +371,11 @@ def _build_composer(context, lang) -> None:
     pill.addWidget(field, 1)
     pill.addWidget(emoji)
     if send is not None:                                     # neon send button: white neon plane on a glowing violet disc
-        send.setIcon(make_icon("send_centered", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
-        send.setIconSize(QSize(26, 26))
-        send.setStyleSheet("QToolButton { background: rgba(139,92,246,0.14); border: 1px solid #8b6de0; border-radius: 22px; } QToolButton:hover { background: rgba(167,139,250,0.28); border-color: #d8c8ff; }")
+        dash_theme.set_icon(send, "send_centered", 26, normal="#c4a6ff", hover="#ffffff", disabled="#62558a")
+        dash_theme.set_style(send, "QToolButton { background: rgba(139,92,246,0.14); border: 1px solid #8b6de0; border-radius: 22px; } QToolButton:hover { background: rgba(167,139,250,0.28); border-color: #d8c8ff; }")
     if attach is not None:
-        attach.setIcon(make_icon("paperclip", normal="#c4a6ff", hover="#ffffff", disabled="#62558a"))
-        attach.setIconSize(QSize(21, 21))
-        attach.setStyleSheet("QToolButton { color: #c4a6ff; background: rgba(139,92,246,0.10); border: 1px solid rgba(139,92,246,0.42); border-radius: 18px; } QToolButton:hover { background: rgba(167,139,250,0.24); border-color: #c4a6ff; }")
+        dash_theme.set_icon(attach, "paperclip", 21, normal="#c4a6ff", hover="#ffffff", disabled="#62558a")
+        dash_theme.set_style(attach, "QToolButton { color: #c4a6ff; background: rgba(139,92,246,0.10); border: 1px solid rgba(139,92,246,0.42); border-radius: 18px; } QToolButton:hover { background: rgba(167,139,250,0.24); border-color: #c4a6ff; }")
     for widget in (attach, stop, send):
         _detach(bar, widget)
         if widget is not None:
@@ -512,7 +517,7 @@ class _Portrait(QFrame):
         fade.setColorAt(0, QColor(10, 5, 25, 0))
         fade.setColorAt(1, QColor(10, 5, 25, 235))
         painter.fillRect(self.rect(), fade)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(dash_theme.qcolor("#ffffff"))
         font = painter.font()
         font.setPointSize(18)
         font.setBold(True)
@@ -521,7 +526,7 @@ class _Portrait(QFrame):
         font.setPointSize(10)
         font.setBold(False)
         painter.setFont(font)
-        painter.setPen(QColor("#b9a3f5"))
+        painter.setPen(dash_theme.qcolor("#b9a3f5"))
         painter.drawText(16, h - 18, "Always here for you")
 
 
@@ -554,14 +559,16 @@ def _sync_portrait(context, portrait) -> None:
 
 
 def _build_portrait(context, parts) -> None:
+    """chat_shell owns the one big character picture; this skin only removes a card an older version of it left behind."""
     card = getattr(context.views, "avatar_card", None)
     layout = card.layout() if card is not None else None
     if layout is None:
         return
-    portrait = _Portrait(card)
-    layout.insertWidget(0, portrait)
-    parts["portrait"] = portrait
-    _sync_portrait(context, portrait)
+    for stale in card.findChildren(_Portrait):
+        layout.removeWidget(stale)
+        stale.hide()
+        stale.setParent(None)
+        stale.deleteLater()
 
 
 # ---------------------------------------------------------------- column widths
@@ -606,7 +613,9 @@ def _wrap_theme(context, controller, page, parts) -> None:
 
     def themed(*args, **kwargs):
         result = original(*args, **kwargs)
-        page.setStyleSheet(page.styleSheet() + STYLE)        # last, so it wins over the theme and over chat_shell's skin
+        dash_theme.set_character(_cid(context))
+        page.setStyleSheet(page.styleSheet() + dash_theme.css(STYLE))   # last, so it wins over the theme and over chat_shell's skin
+        dash_theme.retheme(page)
         if parts.get("portrait") is not None:
             _sync_portrait(context, parts["portrait"])       # a character switch calls this: show that character's picture
         return result
@@ -625,10 +634,9 @@ def _add_model_chip(context, header, layout) -> None:
     chip.setCursor(Qt.ArrowCursor)
     chip.setFocusPolicy(Qt.NoFocus)
     chip.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    chip.setIcon(make_icon("sparkle", normal="#c4a6ff", hover="#ffffff"))
-    chip.setIconSize(QSize(14, 14))
+    dash_theme.set_icon(chip, "sparkle", 14, normal="#c4a6ff", hover="#ffffff")
     chip.setMaximumWidth(240)
-    chip.setStyleSheet("QToolButton#modelChip { color: #d9ccff; background: rgba(139,92,246,0.12); border: 1px solid #5b3fb0; border-radius: 14px; padding: 4px 12px; font-size: 12px; }"
+    dash_theme.set_style(chip, "QToolButton#modelChip { color: #d9ccff; background: rgba(139,92,246,0.12); border: 1px solid #5b3fb0; border-radius: 14px; padding: 4px 12px; font-size: 12px; }"
                        "QToolButton#modelChip:hover { background: rgba(167,139,250,0.26); border-color: #c4b5fd; }"
                        "QToolButton#modelChip::menu-indicator { image: none; }")
 
@@ -645,6 +653,12 @@ def _add_model_chip(context, header, layout) -> None:
     layout.addWidget(chip)
 
 
+def _cid(context) -> str:
+    state = getattr(context, "state", None)
+    session = getattr(state, "front", None) or getattr(state, "cur", None)
+    return str(getattr(session, "cid", "") or "kira").strip().lower()
+
+
 def _pin_violet_icons(context) -> None:
     """Keep the chat page's icon buttons violet: the theme refresh recolours every `kiraIconName` button with the character's cyan accent."""
     page = getattr(getattr(context, "views", None), "chat_page", None)
@@ -654,7 +668,7 @@ def _pin_violet_icons(context) -> None:
         name = button.property("kiraIconName")
         if not name:
             continue
-        button.setIcon(make_icon(str(name), normal="#c4a6ff", hover="#ffffff", checked="#ffffff", disabled="#62558a"))
+        dash_theme.set_icon(button, str(name), normal="#c4a6ff", hover="#ffffff", checked="#ffffff", disabled="#62558a")
         button.setProperty("kiraIconName", None)
 
 
@@ -683,7 +697,8 @@ def apply_dashboard_chat(context) -> bool:
     lang = str(settings.get("ui_lang", "en")) if hasattr(settings, "get") else "en"
     controller = _session_controller(context)
     parts: dict = {}
-    page.setStyleSheet(page.styleSheet() + STYLE)
+    dash_theme.set_character(_cid(context))
+    page.setStyleSheet(page.styleSheet() + dash_theme.css(STYLE))
     steps = (
         ("composer", lambda: _build_composer(context, lang)),
         ("header", lambda: _build_header(context, lang)),

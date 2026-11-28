@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from datetime import datetime
 
 import math
@@ -33,9 +34,37 @@ from PySide6.QtWidgets import (
 
 from ..config import ROOT
 from ..ui_icons import make_icon
+from . import dash_theme
 
 _LOG = logging.getLogger("kira.ui")
 KIRA_PORTRAIT = ROOT / "assets" / "dashboard" / "kira_portrait.jpg"
+_FACE_CROP = {"ren": (0.17, 0.08, 0.66)}                    # (x, y, side) of the face square as fractions of the picture width
+
+
+def _portrait_file(character_id, context=None):
+    """The big picture of a character: assets/dashboard/<id>_portrait.jpg|png first, then its profile artwork (custom characters), or None."""
+    for suffix in ("jpg", "png"):
+        path = ROOT / "assets" / "dashboard" / f"{character_id}_portrait.{suffix}"
+        if path.is_file():
+            return path
+    if context is not None:
+        try:
+            service = context.services.character_service
+            profile = service.all_profiles(context.services.settings).get(character_id) or {}
+            resolver = getattr(service, "portrait_file", None)
+            found = resolver(profile, ROOT) if callable(resolver) else None
+            return Path(found) if found else None
+        except Exception:                                  # noqa: BLE001 - artwork is optional
+            _LOG.debug("No profile portrait for %s", character_id, exc_info=True)
+    return None
+
+
+def _portrait_texts(character_id, fa):
+    if character_id == "ren":
+        return ("Ren", "بازار هیچ‌وقت نمی‌خوابه" if fa else "Markets never sleep")
+    if character_id == "kira":
+        return ("Kira ✦", "همیشه اینجام برات" if fa else "Always here for you")
+    return (str(character_id).capitalize(), "")
 LEFT_WIDTH = 250
 _STAMP = re.compile(r"\d{4}-\d{2}-\d{2} (\d{2}:\d{2})")
 _ICONS = {"chat", "mic", "settings", "user", "home", "heart", "image", "book"}      # names make_icon() knows; the other navigation glyphs are plain text
@@ -103,6 +132,10 @@ QLabel#statValue { color: #f4f0ff; font-size: 15px; font-weight: 600; }
 QLabel#statSub { color: #8f7bc0; font-size: 11px; }
 QPushButton#dashAction { background: #170d33; border: 1px solid #2a1a52; border-radius: 12px; color: #e9e3ff; padding: 8px 6px; }
 QPushButton#dashAction:hover { background: #24144d; }
+QPushButton#dashAction:checked { background: #2c1a63; border: 1px solid #8b5cf6; }
+QPushButton#dashAction[compact="true"] { padding: 6px 3px; font-size: 11px; }
+QPushButton#charTab[compact="true"] { padding: 3px 6px; }
+QPushButton#navItem[compact="true"] { padding: 2px 14px; }
 QLabel#dashCover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5b2fd6, stop:1 #1b0f3f); border-radius: 10px; }
 QLabel#dashTrackTitle { color: #f4f0ff; font-size: 13px; font-weight: 600; }
 QLabel#dashTrackSub { color: #9a86c9; font-size: 11px; }
@@ -125,13 +158,13 @@ class _Ring(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(5, 5, self.width() - 10, self.height() - 10)
-        painter.setPen(QPen(QColor("#2a1a52"), 5))
+        painter.setPen(QPen(dash_theme.qcolor("#2a1a52"), 5))
         painter.drawEllipse(rect)
-        arc = QPen(QColor("#8b5cf6"), 5)
+        arc = QPen(dash_theme.qcolor("#8b5cf6"), 5)
         arc.setCapStyle(Qt.RoundCap)
         painter.setPen(arc)
         painter.drawArc(rect, 90 * 16, -int(360 * 16 * self._percent / 100))
-        painter.setPen(QColor("#f1ecff"))
+        painter.setPen(dash_theme.qcolor("#f1ecff"))
         font = painter.font()
         font.setPointSize(9)
         font.setBold(True)
@@ -202,7 +235,14 @@ class _Sparkline(QWidget):
             y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 3) * envelope
             y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * self._amp * 3 * envelope
             path.moveTo(x, y) if x == 0 else path.lineTo(x, y)
-        painter.setPen(QPen(QColor("#8b5cf6"), 2))
+        base = dash_theme.second("#a78bfa")                  # neon heartbeat line: soft bloom passes, then a bright core
+        for width, alpha in ((9, 26), (6, 52), (3.6, 110)):
+            glow = QColor(base)
+            glow.setAlpha(alpha)
+            painter.setPen(QPen(glow, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+        core = QColor(base).lighter(135)
+        painter.setPen(QPen(core, 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
 
 
@@ -214,6 +254,7 @@ class _Portrait(QWidget):
         self.setObjectName("kiraPortrait")
         self._pixmap = QPixmap(str(path))
         self._caption, self._subtitle = caption, subtitle
+        self._top = True
         self.setMinimumSize(150, 190)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -236,7 +277,7 @@ class _Portrait(QWidget):
         fade.setColorAt(0, QColor(10, 6, 24, 0))
         fade.setColorAt(1, QColor(10, 6, 24, 215))
         painter.fillRect(self.rect(), fade)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(dash_theme.qcolor("#ffffff"))
         font = painter.font()
         font.setPixelSize(26)
         font.setWeight(font.Weight.DemiBold)
@@ -245,7 +286,7 @@ class _Portrait(QWidget):
         font.setPixelSize(13)
         font.setWeight(font.Weight.Normal)
         painter.setFont(font)
-        painter.setPen(QColor("#c4b5fd"))
+        painter.setPen(dash_theme.qcolor("#c4b5fd"))
         painter.drawText(16, self.height() - 16, self._subtitle)
 
 
@@ -274,11 +315,11 @@ def _icon_label(icon_name: str, size: int, colour: str = "#b9a2ff") -> QLabel:
     label.setObjectName("dashIcon")
     label.setFixedSize(size + 4, size + 4)
     label.setAlignment(Qt.AlignCenter)
-    label.setPixmap(make_icon(icon_name, normal=colour).pixmap(size, size))
+    dash_theme.set_pixmap(label, icon_name, size, normal=colour)
     return label
 
 
-_BADGES = {"kira": "star", "ren": "flame", "mika": "flower-2"}
+_BADGES = {"kira": "star", "ren": "bull", "mika": "flower-2"}
 
 
 def _is_fa(context) -> bool:
@@ -294,9 +335,19 @@ def _character_pixmap(context, character_id, size):
         service = context.services.character_service
         profile = service.all_profiles(context.services.settings).get(character_id) or {}
         picture = service.avatar_file(profile, ROOT)
-        if picture is None and character_id == "kira" and KIRA_PORTRAIT.is_file():
-            picture = KIRA_PORTRAIT                           # Kira's own picture: face crop
-            source = QPixmap(str(picture)).scaledToWidth(size, Qt.SmoothTransformation)
+        own = _portrait_file(character_id)
+        if own is not None:                                   # the character's dashboard picture: face crop
+            full = QPixmap(str(own))
+            crop = _FACE_CROP.get(character_id)
+            if crop is not None:
+                fx, fy, fside = crop
+                side = int(full.width() * fside)
+                full = full.copy(int(full.width() * fx), int(full.width() * fy), side, side)
+                source = full.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                offset = 0
+            else:
+                source = full.scaledToWidth(size, Qt.SmoothTransformation)
+                offset = -int(size * 0.12)
             result = QPixmap(size, size)
             result.fill(Qt.transparent)
             painter = QPainter(result)
@@ -304,7 +355,7 @@ def _character_pixmap(context, character_id, size):
             clip = QPainterPath()
             clip.addEllipse(0, 0, size, size)
             painter.setClipPath(clip)
-            painter.drawPixmap(0, -int(size * 0.12), source)
+            painter.drawPixmap(0, offset, source)
             painter.end()
             return result
         source = QPixmap(str(picture))
@@ -360,8 +411,63 @@ class _BellButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#ff4d8d"))
+        painter.setBrush(dash_theme.qcolor("#ff4d8d"))
         painter.drawEllipse(self.width() - 14, 6, 8, 8)
+
+
+def _bind_call(context, button, fa) -> None:
+    """Call = a live Gemini Live voice conversation (the Voice page's live toggle), shown as pressed while the call is on."""
+    page = getattr(context.views, "voice_page", None)
+    toggle = getattr(page, "live_toggle", None)
+    if toggle is None:
+        button.clicked.connect(lambda checked=False: _soon(context, "fa" if fa else "en"))
+        return
+    button.setCheckable(True)
+    button.setToolTip("تماس زنده با Gemini Live" if fa else "Live call with Gemini Live")
+    idle, active = ("تماس", "پایان") if fa else ("Call", "End")
+    button.setChecked(toggle.isChecked())
+    button.setText(active if toggle.isChecked() else idle)
+    button.clicked.connect(lambda checked=False: toggle.setChecked(bool(checked)))
+
+    def mirror(on) -> None:
+        button.blockSignals(True)
+        button.setChecked(bool(on))
+        button.setText(active if on else idle)
+        button.blockSignals(False)
+
+    toggle.toggled.connect(mirror)
+
+
+def _bind_voice(context, button, fa) -> None:
+    """Voice = read Kira's replies aloud (the composer's speaker toggle); pressing it on also reads the last reply."""
+    speaker = getattr(context.views, "voice_btn", None)
+    if speaker is None:
+        button.clicked.connect(lambda checked=False: _soon(context, "fa" if fa else "en"))
+        return
+    button.setCheckable(True)
+    button.setToolTip("خواندن پاسخ‌ها با صدا" if fa else "Read replies aloud")
+    button.setChecked(speaker.isChecked())
+
+    def pressed(checked=False) -> None:
+        if speaker.isChecked() != bool(checked):
+            speaker.click()                                # same path as the composer's speaker button
+        if checked:
+            _speak_last_reply(context)
+
+    button.clicked.connect(pressed)
+    speaker.toggled.connect(lambda on: (button.blockSignals(True), button.setChecked(bool(on)), button.blockSignals(False)))
+
+
+def _speak_last_reply(context) -> None:
+    try:
+        current = context.state.cur
+        history = context.services.chat_application_service.recent_messages(
+            8, character_id=current.cid, conversation_id=current.conversation_id)
+        last = next((str(m.get("content") or "") for m in reversed(history) if m.get("role") == "assistant"), "")
+        if last.strip():
+            context.services.voice_application_service.speak(last)
+    except Exception:                                      # noqa: BLE001 - reading aloud is optional
+        _LOG.debug("Could not read the last reply aloud", exc_info=True)
 
 
 def _surprise(context, lang) -> None:
@@ -400,7 +506,9 @@ def apply_chat_shell(context) -> bool:
     if not hasattr(settings, "get"):
         settings = {}
     lang = str(settings.get("ui_lang", "en"))
-    style = STYLE.replace("%ALIGN%", "left")
+    dash_theme.set_character(_active_cid(context))
+    raw_style = STYLE.replace("%ALIGN%", "left")
+    style = dash_theme.css(raw_style)
     if not page.objectName():
         page.setObjectName("chatPage")
     page.setStyleSheet(page.styleSheet() + style)
@@ -411,7 +519,7 @@ def apply_chat_shell(context) -> bool:
         ("right column", lambda: _build_right(avatar_card, context, lang, parts)),
         ("tagline", lambda: _hide_tagline(avatar_card)),
         ("avatar side", lambda: _avatar_on_the_right(page, avatar_card, lang)),
-        ("style survives theme changes", lambda: _wrap_theme(controller, page, style)),
+        ("style survives theme changes", lambda: _wrap_theme(context, controller, page, raw_style)),
         ("character pictures", lambda: _wrap_tabs(context, controller)),
         ("conversation rows", lambda: _wrap_rows(controller, conversation_list)),
         ("mood card", lambda: _wrap_mood(context, controller, parts)),
@@ -558,10 +666,9 @@ def _add_new_chat_plus(context, sidebar, new_chat, fa) -> None:
     plus.setCursor(Qt.PointingHandCursor)
     plus.setFocusPolicy(Qt.NoFocus)
     plus.setToolTip("چت جدید" if fa else "New chat")
-    plus.setIcon(make_icon("plus", normal="#c4a6ff", hover="#ffffff"))
-    plus.setIconSize(QSize(18, 18))
+    dash_theme.set_icon(plus, "plus", 18, normal="#c4a6ff", hover="#ffffff")
     plus.setFixedSize(28, 28)
-    plus.setStyleSheet("QToolButton#newChatPlus { background: rgba(139,92,246,0.14); border: 1px solid #6d4bc2; border-radius: 14px; }"
+    dash_theme.set_style(plus, "QToolButton#newChatPlus { background: rgba(139,92,246,0.14); border: 1px solid #6d4bc2; border-radius: 14px; }"
                        "QToolButton#newChatPlus:hover { background: rgba(167,139,250,0.30); border-color: #c4b5fd; }")
     plus.clicked.connect(lambda checked=False: new_chat.click())
     index = box.indexOf(title)
@@ -647,8 +754,7 @@ def _build_nav(context, controller, parts, lang) -> QVBoxLayout:
         button.setFixedHeight(40)
         button.setLayoutDirection(Qt.LeftToRight)   # shell controls remain LTR in every locale
         if glyph in _ICONS:
-            button.setIcon(make_icon(glyph, normal="#b9a2ff", hover="#ffffff", checked="#ffffff", disabled="#52617B"))
-            button.setIconSize(QSize(22, 22))
+            dash_theme.set_icon(button, glyph, 22, normal="#b9a2ff", hover="#ffffff", checked="#ffffff", disabled="#52617B")
             button.setText(" " + text)
         else:
             button.setText(f"{glyph}   {text}")
@@ -677,7 +783,7 @@ def _build_profile(context, parts, lang) -> QFrame:
     if pixmap is not None:
         picture.setPixmap(pixmap)
     else:
-        picture.setPixmap(make_icon("sparkle", normal="#c4a6ff").pixmap(26, 26))
+        dash_theme.set_pixmap(picture, "sparkle", 26, normal="#c4a6ff")
         picture.setAlignment(Qt.AlignCenter)
     names = QVBoxLayout()
     try:
@@ -777,7 +883,7 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
     if layout is None:
         return
     avatar_card.setLayoutDirection(Qt.LeftToRight)
-    if KIRA_PORTRAIT.is_file():
+    if True:
         # Show exactly one large Kira portrait and retain AvatarView for Ren/Mika.
         stale_portraits = [
             widget for widget in avatar_card.findChildren(QWidget)
@@ -788,12 +894,7 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
             duplicate.hide()
             duplicate.setParent(None)
             duplicate.deleteLater()
-        portrait = _Portrait(
-            KIRA_PORTRAIT,
-            "Kira ✦",
-            "همیشه اینجام برات" if fa else "Always here for you",
-            avatar_card,
-        )
+        portrait = _Portrait(KIRA_PORTRAIT, *_portrait_texts("kira", fa), avatar_card)
         layout.insertWidget(0, portrait, 1)
         avatar_card.kira_portrait = portrait
     _sync_portrait(context)
@@ -802,16 +903,20 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
     actions_row.setContentsMargins(8, 8, 8, 8)
     actions_row.setSpacing(6)
     for icon, english, persian in (("phone", "Call", "تماس"), ("waveform", "Voice", "صدا"), ("gift", "Surprise", "سورپرایز")):
-        if icon == "gift":
+        if icon in ("gift", "phone", "waveform"):
             button = QPushButton(persian if fa else english, actions)
             button.setObjectName("dashAction")
             button.setCursor(Qt.PointingHandCursor)
             button.setFocusPolicy(Qt.NoFocus)
-            button.clicked.connect(lambda checked=False: _surprise(context, lang))
+            if icon == "gift":
+                button.clicked.connect(lambda checked=False: _surprise(context, lang))
+            elif icon == "phone":
+                _bind_call(context, button, fa)
+            else:
+                _bind_voice(context, button, fa)
         else:
             button = _display_button(context, lang, persian if fa else english, "dashAction", actions)
-        button.setIcon(make_icon(icon, normal="#b18aff", hover="#ffffff"))
-        button.setIconSize(QSize(20, 20))
+        dash_theme.set_icon(button, icon, 20, normal="#b18aff", hover="#ffffff")
         actions_row.addWidget(button)
     layout.addWidget(actions)
 
@@ -837,27 +942,68 @@ def _hide_tagline(avatar_card) -> None:
 
 
 def _sync_portrait(context) -> None:
-    """Show one Kira picture or the original animated avatar for another character."""
+    """Characters with a dashboard picture show it in the big card; the others keep their own animated avatar."""
     views = context.views
     portrait = getattr(getattr(views, "avatar_card", None), "kira_portrait", None)
     avatar = getattr(views, "avatar", None)
     if avatar is None:
         return
-    try:
-        cid = str(
-            context.services.character_service.active_id(context.services.settings) or "kira"
-        ).strip().lower()
-    except Exception:                                          # noqa: BLE001 - legacy/test hosts may not expose active_id
-        session = getattr(context.state, "cur", None) or getattr(context.state, "front", None)
-        cid = str(getattr(session, "cid", "") or "kira").strip().lower()
+    cid = _active_cid(context)
 
-    if portrait is not None:
-        is_kira = cid == "kira"
-        portrait.setVisible(is_kira)
-        avatar.setVisible(not is_kira)
+    picture = _portrait_file(cid, context)
+    if portrait is not None and picture is not None:
+        portrait.update_content(picture, *_portrait_texts(cid, _is_fa(context)))
+        portrait.setVisible(True)
+        avatar.setVisible(False)
     else:
-        # If the portrait asset is absent, do not hide the only character image.
-        avatar.show()
+        if portrait is not None:
+            portrait.setVisible(False)
+        avatar.show()                                      # no picture for this character: keep its animated avatar
+
+
+def _active_cid(context) -> str:
+    try:
+        return str(context.services.character_service.active_id(context.services.settings) or "kira").strip().lower()
+    except Exception:                                      # noqa: BLE001 - legacy/test hosts may not expose active_id
+        state = getattr(context, "state", None)
+        session = getattr(state, "cur", None) or getattr(state, "front", None)
+        return str(getattr(session, "cid", "") or "kira").strip().lower()
+
+
+def _compact_for_size(context, page, avatar_card) -> None:
+    """In a window that is not maximised the cards shrink instead of running into each other."""
+    height = page.height()
+    short, tiny = height < 820, height < 690
+    nav_height = 30 if tiny else 35 if short else 40
+    for button in page.findChildren(QPushButton, "navItem"):
+        button.setFixedHeight(nav_height)
+        button.setIconSize(QSize(18, 18) if tiny else QSize(20, 20) if short else QSize(22, 22))
+        button.setProperty("compact", "true" if short else "false")
+        button.style().unpolish(button)
+        button.style().polish(button)
+    sidebar = getattr(context.views, "conversation_list", None)
+    while sidebar is not None and sidebar.parentWidget() is not None and sidebar.parentWidget().objectName() != "dashLeft":
+        sidebar = sidebar.parentWidget()                   # climb to the column's direct child: the whole history block
+    if sidebar is not None and sidebar.parentWidget() is not None:
+        sidebar.setMinimumHeight(0)
+        sidebar.setMaximumHeight(16777215 if not short else 150)
+    tab_icon = 30 if tiny else 36 if short else 48
+    for button in dict(getattr(context.views, "char_tab_buttons", {}) or {}).values():
+        button.setIconSize(QSize(tab_icon, tab_icon))
+        button.setMinimumHeight(tab_icon + 6)
+        button.setMaximumHeight(tab_icon + 14)
+        button.setProperty("compact", "true" if short else "false")
+        button.style().unpolish(button)
+        button.style().polish(button)
+    narrow = avatar_card is not None and avatar_card.width() < 285
+    for button in page.findChildren(QPushButton, "dashAction"):
+        button.setProperty("compact", "true" if narrow else "false")
+        button.setIconSize(QSize(16, 16) if narrow else QSize(20, 20))
+        button.style().unpolish(button)
+        button.style().polish(button)
+    mood = page.findChild(QFrame, "statCard")
+    if mood is not None:
+        mood.setFixedHeight(84 if short else 104)
 
 
 def resize_chat_shell(context, available_width=None) -> None:
@@ -902,6 +1048,8 @@ def resize_chat_shell(context, available_width=None) -> None:
         history_panel.setMaximumWidth(history_width)
         history_panel.setMinimumWidth(history_width)
 
+    _compact_for_size(context, page, avatar_card)
+
     center = page.findChild(QWidget, "dashCenter")
     if center is not None:
         center.setMinimumWidth(0)
@@ -927,14 +1075,25 @@ def _avatar_on_the_right(page, avatar_card, lang) -> None:
 
 # ---------------------------------------------------------------- controller wrappers
 
-def _wrap_theme(controller, page, style) -> None:
+def _paint_mood_face(context) -> None:
+    """Kira's mood face is a cat; Ren's is the bull of the markets."""
+    face = getattr(context.views, "mood_emotion_icon", None)
+    if face is not None and _active_cid(context) == "ren":
+        face.setPixmap(make_icon("bull", normal="#ff5964", hover="#ffffff").pixmap(30, 30))
+
+
+def _wrap_theme(context, controller, page, raw_style) -> None:
     original = getattr(controller, "apply_chat_theme", None)
     if not callable(original):
         return
 
     def themed(*args, **kwargs):
         result = original(*args, **kwargs)
-        page.setStyleSheet(page.styleSheet() + style)      # the theme replaced the stylesheet: put the skin back on top
+        dash_theme.set_character(_active_cid(context))
+        page.setStyleSheet(page.styleSheet() + dash_theme.css(raw_style))   # the theme replaced the stylesheet: put the skin back on top
+        dash_theme.retheme(page)
+        _sync_portrait(context)
+        _paint_mood_face(context)
         return result
 
     controller.apply_chat_theme = themed
@@ -951,7 +1110,7 @@ def _picture_tabs(context) -> None:
             badge.setObjectName("quickPeopleBadge")
             badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         icon_name = _BADGES.get(character_id, "star")
-        colour = "#60a5fa" if character_id == "ren" else "#f472b6" if character_id == "mika" else "#c4a6ff"
+        colour = "#ff5964" if character_id == "ren" else "#f472b6" if character_id == "mika" else "#c4a6ff"
         badge.setPixmap(make_icon(icon_name, normal=colour, hover="#ffffff").pixmap(18, 18))
         badge.setFixedSize(18, 18)
         badge.move(35, 2)
@@ -1037,6 +1196,7 @@ def _wrap_mood(context, controller, parts) -> None:
         result = original(*args, **kwargs)
         try:
             _refresh_mood(context, parts)
+            _paint_mood_face(context)
         except Exception:                                  # noqa: BLE001 - the card keeps its last text
             _LOG.debug("Could not refresh the mood card", exc_info=True)
         return result
