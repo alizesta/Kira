@@ -68,14 +68,15 @@ CHARACTER_GUIDANCE = {
         "برای لیک و شایعه صریحاً سطح تأیید را بگو و هیچ ادعای شبکه اجتماعی را خبر قطعی معرفی نکن."
     ),
     "ren": (
-        "تو رن هستی و خبرهای اقتصاد و بازار را به فارسی، دقیق و تحلیلی روایت می‌کنی؛ خبر بازی در این فید جایی ندارد. "
+        "تو رن هستی و فقط خبرهای اقتصاد، بازار، رمزارز و فناوری تجاری را به فارسی، دقیق و تحلیلی روایت می‌کنی؛ خبر بازی در این فید جایی ندارد. "
         "قیمت و درصد تغییر و رکورد را فقط وقتی منبع و زمان داده آن را تأیید می‌کنند بیان کن. "
         "دادهٔ گزارش‌شده را از تفسیر جدا کن و توصیهٔ خریدوفروش قطعی نده."
     ),
     "mika": (
-        "تو میکا هستی و خبرهای هواشناسی، تغذیه، سلامت و پزشکی را به فارسی، گرم و صمیمی توضیح می‌دهی. "
+        "تو میکا هستی و فقط خبرهای هواشناسی، تغذیه، سلامت و پزشکی را به فارسی، گرم و صمیمی توضیح می‌دهی. "
         "پیش‌بینی هوا را فقط برای منطقه و بازهٔ زمانی ذکرشده بیان کن؛ توصیهٔ تغذیه‌ای باید عمومی و مبتنی بر شواهد باشد، "
-        "نه ادعای تقویت قطعی ایمنی یا درمان بیماری. هشدارهای محلی را فقط از منابع رسمی نقل کن."
+        "نه ادعای تقویت قطعی ایمنی یا درمان بیماری. هشدارهای محلی را فقط از منابع رسمی نقل کن. "
+        "اخبار جنگ، عملیات نظامی، سلاح، درگیری، انتخابات، احزاب، سیاست و دیپلماسی خارج از حوزهٔ این فید هستند؛ حتی اگر خبر از نظر جغرافیایی به منطقهٔ کاربر مربوط باشد، آن‌ها را منتشر نکن. "
     ),
 }
 
@@ -209,6 +210,125 @@ _GAME_NEWS_RX = re.compile(
 def is_gaming_news(title: object, summary: object = "") -> bool:
     """Prevent game-industry stories from entering Ren's economy/technology feed."""
     return bool(_GAME_NEWS_RX.search(_clean(f"{title or ''} {summary or ''}", 1000)))
+
+
+CHARACTER_NEWS_CATEGORIES = {
+    "kira": frozenset({
+        "gaming_industry", "game_releases", "gaming_hardware", "gaming_news",
+        "gaming_community", "gaming_social", "gaming_report", "gaming_rumor",
+    }),
+    "ren": frozenset({"economy_markets", "crypto", "digital_technology"}),
+    "mika": frozenset({
+        "weather", "local_weather", "nutrition", "medical_science",
+        "public_health", "seasonal_wellness", "local_outbreak", "iran_health",
+    }),
+}
+
+_MIKA_WAR_POLITICS_RX = re.compile(
+    r"جنگ|درگیری(?:های)?(?:\s+مسلحانه)?|نبرد|موشک|پهپاد|بمباران|آتش[\s‌-]?بس|"
+    r"نیرو(?:های)?\s+مسلح|عملیات\s+نظامی|نظامی|ارتش|سپاه|نیروی\s+(?:هوایی|دریایی)|"
+    r"سرباز|جبهه|جنگنده|پدافند|اشغال|رزمایش|تسلیحات|اسلحه|سلاح|تروریسم|ترور|"
+    r"سیاست|سیاسی|انتخابات|انتخاباتی|رأی[\s‌-]?گیری|پارلمان|مجلس|رئیس[\s‌-]?جمهور|"
+    r"وزیر\s+(?:امور\s+)?خارجه|دیپلماسی|تحریم|ژئوپلیتیک|کودتا|"
+    r"\b(?:wars?|warfare|military|missiles?|drones?|bombing|airstrikes?|air\s+strikes?|"
+    r"ceasefire|invasion|troops?|soldiers?|battlefield|frontline|armed\s+forces|"
+    r"army|navy|air\s+force|geopolitics?|politics?|political|elections?|parliament|"
+    r"congress|president|foreign\s+minister|diplomacy|sanctions?|coup|terrorism|weapons?)\b",
+    re.IGNORECASE,
+)
+_MIKA_HEALTH_TOPIC_RX = re.compile(
+    r"سلامت|بهداشت|پزشک|پزشکی|درمان|بیمار|بیماری|دارو|دارویی|واکسن|واکسیناسیون|"
+    r"آنفلوآنزا|کرونا|سرطان|قلب|دیابت|فشار\s*خون|سلامت\s*روان|"
+    r"health|medical|medicine|clinical|hospital|clinic|vaccine|disease|epidemiolog|"
+    r"public\s+health|healthcare|who\b|cdc\b",
+    re.IGNORECASE,
+)
+_MIKA_WEATHER_TOPIC_RX = re.compile(
+    r"هواشناسی|آب[\s‌-]?و[\s‌-]?هوا|پیش[\s‌-]?بینی|دما|درجه|بارش|باران|برف|طوفان|"
+    r"گرد[\s‌-]?وغبار|آلودگی\s*هوا|موج\s+(?:گرما|سرما)|اقلیم|"
+    r"\b(?:weather|forecast|meteorolog\w*|temperature|rainfall|rain|snowfall|snow|"
+    r"storm|heat\s*wave|cold\s*wave|air\s+quality|climate)\b",
+    re.IGNORECASE,
+)
+_MIKA_NUTRITION_TOPIC_RX = re.compile(
+    r"تغذیه|خوراک|غذا|مواد\s+غذایی|ویتامین|مواد\s+مغذی|رژیم\s+غذایی|"
+    r"فیبر|پروتئین|کالری|قند|چربی|"
+    r"\b(?:nutrition|nutrients?|diet|food|vitamins?|minerals?|protein|fiber|calories?)\b",
+    re.IGNORECASE,
+)
+_REN_MARKET_TOPIC_RX = re.compile(
+    r"اقتصاد|بازار|بورس|سهام|ارز|دلار|یورو|تورم|نرخ\s+بهره|بانک\s+مرکزی|"
+    r"نفت|طلا|قیمت|سرمایه[\s‌-]?گذاری|صادرات|واردات|تولید\s+ناخالص|"
+    r"\b(?:econom\w*|markets?|stocks?|shares?|forex|exchange\s+rates?|inflation|"
+    r"interest\s+rates?|central\s+banks?|oil\s+prices?|gold\s+prices?|investment|"
+    r"exports?|imports?|gdp|earnings|revenue)\b",
+    re.IGNORECASE,
+)
+_REN_CRYPTO_TOPIC_RX = re.compile(
+    r"رمزارز|ارز\s+دیجیتال|بیت[\s‌-]?کوین|اتریوم|بلاک[\s‌-]?چین|کریپتو|"
+    r"\b(?:crypto(?:currency)?|bitcoin|ethereum|blockchain|stablecoins?|token|"
+    r"decentralized\s+finance|defi|crypto\s+market)\b",
+    re.IGNORECASE,
+)
+_REN_TECH_TOPIC_RX = re.compile(
+    r"فناوری|تکنولوژی|هوش\s+مصنوعی|تراشه|نیمه[\s‌-]?رسانا|امنیت\s+سایبری|"
+    r"مخابرات|پردازنده|داده[\s‌-]?مرکز|ربات|فین[\s‌-]?تک|"
+    r"\b(?:technology|artificial\s+intelligence|AI|semiconductors?|chips?|"
+    r"cybersecurity|telecom(?:munications)?|processors?|datacenters?|robotics|fintech)\b",
+    re.IGNORECASE,
+)
+_MIKA_CATEGORY_SIGNAL = {
+    "weather": _MIKA_WEATHER_TOPIC_RX,
+    "local_weather": _MIKA_WEATHER_TOPIC_RX,
+    "nutrition": _MIKA_NUTRITION_TOPIC_RX,
+    "medical_science": _MIKA_HEALTH_TOPIC_RX,
+    "public_health": _MIKA_HEALTH_TOPIC_RX,
+    "seasonal_wellness": _MIKA_HEALTH_TOPIC_RX,
+    "local_outbreak": _MIKA_HEALTH_TOPIC_RX,
+    "iran_health": re.compile(
+        _MIKA_HEALTH_TOPIC_RX.pattern + "|" + _MIKA_NUTRITION_TOPIC_RX.pattern,
+        re.IGNORECASE,
+    ),
+}
+_REN_CATEGORY_SIGNAL = {
+    "economy_markets": _REN_MARKET_TOPIC_RX,
+    "crypto": _REN_CRYPTO_TOPIC_RX,
+    "digital_technology": _REN_TECH_TOPIC_RX,
+}
+
+
+def is_relevant_character_news(
+    character_id: str,
+    category: object,
+    title: object,
+    summary: object = "",
+    *,
+    require_topic_match: bool = True,
+) -> bool:
+    """Enforce each character's editorial domain before a source can be stored or shown."""
+    owner = str(character_id or "").strip().lower()
+    topic = _clean(category, 48).lower()
+    if topic not in CHARACTER_NEWS_CATEGORIES.get(owner, ()):
+        return False
+
+    if owner == "kira":
+        # Kira's RSS sources are curated gaming publishers and game-community feeds.
+        return True
+
+    text = _clean(f"{title or ''} {summary or ''}", 1600)
+    if owner == "ren":
+        if is_gaming_news(title, summary):
+            return False
+        signal = _REN_CATEGORY_SIGNAL.get(topic)
+        return not require_topic_match or bool(signal and signal.search(text))
+
+    if owner == "mika":
+        if _MIKA_WAR_POLITICS_RX.search(text):
+            return False
+        signal = _MIKA_CATEGORY_SIGNAL.get(topic)
+        return not require_topic_match or bool(signal and signal.search(text))
+
+    return False
 
 
 def _published_epoch(value: object) -> float | None:
@@ -436,7 +556,13 @@ class NewsFeedStore:
             or float(item.get("first_seen_at") or 0),
             reverse=True,
         )
-        return items
+        return [
+            item for item in items
+            if is_relevant_character_news(
+                character_id, item.get("category"), item.get("title"), item.get("summary"),
+                require_topic_match=False,
+            )
+        ]
 
     def list_unprocessed_items(self, character_id: str, *, limit: int = 12) -> list[dict]:
         """Return bounded source material awaiting a successful editorial pass."""
@@ -756,6 +882,17 @@ class NewsFeedService:
                         collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
+            accepted = [
+                item for item in collected
+                if isinstance(item, dict) and is_relevant_character_news(
+                    character_id, item.get("category"), item.get("title"), item.get("summary")
+                )
+            ]
+            rejected_count = len(collected) - len(accepted)
+            if rejected_count:
+                _LOG.info("Rejected %d off-domain news items for %s", rejected_count, character_id)
+            collected = accepted
+
             # RSS feeds and publisher pages frequently omit thumbnails. Prefer
             # Tavily's title-matched image search when configured; otherwise use
             # Wikimedia Commons' freely licensed, topic-matched raster images.
@@ -805,6 +942,17 @@ class NewsFeedService:
                     # remains retryable; the UI renders only model-authored character posts.
                     self.store.upsert_items(character_id, collected, region=region)
                 pending = self.store.list_unprocessed_items(character_id, limit=8)
+                rejected_pending = [
+                    item for item in pending
+                    if not is_relevant_character_news(
+                        character_id, item.get("category"), item.get("title"), item.get("summary")
+                    )
+                ]
+                if rejected_pending:
+                    self.store.mark_sources_processed(
+                        character_id, [item.get("url", "") for item in rejected_pending]
+                    )
+                pending = [item for item in pending if item not in rejected_pending]
                 count = 0
                 if pending:
                     try:
