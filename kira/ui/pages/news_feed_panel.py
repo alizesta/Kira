@@ -490,7 +490,9 @@ class NewsFeedPanel(QFrame):
         items = self._service.store.list_posts(cid, limit=12)
         state = self._service.store.status(cid)
         refreshing = self._service.is_refreshing(cid)
-        error = self._model_error(state)
+        # The last generation error belongs to the previous run. Do not keep
+        # presenting it as the result while a fresh attempt is actively running.
+        error = "" if refreshing else self._model_error(state)
         if refreshing:
             self.status_label.setText("در حال بررسی خبرها و نوشتن روایت…")
         else:
