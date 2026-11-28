@@ -49,13 +49,13 @@ def _asset_name(name):
     return value
 
 
-_CAT_HEAD = '<path d="M4.2 11.4V4.2c0-.8.9-1.1 1.4-.6l3.6 2.6c1.7-.5 3.7-.5 5.6 0l3.6-2.6c.5-.5 1.4-.2 1.4.6v7.2c0 4.5-3.3 8-7.8 8s-7.8-3.5-7.8-8z"/><path d="M6.4 7.4V5.6l1.7 1.2M17.6 7.4V5.6l-1.7 1.2" opacity=".6"/><path d="M1.4 12.4l2.8.6M1.7 15.4l2.6-.8M22.6 12.4l-2.8.6M22.3 15.4l-2.6-.8" opacity=".65"/>'
+_CAT_HEAD = '<path d="M4.2 11.4V4.2c0-.8.9-1.1 1.4-.6l3.6 2.6c1.7-.5 3.7-.5 5.6 0l3.6-2.6c.5-.5 1.4-.2 1.4.6v7.2c0 4.5-3.3 8-7.8 8s-7.8-3.5-7.8-8z"/><path d="M6.2 8.4V5.4l2.2 1.5M17.8 8.4V5.4l-2.2 1.5" opacity=".7"/><path d="M12 6.7v1.7M10.1 7v1.2M13.9 7v1.2" opacity=".7"/><path d="M.9 11.6l3.3.8M.8 14.4l3.4-.2M1.4 17l3-.9M23.1 11.6l-3.3.8M23.2 14.4l-3.4-.2M22.6 17l-3-.9" opacity=".6"/>'
 
 
 def _cat_face(source):
     """Mood faces are cat faces: the round head of the SVG becomes a head with two pointed ears (same eyes and mouth)."""
     # bigger, friendlier eyes than the plain round faces
-    return source.replace('<circle cx="12" cy="12" r="9"/>', _CAT_HEAD, 1).replace('r=".8"', 'r="1.15"')
+    return "<!--thin-->" + source.replace('<circle cx="12" cy="12" r="9"/>', _CAT_HEAD, 1).replace('r=".8"', 'r="1.15"')
 
 
 def _svg_text(name):
@@ -88,12 +88,13 @@ def _svg_pixmap(source, colour):
     painter = QPainter(pm)
     painter.setRenderHint(QPainter.Antialiasing)
     intensity = max(0.0, min(1.0, _GLOW_INTENSITY))
+    k = 0.58 if "<!--thin-->" in source else 1.0                  # detailed drawings (cat, bull) use finer lines
     for alpha, width in ((14 + 42 * intensity, 6.8 + intensity),
                          (24 + 62 * intensity, 4.4 + 0.7 * intensity),
                          (38 + 82 * intensity, 2.8 + 0.4 * intensity)):
-        _svg_pass(painter, source, colour, width, alpha)
-    _svg_pass(painter, source, colour, 1.75, 242)
-    _svg_pass(painter, source, QColor(232, 250, 255), 0.5, 72 + 72 * intensity)
+        _svg_pass(painter, source, colour, width * k, alpha)
+    _svg_pass(painter, source, colour, 1.75 * k, 242)
+    _svg_pass(painter, source, QColor(232, 250, 255), 0.5 * k, 72 + 72 * intensity)
     painter.end()
     return pm
 

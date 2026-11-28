@@ -225,6 +225,10 @@ class ChatShellTests(unittest.TestCase):
                 # Character switching must reveal the original animated AvatarView,
                 # not create another large Kira portrait.
                 context.services.character_service.active_id = lambda _settings: "ren"
+                chat_shell._sync_portrait(context)                 # Ren has his own picture in the same single card
+                self.assertFalse(portrait.isHidden())
+                self.assertTrue(original_avatar.isHidden())
+                context.services.character_service.active_id = lambda _settings: "nobody-with-a-picture"
                 chat_shell._sync_portrait(context)
                 self.assertTrue(portrait.isHidden())
                 self.assertFalse(original_avatar.isHidden())
