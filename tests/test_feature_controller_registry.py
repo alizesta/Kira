@@ -162,6 +162,12 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                 )
 
 
+    def test_voice_settings_can_read_character_profiles_for_news_authoring(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, SERVICE_FIELDS
+
+        self.assertIn("character_service", SERVICE_FIELDS)
+        self.assertIn("character_service", CONTROLLER_ACCESS["voice_settings"]["services"])
+
     def test_runtime_shutdown_can_clear_desktop_context_service(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS, SERVICE_FIELDS
 
