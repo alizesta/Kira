@@ -81,9 +81,12 @@ class NewsPostGeneratorTests(unittest.TestCase):
             "url": "https://example.com/story",
         }])
         chat_call = next(call for call in router.calls if call[0] == "chat")
-        self.assertLessEqual(len(chat_call[2]), 5000)
         self.assertIn('"summary":"' + ("S" * 420) + '"', chat_call[1][0]["content"])
-        self.assertNotIn("D" * 1801, chat_call[2])
+        self.assertIn("description: " + ("D" * 350), chat_call[2])
+        self.assertIn("prompt: " + ("P" * 900), chat_call[2])
+        self.assertIn("specialty_prompt: " + ("S" * 350), chat_call[2])
+        self.assertIn("traits: " + ("T" * 200), chat_call[2])
+        self.assertNotIn("D" * 351, chat_call[2])
 
     def test_invalid_model_output_is_rejected(self):
         generator = NewsPostGenerator(lambda _owner: FakeRouter("not json"))
