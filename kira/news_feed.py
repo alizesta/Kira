@@ -103,6 +103,46 @@ def _image_candidate(value: object) -> str:
     return ""
 
 
+def _commons_thumbnail(query: str) -> str:
+    """Find a topic-matched, freely licensed raster thumbnail when publisher media is absent."""
+    text = _clean(query, 180)
+    if not text:
+        return ""
+    try:
+        from .webintel.netguard import fetch
+
+        params = urlencode({
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": text,
+            "gsrnamespace": "6",
+            "gsrlimit": "5",
+            "prop": "imageinfo",
+            "iiprop": "url",
+            "iiurlwidth": "720",
+            "format": "json",
+        })
+        response = fetch(
+            "https://commons.wikimedia.org/w/api.php?" + params,
+            timeout=8, max_bytes=350_000, max_redirects=2, total_timeout=12,
+        )
+        payload = json.loads(response.body.decode("utf-8", errors="replace"))
+        pages = (payload.get("query") or {}).get("pages") or {}
+        for page in pages.values():
+            info = (page.get("imageinfo") or [{}])[0]
+            candidate = _image_candidate(info.get("thumburl") or info.get("url"))
+            parts = urlsplit(candidate)
+            path = parts.path.lower()
+            if (
+                parts.hostname == "upload.wikimedia.org"
+                and path.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
+            ):
+                return candidate
+    except Exception as exc:  # noqa: BLE001 - public image discovery is an optional fallback
+        _LOG.info("Wikimedia thumbnail lookup failed: %s", type(exc).__name__)
+    return ""
+
+
 def _canonical_url(raw_url: object) -> tuple[str, str]:
     try:
         parts = urlsplit(str(raw_url or "").strip())
@@ -714,17 +754,18 @@ class NewsFeedService:
                         collected.append(entry)
                 except Exception as exc:  # noqa: BLE001 - a failed query must not discard other results
                     errors.append(f"{category}: {type(exc).__name__}")
-            # RSS feeds and publisher pages frequently omit thumbnails. When a
-            # Tavily image key is configured, backfill only the first three
-            # missing story images from title-matched image searches. This is
-            # optional and never blocks editorial generation or the news feed.
-            if str(settings.get("tavily_api_key") or "").strip():
-                missing_images = [
-                    item for item in collected
-                    if isinstance(item, dict) and not _image_candidate(item.get("image_url"))
-                    and _clean(item.get("title"), 240)
-                ][:3]
-                for item in missing_images:
+            # RSS feeds and publisher pages frequently omit thumbnails. Prefer
+            # Tavily's title-matched image search when configured; otherwise use
+            # Wikimedia Commons' freely licensed, topic-matched raster images.
+            missing_images = [
+                item for item in collected
+                if isinstance(item, dict) and not _image_candidate(item.get("image_url"))
+                and _clean(item.get("title"), 240)
+            ][:3]
+            tavily_key = str(settings.get("tavily_api_key") or "").strip()
+            for item in missing_images:
+                image_url = ""
+                if tavily_key:
                     image_query = " ".join(filter(None, (
                         _clean(item.get("title"), 180),
                         _clean(item.get("source_label") or item.get("source"), 80),
@@ -742,13 +783,15 @@ class NewsFeedService:
                             ),
                             "",
                         )
-                        if image_url:
-                            item["image_url"] = image_url
                     except Exception as exc:  # noqa: BLE001 - image discovery is optional
                         _LOG.info(
-                            "News thumbnail search failed for %s: %s",
+                            "Tavily thumbnail lookup failed for %s: %s",
                             character_id, type(exc).__name__,
                         )
+                if not image_url:
+                    image_url = _commons_thumbnail(_clean(item.get("title"), 180))
+                if image_url:
+                    item["image_url"] = image_url
 
             if self._post_generator is None:
                 # Compatibility for isolated service tests and integrations that have not
