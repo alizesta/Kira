@@ -110,6 +110,60 @@ def _entry_link(entry) -> str:
     return ""
 
 
+class _ImageSrcExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.urls = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "img":
+            return
+        values = dict(attrs)
+        value = str(values.get("src") or values.get("data-src") or "").strip()
+        if value:
+            self.urls.append(value)
+
+
+def _entry_image(entry, summary_html: str = "") -> str:
+    """Read a publisher-provided image URL from standard RSS/Atom media fields."""
+    candidates = []
+    for node in entry.iter():
+        tag = _local(node.tag)
+        attrs = {str(key).lower(): str(value).strip() for key, value in node.attrib.items()}
+        value = ""
+        if tag == "thumbnail":
+            value = attrs.get("url") or attrs.get("href") or ""
+        elif tag == "content" and (
+            attrs.get("medium", "").lower() == "image"
+            or attrs.get("type", "").lower().startswith("image/")
+        ):
+            value = attrs.get("url") or attrs.get("src") or attrs.get("href") or ""
+        elif tag == "enclosure" and attrs.get("type", "").lower().startswith("image/"):
+            value = attrs.get("url") or attrs.get("href") or ""
+        elif tag == "link" and (
+            attrs.get("rel", "").lower() == "enclosure"
+            and attrs.get("type", "").lower().startswith("image/")
+        ):
+            value = attrs.get("href") or attrs.get("url") or ""
+        if value:
+            candidates.append(value)
+
+    if not candidates and summary_html:
+        parser = _ImageSrcExtractor()
+        try:
+            parser.feed(summary_html)
+            parser.close()
+            candidates.extend(parser.urls)
+        except Exception:
+            pass
+
+    for candidate in candidates:
+        value = str(candidate or "").strip()
+        if value.startswith(("https://", "http://")) and len(value) <= 1500:
+            return value
+    return ""
+
+
 def parse_feed(xml_data: bytes | str, source: FeedSource, *, limit: int = 20) -> list[dict]:
     """Parse RSS 2.0 or Atom safely; reject DTD/entity declarations and malformed XML."""
     raw = xml_data.encode("utf-8") if isinstance(xml_data, str) else bytes(xml_data or b"")
@@ -129,9 +183,9 @@ def parse_feed(xml_data: bytes | str, source: FeedSource, *, limit: int = 20) ->
     for entry in entries[:max(1, min(int(limit), 30))]:
         title = _plain_text(_child_text(entry, ("title",)), 240)
         link = _entry_link(entry) or _child_text(entry, ("link", "guid", "id"))
-        summary = _plain_text(
-            _child_text(entry, ("encoded", "description", "summary", "content", "subtitle")), 900
-        )
+        summary_raw = _child_text(entry, ("encoded", "description", "summary", "content", "subtitle"))
+        summary = _plain_text(summary_raw, 900)
+        image_url = _entry_image(entry, summary_raw)
         published = _child_text(entry, ("pubdate", "published", "updated", "date", "created"))
         if not title or not link.startswith(("http://", "https://")):
             continue
@@ -140,6 +194,7 @@ def parse_feed(xml_data: bytes | str, source: FeedSource, *, limit: int = 20) ->
         results.append({
             "title": title,
             "summary": summary,
+            "image_url": image_url,
             "url": link,
             "published_at": published,
             "category": source.category,
