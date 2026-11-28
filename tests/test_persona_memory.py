@@ -49,6 +49,9 @@ class PersonaMemoryTests(unittest.TestCase):
             self.assertEqual(service.user_name("ren"), "RenUser")
             pm.observe("user", "call me Ren")
             self.assertEqual(service.user_name("ren"), "Ren")
+            nick = next(item for item in pm._load()["facts"] if item.get("kind") == "nick")
+            self.assertTrue(pm.update_item(nick["id"], "He likes to be called Reza"))
+            self.assertEqual(service.user_name("ren"), "Reza")
 
         with pm.character_scope("mika"):
             self.assertEqual(service.user_name("mika"), "")
