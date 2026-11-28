@@ -28,7 +28,7 @@ import math
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QSizePolicy,
+    QGraphicsDropShadowEffect, QSizePolicy,
     QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -204,6 +204,11 @@ class _Sparkline(QWidget):
         self._amp = self._shape[0]
         self._freq = self._shape[1]
         self._phase = 0.0
+        glow = QGraphicsDropShadowEffect(self)               # real bloom around the whole line, not only the painted halo passes
+        glow.setOffset(0, 0)
+        glow.setBlurRadius(22)
+        glow.setColor(QColor(dash_theme.second("#a78bfa")))
+        self.setGraphicsEffect(glow)
         self._timer = QTimer(self)
         self._timer.setInterval(40)
         self._timer.timeout.connect(self._tick)
@@ -229,22 +234,24 @@ class _Sparkline(QWidget):
     def paintEvent(self, _event) -> None:                  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
+        inset = 9                                           # keep the line and its glow inside the card
+        w, h = self.width() - 2 * inset, self.height()
+        amp = max(self._amp, 0.55)                          # never a flat line, even for a neutral mood
         path = QPainterPath()
         for x in range(0, w + 1, 2):
             t = x / max(1, w)
-            envelope = math.sin(math.pi * t) ** 0.6          # calm at both ends like a pulse line
-            y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * self._amp * (h / 2 - 8) * envelope
-            y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * self._amp * 3 * envelope
-            path.moveTo(x, y) if x == 0 else path.lineTo(x, y)
+            envelope = math.sin(math.pi * t) ** 0.5          # calm at both ends like a pulse line
+            y = h / 2 + math.sin(t * self._freq * 2 * math.pi + self._phase) * amp * (h / 2 - 9) * envelope
+            y += math.sin(t * self._freq * 3.1 * math.pi - self._phase * 1.3) * amp * 3 * envelope
+            path.moveTo(x + inset, y) if x == 0 else path.lineTo(x + inset, y)
         base = dash_theme.second("#a78bfa")                  # neon heartbeat line: wide soft bloom passes, then a bright core
-        for width, alpha in ((12, 30), (9, 52), (6, 96), (3.8, 170)):
+        for width, alpha in ((14, 34), (10, 60), (7, 110), (4.4, 200)):
             glow = QColor(base)
             glow.setAlpha(alpha)
             painter.setPen(QPen(glow, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(path)
-        core = QColor(base).lighter(160)
-        painter.setPen(QPen(core, 2.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        core = QColor(base).lighter(175)
+        painter.setPen(QPen(core, 2.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
 
 
