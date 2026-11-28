@@ -1,3 +1,7 @@
+## 2026-11-28 18:24 Iran — Release package now ships the character pictures, backgrounds, icons and font
+- Cause: `scripts/release-allowlist.json` (the exact inventory of the update package) did not list `assets/dashboard/*_portrait.jpg`, `assets/characters/*_chat_background.jpg`, most of `assets/icons/` (incl. `snake.svg`, `bull.svg`, `cat.svg`, `star.svg`) or `assets/fonts/`, so an installed/updated Kira had no Kira portrait and no chat backgrounds.
+- Fix: 40 runtime asset files added to the allowlist (portraits, backgrounds, icons, Vazirmatn). `assets/reference/` and `assets/sounds/` stay out.
+
 ## 2026-11-28 18:19 Iran — Mika: new portrait, neon-clinic chat background and snake emblem
 - `assets/characters/mika_portrait.jpg` and the new `assets/dashboard/mika_portrait.jpg` (1024x1536, the pink-haired doctor) replace the 256x384 placeholder; `assets/characters/mika_chat_background.jpg` (1536x1024, neon clinic with cherry blossoms) replaces the 384x256 one.
 - Mika's emblem is now a snake: new `assets/icons/snake.svg` (own drawing, same line style as `bull`), used as her Quick People badge instead of `flower-2`.

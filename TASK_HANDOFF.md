@@ -1,3 +1,8 @@
+## Missing character art in the update package — handoff (2026-11-28 18:24 Iran)
+- Branch: `claude/mika-art` (same branch as the Mika art commit). Not merged; no PR; no GitHub Actions run.
+- Verified here: `tests/test_release.py` + `tests/test_release_package.py` give the same 4 failures as before the change (`test_bat_files_keep_crlf_and_call_installer`, `test_install_deps_reports_failed_package_and_dns_hint`, `test_requirements_contain_no_unneeded_packages`, `test_version`); the rest pass. Not verified: a real package build, Windows.
+- Note: `kira-release.yml` only triggers on `assets/characters/**`, not on `assets/dashboard/**` or `assets/icons/**`; a change limited to those folders will not start the build.
+
 ## Mika art and snake emblem — handoff (2026-11-28 18:19 Iran)
 - Branch: `claude/mika-art`, based on `new-main` bf3e96d. Not merged and not pushed to `new-main` (a push there starts kira-release); no Pull Request, no GitHub Actions run.
 - Done: new Mika portrait (both `assets/characters/` and `assets/dashboard/`), new chat background, `assets/icons/snake.svg` as her badge, face crop and tagline in `chat_shell.py`; `tests/test_avatar_art.py` now expects 1024x1536 for Mika's portrait.
