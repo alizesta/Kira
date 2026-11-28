@@ -157,8 +157,8 @@ class VisionCaptureService:
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
             monitor_id=_service_value(privacy, "selected_monitor_id") or None,
-            max_width=max_width,
-            max_height=max_height,
+            max_width=policy.max_width,
+            max_height=policy.max_height,
         )
         return CaptureResult("desktop", window_info, _to_image(pixmap))
 
