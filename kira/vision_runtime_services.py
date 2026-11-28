@@ -152,9 +152,8 @@ class VisionCaptureService:
             )
 
         policy = _service_value(self._vision, "policy")
-        # detail=True (small text / fine UI / OCR retry) escalates to 1280x720; default stays at the policy size.
-        max_width = CAPTURE_DETAIL_MAX_WIDTH if detail else policy.max_width
-        max_height = CAPTURE_DETAIL_MAX_HEIGHT if detail else policy.max_height
+        # Continuous desktop capture follows the configured policy. Higher-detail
+        # snapshots are handled separately by VisionSnapshotService.
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
             monitor_id=_service_value(privacy, "selected_monitor_id") or None,
