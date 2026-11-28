@@ -684,8 +684,8 @@ class NewsFeedService:
                 count = self.store.upsert_items(character_id, collected, region=region)
             else:
                 if collected:
-                    # Keep source evidence privately so failed model generations can retry;
-                    # list_posts() deliberately excludes these raw records from the UI.
+                    # Keep source evidence separately from authored posts so generation can retry;
+                    # the panel may label and show pending source links without calling them character posts.
                     self.store.upsert_items(character_id, collected, region=region)
                 pending = self.store.list_unprocessed_items(character_id, limit=8)
                 count = 0
