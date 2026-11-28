@@ -637,10 +637,18 @@ class NewsFeedPanel(QFrame):
 
     def _apply_image(self, article_url: str, data: bytes):
         self._image_loading.discard(article_url)
-        self._image_cache[article_url] = bytes(data or b"")
+        if data:
+            self._image_cache[article_url] = bytes(data)
+        else:
+            # Do not permanently cache a missing preview; a later refresh may
+            # provide an RSS thumbnail or the publisher may become reachable.
+            self._image_cache.pop(article_url, None)
         for label in self._image_labels.get(article_url, []):
             if label is not None:
-                label.set_cover(self._image_cache[article_url])
+                try:
+                    label.set_cover(bytes(data or b""))
+                except RuntimeError:
+                    continue
 
     def rendered_text(self) -> str:
         """Plain-text view for accessibility and tests; contains only authored posts."""
