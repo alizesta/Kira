@@ -155,13 +155,14 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             mock.patch.object(voice_module, "join_wavs_with_pauses", return_value=wav.getvalue()),
             mock.patch.object(voice_module, "apply_audio_effects", side_effect=lambda payload, _profile: payload),
         ):
-            result = Speaker._synth(speaker, session, 0, "سلام")
+            with self.assertLogs("kira.voice", level="WARNING") as captured:
+                result = Speaker._synth(speaker, session, 0, "سلام")
 
         self.assertEqual(result, ("fallback.wav", []))
         self.assertEqual([call.args[0] for call in prepare.call_args_list], ["custom-voice.onnx", ""])
         self.assertEqual(synthesize.call_args.args[1], "")
-        speaker._report.assert_called_once()
-        self.assertIn("Mana", speaker._report.call_args.args[0])
+        speaker._report.assert_not_called()
+        self.assertTrue(any("bundled Mana voice" in entry for entry in captured.output))
 
     def test_speaker_idle_state_waits_for_real_thread_exit(self):
         class FakeThread:
