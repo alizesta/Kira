@@ -520,7 +520,7 @@ class NewsFeedPanel(QFrame):
             elif state.get("last_error"):
                 self.empty_title.setText("دریافت خبر به مشکل خورد")
                 self.empty_body.setText(
-                    f"خطای دریافت: {str(state.get('last_error'))[:260]}\\nبرای تلاش دوباره «به‌روزرسانی» را بزن."
+                    f"خطای دریافت: {str(state.get('last_error'))[:260]}\nبرای تلاش دوباره «به‌روزرسانی» را بزن."
                 )
             else:
                 self.empty_title.setText("هنوز روایتی آماده نشده")
