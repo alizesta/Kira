@@ -467,7 +467,11 @@ class RouterRouteTests(unittest.TestCase):
         s["providers"][mirror] = dict(s["providers"]["groq"])
         s["providers"][mirror]["label"] = "Groq credential mirror"
         s["providers"][mirror]["base_url"] = "https://api.groq.com/openai/v1"
-        routes.add_route(s, mirror, groq_route["model"], enabled=True)
+        mirror_route = routes.add_route(s, mirror, groq_route["model"], enabled=True)
+        ordered = [route["id"] for route in routes.get_routes(s)]
+        ordered.remove(mirror_route["id"])
+        ordered.insert(ordered.index(groq_route["id"]) + 1, mirror_route["id"])
+        routes.reorder(s, ordered)
         r = HybridRouter(s)
         f = dispatch({"groq": requests.ConnectionError("offline"), "cloudflare": ok_cloudflare("backup")})
         with mock.patch("requests.post", f):
