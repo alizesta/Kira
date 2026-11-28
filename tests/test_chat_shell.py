@@ -219,7 +219,7 @@ class ChatShellTests(unittest.TestCase):
                 self.assertEqual(len(portraits), 1)
                 portrait = portraits[0]
                 self.assertIsInstance(portrait, chat_shell._Portrait)
-                self.assertTrue(portrait.isVisible())
+                self.assertFalse(portrait.isHidden())
                 self.assertTrue(original_avatar.isHidden())
 
                 # Character switching must reveal the original animated AvatarView,
