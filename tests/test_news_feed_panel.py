@@ -21,7 +21,7 @@ class _Store:
             return [{
                 "category": "gaming_industry",
                 "title": "Visible character-written headline for Kira",
-                "summary": "این روایت خود کیراست؛ خبر را از چند زاویه بررسی کرده و توضیح داده چرا برای بازیکن‌ها اهمیت دارد.",
+                "summary": "این روایت خود کیراست؛ خبر را از چند زاویه بررسی کرده و توضیح داده چرا برای بازیکن‌ها اهمیت دارد.\\n\\nسطح اطمینان: گزارش‌شده\\nمنابع تکمیلی: Example source: https://source.example/report",
                 "source": "example.com",
                 "url": "https://example.com/kira",
                 "image_url": "https://cdn.example.com/kira.jpg",
@@ -83,6 +83,8 @@ class NewsFeedPanelTests(unittest.TestCase):
         text = self.panel.rendered_text()
         self.assertIn("Visible character-written headline for Kira", text)
         self.assertIn("این روایت خود کیراست", text)
+        self.assertIn("سطح اطمینان: گزارش‌شده", text)
+        self.assertNotIn("https://source.example/report", text)
         cards = self.panel.cards_container.findChildren(QFrame, "newsStoryCard")
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].width(), 372)
