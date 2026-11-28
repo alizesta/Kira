@@ -201,7 +201,10 @@ class ChatShellTests(unittest.TestCase):
         context.views.avatar = avatar
         stale_portrait = QLabel("old portrait", p.avatar_card)
         stale_portrait.setObjectName("kiraPortrait")
+        legacy_portrait_type = type("_Portrait", (QLabel,), {})
+        legacy_portrait = legacy_portrait_type("legacy portrait without objectName", p.avatar_card)
         p.avatar_card.layout().insertWidget(0, stale_portrait)
+        p.avatar_card.layout().insertWidget(1, legacy_portrait)
 
         with tempfile.TemporaryDirectory() as temp:
             image_path = Path(temp) / "kira.png"
@@ -217,6 +220,7 @@ class ChatShellTests(unittest.TestCase):
         self.assertEqual(portrait_widgets[0]._subtitle, "همیشه اینجام برات")
         self.assertTrue(avatar.isHidden())
         self.assertIsNone(stale_portrait.parent())
+        self.assertIsNone(legacy_portrait.parent())
 
     def test_chat_shell_reflows_columns_when_window_is_not_maximized(self):
         context, p = build()
