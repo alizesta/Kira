@@ -89,7 +89,7 @@ class NewsPostGenerator:
             "unless the new source records contain a meaningful update. Combine records about the same story into one post and cite "
             "all source IDs used. Skip trivial, stale, duplicate, or unsupported material. Each post must "
             "have a short conversational Persian title and a concise Persian body of 100-160 characters, at most 2 short sentences, "
-            "that contains only the key fact and why it matters. Avoid introductions, repeated context, filler, and long analysis. "
+            "that contains only the key fact and why it matters. Start directly with the news: no greetings (especially "سلام بچه‌ها"), no audience address, no introductions, repeated context, filler, or long analysis. Address the reader as one person if needed. "
             "Return ONLY valid JSON with this exact shape: "
             '{"posts":[{"source_ids":[0,1],"title":"...","body":"...","confidence":"confirmed|reported|unverified"}]}. '
             "source_ids must refer only to IDs in the input. Never create or rewrite URLs. "
