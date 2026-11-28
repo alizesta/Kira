@@ -212,6 +212,48 @@ class NewsFeedPanel(QFrame):
         self.region_edit.setText(f"{city}, {country}")
         self.region_status.setText(f"موقعیت تأییدشده و ذخیره‌شده: {city}, {country}")
 
+    def _render_pending_sources(self, items, last_error=""):
+        """Show collected source links separately from model-authored character posts."""
+        cards = [
+            "<div style='margin:2px 0 5px 2px;color:#c8b8ff;font-weight:600'>"
+            "خبرهای دریافت‌شده · هنوز توسط شخصیت روایت نشده‌اند</div>"
+        ]
+        detail = str(last_error or "")
+        if detail.startswith("Post generation:"):
+            parts = detail.split(":", 2)
+            detail = parts[2].strip() if len(parts) > 2 else ""
+            if detail:
+                cards.append(
+                    "<div style='margin:2px 0 5px;color:#ffbd8a'>"
+                    + html.escape(detail[:260])
+                    + "</div>"
+                )
+        for item in items:
+            category = html.escape(
+                CATEGORY_LABELS.get(item.get("category"), item.get("category", "خبر"))
+            )
+            title = html.escape(str(item.get("title") or "خبر"))
+            summary = html.escape(str(item.get("summary") or "برای جزئیات منبع را باز کن."))
+            source = html.escape(str(item.get("source") or "منبع"))
+            raw_url = str(item.get("url") or "")
+            if not raw_url.startswith(("https://", "http://")):
+                continue
+            url = html.escape(raw_url, quote=True)
+            published = html.escape(str(item.get("published_at") or ""))
+            if not published:
+                published = datetime.fromtimestamp(
+                    float(item.get("first_seen_at") or 0), tz=timezone.utc
+                ).astimezone().strftime("%m-%d %H:%M")
+            cards.append(
+                "<div style='margin:2px 0;padding:2px 4px;border-left:2px solid #d7a45b'>"
+                f"<small>{category} · {published} · منبع اولیه</small> "
+                f"<a href='{url}' style='font-weight:600;text-decoration:none'>{title}</a>"
+                f"<br><span>{summary[:320]}</span> <small>({source})</small></div>"
+            )
+        self.feed_browser.setHtml(
+            "<html><body style='margin:3px'>" + "".join(cards) + "</body></html>"
+        )
+
     def refresh_view(self):
         cid = self._character_id
         if cid not in CHARACTER_IDS:
@@ -222,8 +264,17 @@ class NewsFeedPanel(QFrame):
         items = self._service.store.list_posts(cid, limit=2)
         state = self._service.store.status(cid)
         refreshing = self._service.is_refreshing(cid)
+        pending = []
+        if not items:
+            list_pending = getattr(self._service.store, "list_unprocessed_items", None)
+            if callable(list_pending):
+                try:
+                    pending = list_pending(cid, limit=2)
+                except Exception:
+                    pending = []
+
         if refreshing:
-            self.status_label.setText("در حال بررسی و نوشتن پست تازه…" )
+            self.status_label.setText("در حال بررسی و نوشتن پست تازه…")
             self.refresh_button.setEnabled(False)
         else:
             self.refresh_button.setEnabled(True)
@@ -231,7 +282,12 @@ class NewsFeedPanel(QFrame):
                 checked = datetime.fromtimestamp(
                     float(state["refreshed_at"]), tz=timezone.utc
                 ).astimezone().strftime("%H:%M")
-                text = f"{len(items)} پست · بررسی {checked}"
+                if items:
+                    text = f"{len(items)} پست · بررسی {checked}"
+                elif pending:
+                    text = f"{len(pending)} خبر دریافتی · بررسی {checked}"
+                else:
+                    text = f"۰ پست · بررسی {checked}"
                 error = str(state.get("last_error") or "")
                 if "Post generation" in error:
                     text += " · تولید با مدل ناموفق بود"
@@ -241,21 +297,24 @@ class NewsFeedPanel(QFrame):
             elif state.get("last_error"):
                 self.status_label.setText("تولید پست خبری ناموفق بود · دوباره تلاش کن")
             else:
-                self.status_label.setText("فید در حال آماده‌شدن است")
+                self.status_label.setText("فید در حال آماده‌سازی است")
 
         if not items:
             last_error = str(state.get("last_error") or "")
-            if refreshing:
-                message = "در حال بررسی نخستین خبرها…"
-            elif "Post generation" in last_error:
-                message = "منابع بررسی شدند، اما نوشتن پست برای این شخصیت ناموفق بود؛ دکمهٔ ↻ را بزن تا دوباره تلاش کند."
-            elif last_error:
-                message = "دریافت فید کامل نشد؛ دکمهٔ ↻ را بزن تا دوباره تلاش شود."
+            if pending:
+                self._render_pending_sources(pending, last_error)
             else:
-                message = "هنوز خبری دریافت نشده؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
-            self.feed_browser.setHtml(
-                "<html><body style='margin:4px'><span>" + html.escape(message) + "</span></body></html>"
-            )
+                if refreshing:
+                    message = "در حال بررسی نخستین خبرها…"
+                elif "Post generation" in last_error:
+                    message = "منابع بررسی شدند، اما تولید پست ناموفق بود و خبر منبع‌داری برای نمایش باقی نمانده است."
+                elif last_error:
+                    message = "دریافت فید کامل نشد؛ دکمهٔ ↻ را بزن تا دوباره تلاش شود."
+                else:
+                    message = "هنوز خبری دریافت نشده؛ دکمهٔ ↻ را بزن تا شخصیت خبرهای تازه را بررسی کند."
+                self.feed_browser.setHtml(
+                    "<html><body style='margin:4px'><span>" + html.escape(message) + "</span></body></html>"
+                )
             return
 
         cards = []
