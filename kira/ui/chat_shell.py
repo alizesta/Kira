@@ -781,7 +781,11 @@ def _build_right(avatar_card, context, lang, parts=None) -> None:
         # Match by Qt objectName, not Python class identity: hot reloads can
         # leave an older _Portrait class alive that isinstance() cannot see.
         # Remove every previous portrait before constructing exactly one.
-        for duplicate in avatar_card.findChildren(QWidget, "kiraPortrait"):
+        stale_portraits = [
+            widget for widget in avatar_card.findChildren(QWidget)
+            if widget.objectName() == "kiraPortrait" or type(widget).__name__ == "_Portrait"
+        ]
+        for duplicate in stale_portraits:
             layout.removeWidget(duplicate)
             duplicate.hide()
             duplicate.setParent(None)
