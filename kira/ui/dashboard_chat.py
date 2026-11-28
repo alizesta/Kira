@@ -289,6 +289,7 @@ def _build_header(context, lang) -> None:
     layout = header.layout() if header is not None else None
     if layout is None:
         return
+    header.setLayoutDirection(Qt.LeftToRight)                # same icon order in Persian and English
     title.hide()                                             # the reference header has no title; setText keeps working
     chip = QLabel("امروز" if lang == "fa" else "Today", header)
     chip.setObjectName("todayChip")
