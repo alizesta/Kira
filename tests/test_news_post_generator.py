@@ -61,6 +61,30 @@ class NewsPostGeneratorTests(unittest.TestCase):
         self.assertEqual(chat_call[3], 0.55)
         self.assertEqual(router.calls[0], ("role", "chat"))
 
+    def test_large_character_profile_and_source_summaries_are_bounded(self):
+        router = FakeRouter(
+            '{"posts":[{"source_ids":[0],"title":"خبر","body":"خلاصه خبر","confidence":"reported"}]}'
+        )
+        profile = {
+            "description": "D" * 10000,
+            "prompt": "P" * 10000,
+            "specialty_prompt": "S" * 10000,
+            "traits": "T" * 10000,
+        }
+        generator = NewsPostGenerator(
+            lambda _owner: router,
+            profile_factory=lambda _owner: profile,
+        )
+        generator("kira", [{
+            "title": "Source headline",
+            "summary": "S" * 2000,
+            "url": "https://example.com/story",
+        }])
+        chat_call = next(call for call in router.calls if call[0] == "chat")
+        self.assertLessEqual(len(chat_call[2]), 5000)
+        self.assertIn('"summary":"' + ("S" * 420) + '"', chat_call[1][0]["content"])
+        self.assertNotIn("D" * 1801, chat_call[2])
+
     def test_invalid_model_output_is_rejected(self):
         generator = NewsPostGenerator(lambda _owner: FakeRouter("not json"))
         with self.assertRaisesRegex(ValueError, "JSON"):
