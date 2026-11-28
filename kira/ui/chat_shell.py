@@ -274,8 +274,8 @@ class _Portrait(QWidget):
             scaled = self._pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
             painter.drawPixmap((self.width() - scaled.width()) // 2, 0, scaled)   # keep the face, crop the bottom
         fade = QLinearGradient(0, self.height() * 0.6, 0, self.height())
-        fade.setColorAt(0, QColor(10, 6, 24, 0))
-        fade.setColorAt(1, QColor(10, 6, 24, 215))
+        fade.setColorAt(0, dash_theme.rgba(10, 6, 24, 0))
+        fade.setColorAt(1, dash_theme.rgba(10, 6, 24, 215))
         painter.fillRect(self.rect(), fade)
         painter.setPen(dash_theme.qcolor("#ffffff"))
         font = painter.font()

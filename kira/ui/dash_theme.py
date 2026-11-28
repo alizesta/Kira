@@ -75,6 +75,12 @@ def second(value: str) -> QColor:
     return QColor(pal["ticks"]) if pal else QColor(value)
 
 
+def rgba(r: int, g: int, b: int, a: int = 255) -> QColor:
+    """An (r, g, b, alpha) colour of the skin in the active character's palette (the dark fades under the pictures)."""
+    r, g, b = _shift(r, g, b)
+    return QColor(r, g, b, a)
+
+
 def qcolor(value: str) -> QColor:
     return QColor(tone(value))
 

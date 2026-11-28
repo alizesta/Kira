@@ -514,8 +514,8 @@ class _Portrait(QFrame):
             scaled = self._pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
             painter.drawPixmap((w - scaled.width()) // 2, 0, scaled)   # top-aligned: faces sit in the upper part
         fade = QLinearGradient(0, h * 0.55, 0, h)
-        fade.setColorAt(0, QColor(10, 5, 25, 0))
-        fade.setColorAt(1, QColor(10, 5, 25, 235))
+        fade.setColorAt(0, dash_theme.rgba(10, 5, 25, 0))
+        fade.setColorAt(1, dash_theme.rgba(10, 5, 25, 235))
         painter.fillRect(self.rect(), fade)
         painter.setPen(dash_theme.qcolor("#ffffff"))
         font = painter.font()
