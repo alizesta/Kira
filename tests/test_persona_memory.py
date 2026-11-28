@@ -36,6 +36,26 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertTrue(any("امتحان" in f for f in facts))
         self.assertIn("What she knows about him", pm.build_block())
 
+    def test_user_name_lookup_is_character_scoped_and_uses_the_latest_name_or_nickname(self):
+        from kira.services.memory_service import PersonaMemoryService
+
+        service = PersonaMemoryService()
+        with pm.character_scope("kira"):
+            pm.observe("user", "اسم من علیرضاست")
+            self.assertEqual(service.user_name("kira"), "علیرضا")
+
+        with pm.character_scope("ren"):
+            pm.observe("user", "my name is RenUser")
+            self.assertEqual(service.user_name("ren"), "RenUser")
+            pm.observe("user", "call me Ren")
+            self.assertEqual(service.user_name("ren"), "Ren")
+
+        with pm.character_scope("mika"):
+            self.assertEqual(service.user_name("mika"), "")
+
+        with pm.character_scope("kira"):
+            self.assertEqual(service.user_name("kira"), "علیرضا")
+
     def test_long_term_memory_is_separate_for_each_character_and_keeps_kira_legacy_file(self):
         with pm.character_scope("kira"):
             pm.observe("user", "my name is KiraUser")
