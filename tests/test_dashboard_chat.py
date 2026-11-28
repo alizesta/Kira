@@ -135,6 +135,13 @@ class ComposerTests(unittest.TestCase):
 
 
 class HeaderTests(unittest.TestCase):
+    def test_character_switch_cannot_restore_the_route_dropdown_chevron(self):
+        source = (Path(__file__).parents[1] / "kira" / "ui" / "main_window_session.py").read_text(encoding="utf-8")
+        method = source.split("    def refresh_navigation_icons(self):", 1)[1].split("\n    # ----------", 1)[0]
+        self.assertNotIn("chevron_up", method)
+        self.assertIn("badge.setMenu(None)", method)
+
+
     def test_header_gets_the_today_chip_and_search_filter_icons(self):
         header = QFrame()
         layout = QHBoxLayout(header)
