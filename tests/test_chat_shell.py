@@ -194,28 +194,46 @@ class ChatShellTests(unittest.TestCase):
         self.assertIn("Happy", texts(p.avatar_card))
         self.assertIn("Energetic", texts(p.avatar_card))
 
-    def test_right_column_keeps_original_avatar_and_removes_added_static_portraits(self):
+    def test_kira_uses_one_large_static_portrait_and_other_characters_keep_avatar(self):
         context, p = build("en")
         original_avatar = QWidget(p.avatar_card)
         p.avatar_card.layout().addWidget(original_avatar)
         context.views.avatar = original_avatar
+        context.services.character_service.active_id = lambda _settings: "kira"
 
-        stale_portrait = QLabel("extra static Kira image", p.avatar_card)
+        stale_portrait = QLabel("previous extra portrait", p.avatar_card)
         stale_portrait.setObjectName("kiraPortrait")
         legacy_portrait_type = type("_Portrait", (QLabel,), {})
-        legacy_portrait = legacy_portrait_type("legacy extra image", p.avatar_card)
+        legacy_portrait = legacy_portrait_type("legacy portrait", p.avatar_card)
         p.avatar_card.layout().insertWidget(0, stale_portrait)
         p.avatar_card.layout().insertWidget(1, legacy_portrait)
-        p.avatar_card.kira_portrait = stale_portrait
 
-        chat_shell._build_right(p.avatar_card, context, "fa")
+        with tempfile.TemporaryDirectory() as temp:
+            image_path = Path(temp) / "kira.png"
+            image = QPixmap(64, 96)
+            image.fill(QColor("#ff00ff"))
+            self.assertTrue(image.save(str(image_path)))
+            with patch.object(chat_shell, "KIRA_PORTRAIT", image_path):
+                chat_shell._build_right(p.avatar_card, context, "fa")
+                portraits = p.avatar_card.findChildren(QWidget, "kiraPortrait")
+                self.assertEqual(len(portraits), 1)
+                portrait = portraits[0]
+                self.assertIsInstance(portrait, chat_shell._Portrait)
+                self.assertFalse(portrait.isHidden())
+                self.assertTrue(original_avatar.isHidden())
 
-        self.assertIs(original_avatar.parent(), p.avatar_card)
-        self.assertFalse(original_avatar.isHidden())
+                # Character switching must reveal the original animated AvatarView,
+                # not create another large Kira portrait.
+                context.services.character_service.active_id = lambda _settings: "ren"
+                chat_shell._sync_portrait(context)
+                self.assertTrue(portrait.isHidden())
+                self.assertFalse(original_avatar.isHidden())
+                self.assertEqual(
+                    p.avatar_card.findChildren(QWidget, "kiraPortrait"), [portrait]
+                )
+
         self.assertIsNone(stale_portrait.parent())
         self.assertIsNone(legacy_portrait.parent())
-        self.assertFalse(hasattr(p.avatar_card, "kira_portrait"))
-        self.assertEqual(p.avatar_card.findChildren(QWidget, "kiraPortrait"), [])
 
     def test_chat_shell_reflows_columns_when_window_is_not_maximized(self):
         context, p = build()
