@@ -347,8 +347,12 @@ class AttachmentManager:
         display_names = []
         stored_text = str(text or "").strip()
         lead_text = stored_text
+        owner = str(session_id or "")
         for attachment_id in attachment_ids:
-            record = self.get_attachment(attachment_id, session_id=session_id)
+            candidate = self._records.get(str(attachment_id or ""))
+            if candidate is not None and candidate.session_id != owner:
+                raise _content.AttachmentError("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
+            record = self.get_attachment(attachment_id, session_id=owner)
             if record is None:
                 errors.append("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
                 continue
