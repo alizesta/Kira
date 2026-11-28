@@ -147,18 +147,20 @@ class ConversationSidebarTests(unittest.TestCase):
         self.assertIn("pin_conversation(cid)", self.refresh)
         self.assertIn("delete_conversation(cid)", self.refresh)
 
-    def test_mood_indicators_are_parented_to_the_sidebar_that_displays_them(self):
+    def test_energy_badge_is_removed_from_the_chat_sidebar(self):
         self.assertIn(
             "self.context.views.mood_emotion_icon.setParent(conversation_sidebar)",
             self.builder,
         )
         self.assertIn(
-            "self.context.views.mood_indicator.setParent(conversation_sidebar)",
+            "self.context.views.mood_indicator.setParent(self.chat_header)",
             self.builder,
         )
-        self.assertLess(
-            self.builder.index("self.context.views.mood_indicator.setParent(conversation_sidebar)"),
-            self.builder.index("mood_row.addWidget(self.context.views.mood_indicator"),
+        self.assertIn("self.context.views.mood_indicator.hide()", self.builder)
+        self.assertIn("self.context.views.mood_indicator.setToolTip(\"\")", self.builder)
+        self.assertNotIn(
+            "mood_row.addWidget(self.context.views.mood_indicator",
+            self.builder,
         )
 
     def test_message_action_icons_use_equal_centered_cells(self):

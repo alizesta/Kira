@@ -1270,11 +1270,18 @@ class SessionController(WindowFeatureController):
             return False
 
     def update_mood_indicator(self):
-        """Render the active character's current emotion as a custom neon face; chat-message emoji are untouched."""
-        label = getattr(self.context.views, "mood_indicator", None)
+        """Render the active character's emotion face; the detached energy badge is intentionally disabled."""
+        energy_label = getattr(self.context.views, "mood_indicator", None)
         face_label = getattr(self.context.views, "mood_emotion_icon", None)
-        if label is None or face_label is None:
+        if face_label is None:
             return
+        # The energy badge previously became a separate native window on some Qt setups.
+        # Keep its compatibility widget hidden and empty; do not render a bolt or tooltip.
+        if energy_label is not None:
+            energy_label.clear()
+            energy_label.setToolTip("")
+            energy_label.setVisible(False)
+
         self._sync_mood_character()
         # The existing UI poll is the scheduler; this controller throttles it to 30 seconds.
         # maybe_proactive_checkin owns its logged fail-closed boundary.
@@ -1318,24 +1325,10 @@ class SessionController(WindowFeatureController):
                 character_id=character_id
             )
             emotion = str(state.get("emotion", "neutral") or "neutral").lower()
-            behaviour = str(state.get("behavior", "balanced"))
-            energy = str(state.get("energy_label", "normal"))
             intensity = int(state.get("intensity", 0) or 0)
-            secondary_items = state.get("secondary_emotions") or []
-            secondary_key = tuple(
-                (str(item[0]), int(item[1]))
-                for item in secondary_items[:2]
-                if isinstance(item, (tuple, list)) and len(item) >= 2
-            )
-            secondary = ", ".join(name for name, _value in secondary_key)
-            signature = (
-                character_id, emotion, intensity, behaviour, energy, secondary_key
-            )
-            # Mood is polled periodically, but unchanged state should not rebuild
-            # SVG icons, QPixmaps, stylesheets or tooltips every time.
+            signature = (character_id, emotion, intensity)
+            # Only changes that affect the emotion face rebuild its icon.
             if signature == getattr(self, "_mood_indicator_signature", None):
-                # The header constructs this label hidden; keep the actual emotion face visible
-                # even when the persisted mood has not changed since the previous UI poll.
                 face_label.setVisible(True)
                 return
             icon_name = face_map.get(emotion, "neutral")
@@ -1345,7 +1338,6 @@ class SessionController(WindowFeatureController):
                 checked=neon, disabled="#52617B",
             )
             face_label.setPixmap(face_icon.pixmap(QSize(30, 30)))
-            # ChatHeader initially hides both mood labels; the face must be explicitly shown.
             face_label.setVisible(True)
             face_label.setStyleSheet(
                 "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
@@ -1356,34 +1348,7 @@ class SessionController(WindowFeatureController):
                 glow_colour = QColor(neon)
                 glow_colour.setAlpha(215)
                 glow.setColor(glow_colour)
-
-            # Behaviour and energy are represented by vector neon glyphs only.
-            # Never place a plain Unicode emoji beside the neon emotion face.
-            show_bolt = energy in {"active", "hyper"} or behaviour == "energetic"
-            if show_bolt:
-                bolt_colour = "#FFE36B" if energy == "hyper" else "#72F4FF"
-                bolt = make_icon(
-                    "energy_bolt", normal=bolt_colour, hover="#FFFFFF",
-                    checked=bolt_colour, disabled="#52617B",
-                )
-                label.setPixmap(bolt.pixmap(QSize(23, 23)))
-                label.setStyleSheet(
-                    "QLabel#moodIndicator { background: rgba(22, 28, 65, 0.62); "
-                    f"border: 1px solid {bolt_colour}; border-radius: 10px; padding: 2px; }}"
-                )
-                label.setVisible(True)
-            else:
-                label.clear()
-                label.setVisible(False)
-            tooltip = (
-                f"احساس: {emotion} ({intensity}/100)\n"
-                f"رفتار: {behaviour}\n"
-                f"انرژی: {energy}"
-            )
-            if secondary:
-                tooltip += f"\nاحساسات همراه: {secondary}"
-            face_label.setToolTip(tooltip)
-            label.setToolTip(tooltip)
+            face_label.setToolTip("")
             self._mood_indicator_signature = signature
         except Exception:                                    # noqa: BLE001 - the indicator must never break the window
             _log.exception("Could not render the active character mood indicator; using neutral fallback")
@@ -1391,9 +1356,7 @@ class SessionController(WindowFeatureController):
                                  checked="#B9D4F5", disabled="#52617B")
             face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
             face_label.setVisible(True)
-            label.clear()
-            label.setVisible(False)
-            face_label.setToolTip("حال‌وهوای شخصیت فعال")
+            face_label.setToolTip("")
 
     def _chat_action_icon_url(self, view, action, icon_name, colour):
         """Register the SVG icon of a message action once per chat view; returns the URL used by <img>."""

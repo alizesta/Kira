@@ -1,4 +1,4 @@
-"""Avoid rebuilding the mood indicator when its visible state is unchanged."""
+"""The emotion face updates while the detached energy badge remains disabled."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -79,9 +79,10 @@ class MoodIndicatorCacheTests(unittest.TestCase):
         self.assertEqual(len(face.styles), 1)
         self.assertEqual(len(face.tooltips), 1)
         self.assertTrue(face.visible)
-        self.assertEqual(energy.clears, 1)
+        self.assertEqual(energy.clears, 2)
         self.assertFalse(energy.visible)
-        self.assertEqual(len(energy.tooltips), 1)
+        self.assertEqual(energy.tooltips, ["", ""])
+        self.assertEqual(energy.pixmaps, [])
 
     def test_emotion_face_is_visible_when_rendering_falls_back(self):
         controller, face, energy = self.make_controller({})
@@ -95,8 +96,10 @@ class MoodIndicatorCacheTests(unittest.TestCase):
         self.assertTrue(face.visible)
         self.assertEqual(energy.clears, 1)
         self.assertFalse(energy.visible)
+        self.assertEqual(energy.tooltips, [""])
+        self.assertEqual(energy.pixmaps, [])
 
-    def test_changed_energy_refreshes_the_indicator(self):
+    def test_energy_changes_never_render_or_show_a_detached_badge(self):
         state = {
             "emotion": "happy",
             "intensity": 42,
@@ -107,15 +110,18 @@ class MoodIndicatorCacheTests(unittest.TestCase):
         controller, face, energy = self.make_controller(state)
         with patch("kira.ui.main_window_session.make_icon", return_value=_Icon()) as make_icon:
             SessionController.update_mood_indicator(controller)
-            state["energy_label"] = "active"
+            state["energy_label"] = "hyper"
+            state["behavior"] = "playful"
             controller.context.services.mood_service.current = lambda character_id: dict(state)
             SessionController.update_mood_indicator(controller)
 
-        self.assertEqual(make_icon.call_count, 3)  # face icon for each state, plus the energy glyph
-        self.assertEqual(len(face.pixmaps), 2)
+        make_icon.assert_called_once()  # only the emotion face is rendered
+        self.assertEqual(len(face.pixmaps), 1)
         self.assertTrue(face.visible)
-        self.assertTrue(energy.visible)
-        self.assertEqual(len(energy.pixmaps), 1)
+        self.assertFalse(energy.visible)
+        self.assertEqual(energy.pixmaps, [])
+        self.assertEqual(energy.clears, 2)
+        self.assertEqual(energy.tooltips, ["", ""])
 
 
 if __name__ == "__main__":

@@ -178,17 +178,18 @@ class VoiceSettingsController(WindowFeatureController):
         sidebar_layout = QVBoxLayout(conversation_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(3)
-        # These indicators are displayed in the conversation sidebar, not in the chat header.
-        # Reparent them explicitly before inserting them into a separate widget layout;
-        # otherwise a parentless/detached Qt widget can surface as its own desktop window.
+        # Keep the emotion face in the sidebar. The separate energy badge is disabled:
+        # it could surface as an unwanted top-level window on some Qt/Windows setups.
         self.context.views.mood_emotion_icon.setParent(conversation_sidebar)
-        self.context.views.mood_indicator.setParent(conversation_sidebar)
+        self.context.views.mood_indicator.setParent(self.chat_header)
+        self.context.views.mood_indicator.clear()
+        self.context.views.mood_indicator.setToolTip("")
+        self.context.views.mood_indicator.hide()
         mood_row = QHBoxLayout()
         mood_row.setContentsMargins(2, 2, 2, 4)
         mood_row.setSpacing(6)
         mood_row.addStretch(1)
         mood_row.addWidget(self.context.views.mood_emotion_icon, 0, Qt.AlignCenter)
-        mood_row.addWidget(self.context.views.mood_indicator, 0, Qt.AlignCenter)
         mood_row.addStretch(1)
         sidebar_layout.addLayout(mood_row)
         self.context.views.new_chat_btn = QPushButton(
