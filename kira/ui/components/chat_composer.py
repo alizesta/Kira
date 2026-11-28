@@ -193,7 +193,7 @@ class ChatComposer(QFrame):
         self.route_badge.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.route_badge.setCursor(Qt.ArrowCursor)
         self.route_badge.setFocusPolicy(Qt.NoFocus)
-        self.route_badge.setPopupMode(QToolButton.DelayedPopup)
+        self.route_badge.setPopupMode(QToolButton.NoPopup)
         self.route_menu = QMenu(owner.widget)
         self.route_menu.setStyleSheet("QMenu { menu-scrollable: 1; }")
         self.route_menu.aboutToShow.connect(owner.build_badge_menu)
