@@ -195,11 +195,13 @@ class _NewsCard(QFrame):
         meta = QLabel("  ·  ".join(meta_parts), self)
         meta.setObjectName("newsCardCategory")
         meta.setWordWrap(True)
+        meta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         layout.addWidget(meta)
 
         title = QLabel(str(item.get("title") or "خبر"), self)
         title.setObjectName("newsCardTitle")
         title.setWordWrap(True)
+        title.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         title.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(title)
 
@@ -213,12 +215,14 @@ class _NewsCard(QFrame):
         body = QLabel(editorial_text, self)
         body.setObjectName("newsCardBody")
         body.setWordWrap(True)
+        body.setAlignment(Qt.AlignRight | Qt.AlignTop)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
         body.setMaximumHeight(146)
         layout.addWidget(body)
         if confidence:
             confidence_label = QLabel(confidence, self)
             confidence_label.setObjectName("newsCardConfidence")
+            confidence_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             confidence_label.setStyleSheet(
                 "color:#b9a2ec;font-size:11px;background:rgba(109,72,176,65);"
                 "border:1px solid rgba(139,92,246,90);border-radius:7px;padding:4px 8px;"
@@ -295,12 +299,14 @@ class NewsFeedPanel(QFrame):
         header = QHBoxLayout()
         self.title_label = QLabel(_CHARACTER_LABELS["kira"], self)
         self.title_label.setObjectName("newsFeedTitle")
+        self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.title_label.setStyleSheet("color:#f0eaff;font-size:19px;font-weight:700;")
         header.addWidget(self.title_label, 1)
 
         self.status_label = QLabel("در حال آماده‌سازی فید خبر…", self)
         self.status_label.setObjectName("newsFeedStatus")
         self.status_label.setWordWrap(True)
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.status_label.setStyleSheet("color:#ac9acc;font-size:11px;")
         header.addWidget(self.status_label, 2)
 
