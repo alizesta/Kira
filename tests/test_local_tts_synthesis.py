@@ -250,6 +250,15 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             Path(str(model) + ".json").write_text("{}", encoding="utf-8")
             self.assertTrue(local_voice.tts_ready(str(model)))
 
+    def test_tts_model_files_ready_requires_both_onnx_and_sidecar(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "voice.onnx"
+            model.write_bytes(b"model")
+            self.assertFalse(local_voice.tts_model_files_ready(model))
+            Path(str(model) + ".json").write_text("{}", encoding="utf-8")
+            self.assertTrue(local_voice.tts_model_files_ready(model))
+            self.assertTrue(local_voice.tts_model_files_ready(""))
+
     def test_default_model_resolves_the_mana_snapshot_in_kira_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             snapshot = Path(temp) / "models--MahtaFetrat--Mana-Persian-Piper" / "snapshots" / "test"
