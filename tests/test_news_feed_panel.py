@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
+from unittest.mock import patch
 
 from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
@@ -59,6 +60,15 @@ class _Service:
 
 
 class NewsFeedPanelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._image_loader_patch = patch.object(NewsFeedPanel, "_download_cover", autospec=True)
+        cls._image_loader_patch.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._image_loader_patch.stop()
+
     def setUp(self):
         self.panel = NewsFeedPanel(_Service(), {})
 
