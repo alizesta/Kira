@@ -157,8 +157,8 @@ _NEWS_SEARCH_HINTS = {
     ),
 }
 _BROAD_NEWS_REQUEST_RX = re.compile(
-    r"(?:خب\s+)?(?:چه\s+خبر(?:ه|ها|ی\s+جدیدی)?|"
-    r"(?:امروز|امشب)\s+چه\s+خبر(?:ه|ها)?|از\s+دنیا\s+چه\s+خبر|"
+    r"(?:خب\s+)?(?:(?:الان|امروز|امشب)\s+)?(?:چه\s+خبر(?:ه|ها|ی\s+جدیدی)?|"
+    r"از\s+دنیا\s+چه\s+خبر|چه\s+خبر\s+از\s+(?:دنیا|جهان)|"
     r"(?:آخرین|جدیدترین)\s+اخبار|اخبار(?:\s+(?:امروز|جدید|تازه))?|"
     r"خبرهای?\s+(?:امروز|جدید|تازه)|"
     r"what(?:'s| is)\s+(?:the\s+)?(?:latest|new|happening)|"
@@ -173,7 +173,7 @@ def is_broad_news_request(text: str) -> bool:
     value = re.sub(r"^\s*/(?:web|search|سرچ)\s+", "", value, flags=re.IGNORECASE)
     value = value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
     value = re.sub(r"[؟?!.,،؛:…]+$", "", value).strip()
-    value = re.sub(r"^(?:(?:سلام|ببین|راستی)\s+)+", "", value)
+    value = re.sub(r"^(?:(?:سلام|ببین|راستی)[،,:؛!؟-]?\s*)+", "", value)
     return bool(_BROAD_NEWS_REQUEST_RX.fullmatch(value))
 
 def scope_news_search_query(character_id: str, query: str, request_text: str) -> str:
