@@ -169,6 +169,66 @@ class NewsFeedPanelTests(unittest.TestCase):
         self.assertTrue(cut.endswith("…"))
         self.assertLessEqual(len(cut), 151)
 
+    def _panel_with(self, cid, rows):
+        class Store(_Store):
+            def list_posts(self, character_id, limit=12):
+                return [{"category": "gaming_industry", "title": title, "summary": summary, "source": "Example",
+                         "url": f"https://example.com/{i}", "published_at": "2026-11-27T00:00:00Z"}
+                        for i, (title, summary) in enumerate(rows)]
+
+        service = type("Service", (), {"store": Store(), "is_refreshing": staticmethod(lambda _c: False)})()
+        panel = NewsFeedPanel(service, {})
+        self.addCleanup(panel.close)
+        panel.resize(1100, 760)
+        panel.show()
+        panel.set_character(cid)
+        _APP.processEvents()
+        return panel
+
+    def test_ren_cards_are_marked_red_for_bad_news_and_green_for_good_news(self):
+        rows = [
+            ("خبر یک", "متن.\n\nسطح اطمینان: گزارش‌شده\nحس خبر: منفی"),
+            ("خبر دو", "متن.\n\nسطح اطمینان: گزارش‌شده\nحس خبر: مثبت"),
+            ("خبر سه", "متن.\n\nسطح اطمینان: گزارش‌شده\nحس خبر: خنثی"),
+            ("سقوط شدید و ریزش بازار", "متن بدون برچسب."),
+        ]
+        panel = self._panel_with("ren", rows)
+        cards = {card.findChild(QLabel, "newsCardTitle").text(): card
+                 for card in panel.cards_container.findChildren(QFrame, "newsStoryCard")}
+        self.assertEqual(cards["خبر یک"].sentiment, "negative")
+        self.assertEqual(cards["خبر دو"].sentiment, "positive")
+        self.assertIsNone(cards["خبر سه"].findChild(QLabel, "newsCardSentiment"))        # neutral news: no mark
+        self.assertEqual(cards["سقوط شدید و ریزش بازار"].sentiment, "negative")          # older post: guessed from the words
+        bad = cards["خبر یک"].findChild(QLabel, "newsCardSentiment")
+        good = cards["خبر دو"].findChild(QLabel, "newsCardSentiment")
+        self.assertIn("#ff5964", bad.styleSheet())
+        self.assertIn("#35d07f", good.styleSheet())
+        self.assertNotIn("حس خبر", panel.rendered_text())                                 # the stored marker line is never shown
+
+    def test_each_character_has_its_own_card_colour_and_only_ren_has_marks(self):
+        rows = [("خبر", "متن.\n\nسطح اطمینان: گزارش‌شده\nحس خبر: منفی")]
+        styles = {}
+        for cid in ("kira", "ren", "mika"):
+            panel = self._panel_with(cid, rows)
+            card = panel.cards_container.findChildren(QFrame, "newsStoryCard")[0]
+            styles[cid] = card.styleSheet()
+            self.assertEqual(card.findChild(QLabel, "newsCardSentiment") is not None, cid == "ren")
+        self.assertEqual(len(set(styles.values())), 3)
+        self.assertIn("224, 72, 90", styles["ren"])
+        self.assertIn("214, 93, 177", styles["mika"])
+        self.assertIn("125, 88, 216", styles["kira"])
+
+    def test_sentiment_helpers(self):
+        from kira.ui.pages.news_feed_panel import guess_sentiment, split_sentiment
+        text, sentiment = split_sentiment("بدنه\n\nسطح اطمینان: گزارش‌شده\nحس خبر: مثبت\nمنابع تکمیلی: A: https://a.example")
+        self.assertEqual(sentiment, "positive")
+        self.assertNotIn("حس خبر", text)
+        self.assertIn("منابع تکمیلی", text)
+        self.assertEqual(split_sentiment("بدون برچسب"), ("بدون برچسب", None))
+        self.assertEqual(guess_sentiment("market crash and heavy loss"), "negative")
+        self.assertEqual(guess_sentiment("رشد و رکورد جدید"), "positive")
+        self.assertEqual(guess_sentiment("نشست برگزار شد"), "neutral")
+
     def test_publisher_image_metadata_parser_reads_open_graph_lazy_images_and_json_ld(self):
         parser = _ImageMetaParser()
         parser.feed("""

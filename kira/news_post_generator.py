@@ -91,7 +91,10 @@ class NewsPostGenerator:
             "have a short conversational Persian title and a SHORT Persian body: one or two brief sentences, "
             "at most about 140 characters, with the key fact and the character's own quick take. Keep it tight; no long explanations. "
             "Return ONLY valid JSON with this exact shape: "
-            '{"posts":[{"source_ids":[0,1],"title":"...","body":"...","confidence":"confirmed|reported|unverified"}]}. '
+            '{"posts":[{"source_ids":[0,1],"title":"...","body":"...","confidence":"confirmed|reported|unverified","sentiment":"positive|negative|neutral"}]}. '
+            "sentiment is the news itself, not your mood: positive = good news for the people or markets it affects "
+            "(growth, recovery, a win, an improvement), negative = bad news (a fall, a loss, a crisis, a failure, a threat), "
+            "neutral = mixed or purely informational. "
             "source_ids must refer only to IDs in the input. Never create or rewrite URLs. "
             "If nothing deserves a post, return {\"posts\":[]}."
         )

@@ -1,3 +1,8 @@
+## AIWU colours and Ren sentiment marks — handoff (2026-11-28 18:42 Iran)
+- Branch: `claude/aiwu-colors`, based on `new-main` 3c3a8ad. Rendered the real MainWindow offscreen for Ren (red cards, red/green marks), Mika (pink) and Kira (violet).
+- Verified: news test files pass (51). Not verified: Windows; a real model returning `sentiment` (the prompt asks for it; until it does, and for old posts, the keyword guess is used, which can be wrong for mixed news).
+- Limit: the marks apply to Ren's feed only by design; `guess_sentiment` is a word count, not understanding.
+
 ## AIWU layout and captions — handoff (2026-11-28 18:33 Iran)
 - Branch: `claude/aiwu-layout`, based on `new-main` b3a6023. Rendered the real MainWindow offscreen with nine seeded stories: 3 cards on top, 3 below, vertical scrollbar on the right, scrolling down shows stories 7-9 in the same grid.
 - Verified: `tests/test_news_feed_panel.py`, `test_news_post_generator.py`, `test_news_feed.py`, `test_news_sources.py` pass (47). Not verified: Windows, a real model producing the shorter body (the prompt asks for about 140 characters; the screen limit of 150 shortens anything longer).

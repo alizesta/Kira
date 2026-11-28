@@ -355,6 +355,19 @@ class NewsFeedStoreTests(unittest.TestCase):
         self.assertEqual(len(posts), 1)
         self.assertIn("سطح اطمینان: تأییدنشده", posts[0]["summary"])
 
+    def test_model_sentiment_is_kept_in_the_stored_summary(self):
+        sources = [{"title": "Market news", "url": "https://x.example/a", "source": "X", "category": "markets"}]
+        for raw, label in (("negative", "حس خبر: منفی"), ("positive", "حس خبر: مثبت"), ("neutral", "حس خبر: خنثی")):
+            posts = _prepare_character_posts(sources, [{
+                "source_ids": [0], "title": "عنوان", "body": "متن کوتاه.", "confidence": "reported", "sentiment": raw,
+            }])
+            self.assertIn(label, posts[0]["summary"])
+        for bad in ("", "angry", None):
+            posts = _prepare_character_posts(sources, [{
+                "source_ids": [0], "title": "عنوان", "body": "متن کوتاه.", "confidence": "reported", "sentiment": bad,
+            }])
+            self.assertNotIn("حس خبر", posts[0]["summary"])
+
     def test_failed_post_generation_never_exposes_raw_source_as_a_post(self):
         with tempfile.TemporaryDirectory() as temp:
             sources = [{

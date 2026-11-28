@@ -519,6 +519,7 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
         "reported": "گزارش‌شده",
         "unverified": "تأییدنشده",
     }
+    sentiment_labels = {"positive": "مثبت", "negative": "منفی", "neutral": "خنثی"}    # good / bad / neither for the people the story affects
     posts, consumed = [], set()
     for candidate in generated[:4]:
         if not isinstance(candidate, dict):
@@ -573,6 +574,9 @@ def _prepare_character_posts(sources: list[dict], generated: object) -> list[dic
             if label and label not in source_labels:
                 source_labels.append(label)
         summary = f"{body}\n\nسطح اطمینان: {confidence}"
+        sentiment = sentiment_labels.get(_clean(candidate.get("sentiment"), 16).lower())
+        if sentiment:
+            summary += f"\nحس خبر: {sentiment}"
         extra_sources = [
             f"{_clean(source.get('source'), 70)}: {_clean(source.get('url'), 260)}"
             for _index, source in selected[1:4]

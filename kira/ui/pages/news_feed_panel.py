@@ -22,44 +22,100 @@ _CHARACTER_LABELS = {
     "mika": "میکا · پزشکی و سلامت عمومی",
 }
 
-_CARD_STYLE = """
-QFrame#newsStoryCard {
-    background: rgba(17, 11, 39, 238);
-    border: 1px solid rgba(125, 88, 216, 150);
+# One colour family per character: Kira violet, Ren red, Mika pink.
+_THEMES = {
+    "kira": {"bg": "17, 11, 39", "edge": "125, 88, 216", "meta": "#bda9f7", "title": "#f5f1ff", "body": "#d8d0ed",
+             "cover_a": "#382365", "cover_b": "#140f2e", "cover_edge": "139, 92, 246", "cover_text": "#cbbcff",
+             "btn": "87, 53, 160", "btn_edge": "139, 92, 246", "btn_hover": "112, 73, 196",
+             "handle": "#7950c7", "handle_hover": "#9c74ec", "chip": "#b9a2ec", "chip_bg": "109, 72, 176", "chip_edge": "139, 92, 246"},
+    "ren": {"bg": "30, 10, 16", "edge": "224, 72, 90", "meta": "#ff9aa3", "title": "#fff1f2", "body": "#efd2d6",
+            "cover_a": "#5a1d28", "cover_b": "#240c12", "cover_edge": "255, 89, 100", "cover_text": "#ffb3ba",
+            "btn": "160, 40, 58", "btn_edge": "255, 89, 100", "btn_hover": "196, 55, 75",
+            "handle": "#c7424f", "handle_hover": "#ec6a77", "chip": "#ffa6ad", "chip_bg": "160, 40, 58", "chip_edge": "255, 89, 100"},
+    "mika": {"bg": "32, 10, 28", "edge": "214, 93, 177", "meta": "#f5a3d6", "title": "#fff0f9", "body": "#f0d3e6",
+             "cover_a": "#5a2250", "cover_b": "#2a0f27", "cover_edge": "244, 114, 182", "cover_text": "#ffbfe3",
+             "btn": "160, 53, 128", "btn_edge": "244, 114, 182", "btn_hover": "196, 73, 154",
+             "handle": "#c7509f", "handle_hover": "#ec74c0", "chip": "#f7aad8", "chip_bg": "160, 53, 128", "chip_edge": "244, 114, 182"},
+}
+_THEMES["default"] = _THEMES["kira"]
+
+# Ren's cards carry a mark for the direction of the news: red = bad news, green = good news.
+SENTIMENT_MARKS = {
+    "negative": ("▼  خبر منفی", "#ff5964", "255, 89, 100"),
+    "positive": ("▲  خبر مثبت", "#35d07f", "53, 208, 127"),
+}
+_SENTIMENT_LINE = re.compile(r"\n?\s*حس خبر:\s*(مثبت|منفی|خنثی)[^\n]*")
+_SENTIMENT_FROM_LABEL = {"مثبت": "positive", "منفی": "negative", "خنثی": "neutral"}
+_NEGATIVE_WORDS = (
+    "سقوط", "ریزش", "افت", "کاهش", "زیان", "ضرر", "بحران", "رکود", "تورم", "جنگ", "تحریم", "شکست", "ناکام", "هک", "نشت",
+    "تعطیل", "اخراج", "ورشکست", "تهدید", "حمله", "فروپاش", "crash", "plunge", "drop", "fall", "loss", "ban", "layoff", "hack", "breach",
+)
+_POSITIVE_WORDS = (
+    "رشد", "افزایش", "صعود", "سود", "جهش", "رکورد", "موفق", "بهبود", "پیشرفت", "رونق", "پیروز", "عرضه", "رکورد",
+    "growth", "gain", "surge", "rise", "record", "profit", "win", "launch", "improve",
+)
+
+
+def split_sentiment(summary: str) -> tuple[str, str | None]:
+    """Return the summary without its "حس خبر:" line and the sentiment stored in it (positive / negative / neutral)."""
+    match = _SENTIMENT_LINE.search(str(summary or ""))
+    if not match:
+        return str(summary or ""), None
+    return _SENTIMENT_LINE.sub("", str(summary), count=1), _SENTIMENT_FROM_LABEL.get(match.group(1))
+
+
+def guess_sentiment(text: str) -> str:
+    """Fallback for posts written before the model returned a sentiment: count good and bad words."""
+    lowered = str(text or "").lower()
+    bad = sum(lowered.count(word) for word in _NEGATIVE_WORDS)
+    good = sum(lowered.count(word) for word in _POSITIVE_WORDS)
+    return "negative" if bad > good else "positive" if good > bad else "neutral"
+
+
+def _card_style(cid: str) -> str:
+    t = _THEMES.get(cid, _THEMES["default"])
+    return f"""
+QFrame#newsStoryCard {{
+    background: rgba({t['bg']}, 238);
+    border: 1px solid rgba({t['edge']}, 150);
     border-radius: 18px;
-}
-QLabel#newsCardCategory { color: #bda9f7; font-size: 11px; font-weight: 600; }
-QLabel#newsCardTitle { color: #f5f1ff; font-size: 17px; font-weight: 700; }
-QLabel#newsCardBody { color: #d8d0ed; font-size: 13px; line-height: 1.5; }
-QLabel#newsCardSource { color: #a995dc; font-size: 11px; }
-QLabel#newsCardCover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #382365, stop:1 #140f2e);
-    border: 1px solid rgba(139, 92, 246, 100);
+}}
+QFrame#newsStoryCard[sentiment="positive"] {{ border: 1px solid rgba(53, 208, 127, 190); }}
+QLabel#newsCardCategory {{ color: {t['meta']}; font-size: 11px; font-weight: 600; }}
+QLabel#newsCardTitle {{ color: {t['title']}; font-size: 17px; font-weight: 700; }}
+QLabel#newsCardBody {{ color: {t['body']}; font-size: 13px; line-height: 1.5; }}
+QLabel#newsCardSource {{ color: {t['meta']}; font-size: 11px; }}
+QLabel#newsCardCover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {t['cover_a']}, stop:1 {t['cover_b']});
+    border: 1px solid rgba({t['cover_edge']}, 100);
     border-radius: 12px;
-    color: #cbbcff;
+    color: {t['cover_text']};
     font-size: 14px;
-}
-QPushButton#newsCardOpen {
-    background: rgba(87, 53, 160, 110);
-    border: 1px solid rgba(139, 92, 246, 150);
+}}
+QPushButton#newsCardOpen {{
+    background: rgba({t['btn']}, 110);
+    border: 1px solid rgba({t['btn_edge']}, 150);
     border-radius: 9px;
-    color: #f5f1ff;
+    color: {t['title']};
     padding: 8px 12px;
     font-size: 12px;
     font-weight: 600;
-}
-QPushButton#newsCardOpen:hover { background: rgba(112, 73, 196, 170); }
-QLabel#newsFeedEmptyTitle { color: #eee7ff; font-size: 20px; font-weight: 700; }
-QLabel#newsFeedEmptyBody { color: #b8a9d9; font-size: 13px; }
-QScrollBar:vertical {
+}}
+QPushButton#newsCardOpen:hover {{ background: rgba({t['btn_hover']}, 170); }}
+QLabel#newsFeedEmptyTitle {{ color: {t['title']}; font-size: 20px; font-weight: 700; }}
+QLabel#newsFeedEmptyBody {{ color: {t['meta']}; font-size: 13px; }}
+QScrollBar:vertical {{
     background: rgba(18, 12, 42, 150); width: 9px; border-radius: 4px; margin: 10px 3px;
-}
-QScrollBar::handle:vertical {
-    background: #7950c7; min-height: 38px; border-radius: 4px;
-}
-QScrollBar::handle:vertical:hover { background: #9c74ec; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+}}
+QScrollBar::handle:vertical {{
+    background: {t['handle']}; min-height: 38px; border-radius: 4px;
+}}
+QScrollBar::handle:vertical:hover {{ background: {t['handle_hover']}; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
+
+
+_CARD_STYLE = _card_style("kira")
 
 
 class _ImageMetaParser(HTMLParser):
@@ -230,7 +286,15 @@ class _NewsCard(QFrame):
     def __init__(self, item: dict, panel: "NewsFeedPanel", parent=None):
         super().__init__(parent)
         self.setObjectName("newsStoryCard")
-        self.setStyleSheet(_CARD_STYLE)
+        cid = str(getattr(panel, "_character_id", "") or "kira")
+        theme = _THEMES.get(cid, _THEMES["default"])
+        summary, sentiment = split_sentiment(str(item.get("summary") or ""))
+        item = {**item, "summary": summary}
+        if cid == "ren" and sentiment is None:
+            sentiment = guess_sentiment(f"{item.get('title') or ''} {summary}")
+        self.sentiment = sentiment if cid == "ren" else None
+        self.setProperty("sentiment", self.sentiment or "")
+        self.setStyleSheet(_card_style(cid))
         self.setMinimumWidth(0)
         self.setMinimumHeight(0)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -243,6 +307,18 @@ class _NewsCard(QFrame):
         self.cover = _CoverImageLabel(self)
         layout.addWidget(self.cover)
 
+        mark = SENTIMENT_MARKS.get(self.sentiment or "")
+        if mark is not None:
+            text, colour, rgb = mark
+            badge = QLabel(text, self)
+            badge.setObjectName("newsCardSentiment")
+            badge.setAlignment(Qt.AlignCenter)
+            badge.setStyleSheet(
+                f"color:{colour};font-size:11px;font-weight:700;background:rgba({rgb},45);"
+                f"border:1px solid rgba({rgb},190);border-radius:8px;padding:3px 10px;"
+            )
+            badge.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            layout.addWidget(badge, 0, Qt.AlignRight)
         category = CATEGORY_LABELS.get(item.get("category"), item.get("category") or "خبر")
         when = _published_label(item)
         source = str(item.get("source") or "").strip()
@@ -283,8 +359,8 @@ class _NewsCard(QFrame):
             confidence_label.setObjectName("newsCardConfidence")
             confidence_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             confidence_label.setStyleSheet(
-                "color:#b9a2ec;font-size:11px;background:rgba(109,72,176,65);"
-                "border:1px solid rgba(139,92,246,90);border-radius:7px;padding:4px 8px;"
+                f"color:{theme['chip']};font-size:11px;background:rgba({theme['chip_bg']},65);"
+                f"border:1px solid rgba({theme['chip_edge']},90);border-radius:7px;padding:4px 8px;"
             )
             layout.addWidget(confidence_label)
 
@@ -370,7 +446,7 @@ class NewsFeedPanel(QFrame):
         self.setMinimumSize(0, 0)
         self.setMaximumSize(16777215, 16777215)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setStyleSheet(self.styleSheet() + _CARD_STYLE)
+        self.setStyleSheet(_card_style("kira"))
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 10, 12, 8)
@@ -484,6 +560,7 @@ class NewsFeedPanel(QFrame):
     def set_character(self, character_id: str):
         cid = str(character_id or "").strip().lower()
         self._character_id = cid
+        self.setStyleSheet(_card_style(cid))                          # scrollbar and empty-state colours follow the character
         self.title_label.setText(
             _CHARACTER_LABELS.get(cid, f"{cid or 'شخصیت'} · فید خبری اختصاصی تعریف نشده")
         )
