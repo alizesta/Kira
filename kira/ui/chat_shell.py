@@ -25,7 +25,7 @@ from datetime import datetime
 
 import math
 
-from PySide6.QtCore import QObject, QPoint, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QSizePolicy,
@@ -290,6 +290,70 @@ class _Portrait(QWidget):
         painter.drawText(16, self.height() - 16, self._subtitle)
 
 
+
+class _CharacterChatBackground(QWidget):
+    """Paint the active character's profile background behind the chat shell."""
+
+    def __init__(self, page) -> None:
+        super().__init__(page)
+        self.setObjectName("characterChatBackground")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setFocusPolicy(Qt.NoFocus)
+        self._pixmap = QPixmap()
+        page.installEventFilter(self)
+        self.setGeometry(page.rect())
+        self.lower()
+        self.hide()
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt API
+        if watched is self.parentWidget() and event.type() == QEvent.Resize:
+            self.setGeometry(watched.rect())
+        return False
+
+    def sync(self, context) -> None:
+        cid = _active_cid(context)
+        try:
+            service = context.services.character_service
+            profile = service.all_profiles(context.services.settings).get(cid) or {}
+            resolver = getattr(service, "chat_background_file", None)
+            path = resolver(profile, ROOT) if callable(resolver) else None
+            pixmap = QPixmap(str(path)) if path else QPixmap()
+        except Exception:  # noqa: BLE001 - optional artwork must not break the chat
+            _LOG.debug("Could not resolve %s chat background", cid, exc_info=True)
+            pixmap = QPixmap()
+        self._pixmap = pixmap
+        self.setVisible(not pixmap.isNull())
+        self.lower()
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
+        if self._pixmap.isNull():
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        scaled = self._pixmap.scaled(
+            self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+        )
+        x = (self.width() - scaled.width()) // 2
+        y = (self.height() - scaled.height()) // 2
+        painter.drawPixmap(x, y, scaled)
+        painter.fillRect(self.rect(), QColor(8, 4, 24, 142))
+
+
+def _sync_chat_background(context) -> None:
+    page = getattr(getattr(context, "views", None), "chat_page", None)
+    if page is None:
+        return
+    background = getattr(page, "_character_chat_background", None)
+    if background is None:
+        background = _CharacterChatBackground(page)
+        page._character_chat_background = background
+    background.setGeometry(page.rect())
+    background.sync(context)
+
+
+
 def greeting_text(lang: str, hour: int) -> str:
     part = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening" if 17 <= hour < 22 else "night"
     if lang == "fa":
@@ -512,6 +576,7 @@ def apply_chat_shell(context) -> bool:
     if not page.objectName():
         page.setObjectName("chatPage")
     page.setStyleSheet(page.styleSheet() + style)
+    _sync_chat_background(context)
     controller = _session_controller(context)
     parts = {}
     steps = (
@@ -1094,6 +1159,7 @@ def _wrap_theme(context, controller, page, raw_style) -> None:
         page.setStyleSheet(page.styleSheet() + dash_theme.css(raw_style))   # the theme replaced the stylesheet: put the skin back on top
         dash_theme.retheme(page)
         _sync_portrait(context)
+        _sync_chat_background(context)
         _paint_mood_face(context)
         return result
 
@@ -1133,6 +1199,7 @@ def _wrap_tabs(context, controller) -> None:
         try:
             _picture_tabs(context)
             _sync_portrait(context)
+            _sync_chat_background(context)
         except Exception:                                  # noqa: BLE001 - pictures are optional
             _LOG.exception("Could not set the character pictures")
         return result
